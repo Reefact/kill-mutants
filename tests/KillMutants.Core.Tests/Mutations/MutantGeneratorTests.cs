@@ -7,12 +7,8 @@ namespace KillMutants.Core.Tests.Mutations;
 
 public class MutantGeneratorTests
 {
-    private static IReadOnlyList<Mutant> Generate(string source, string path = "/src/Sample.cs")
-    {
-        SyntaxTree tree = CSharpSyntaxTree.ParseText(source, path: path);
-
-        return new MutantGenerator(MutatorCatalog.Default).Generate([tree]);
-    }
+    private static IReadOnlyList<Mutant> Generate(string source, string path = "/src/Sample.cs") =>
+        new MutantGenerator(MutatorCatalog.Default).Generate(TestCompilation.From(source, path));
 
     [Fact]
     public void A_comparison_yields_its_boundary_shift_and_its_negation()
@@ -39,10 +35,10 @@ public class MutantGeneratorTests
     {
         // M3 will generate per project. Restarting at M1 for each would make the report ambiguous.
         var generator = new MutantGenerator(MutatorCatalog.Default);
-        SyntaxTree First() => CSharpSyntaxTree.ParseText("class C { bool M(int x) => x >= 1; }");
+        Compilation Snippet() => TestCompilation.From("class C { bool M(int x) => x >= 1; }");
 
-        IReadOnlyList<Mutant> first = generator.Generate([First()]);
-        IReadOnlyList<Mutant> second = generator.Generate([First()]);
+        IReadOnlyList<Mutant> first = generator.Generate(Snippet());
+        IReadOnlyList<Mutant> second = generator.Generate(Snippet());
 
         Assert.Equal(["M1", "M2"], first.Select(mutant => mutant.Id.ToString()));
         Assert.Equal(["M3", "M4"], second.Select(mutant => mutant.Id.ToString()));

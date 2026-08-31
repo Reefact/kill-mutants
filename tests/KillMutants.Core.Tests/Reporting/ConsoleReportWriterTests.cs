@@ -14,7 +14,7 @@ public class ConsoleReportWriterTests
 {
     private static IReadOnlyList<Mutant> MutantsFor(string source) =>
         new MutantGenerator(MutatorCatalog.Default)
-            .Generate([CSharpSyntaxTree.ParseText(source, path: "/src/Ages.cs")]);
+            .Generate(TestCompilation.From(source, "/src/Ages.cs"));
 
     private static string Render(params MutantResult[] results)
     {

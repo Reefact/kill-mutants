@@ -24,17 +24,44 @@ public class MutationTestingEndToEndTests
             fixture.Root, cancellationToken: TestContext.Current.CancellationToken);
 
         // The founding acceptance criterion: `>=` becomes `>`, and the suite notices.
-        MutantResult boundary = Assert.Single(
-            report.Results, result => result.Mutant.MutatedText == "age > 18");
+        MutantResult[] boundary = [.. report.Results
+            .Where(result => result.Mutant.MutatedText == "age > 18")];
 
-        Assert.Equal(MutantStatus.Killed, boundary.Status);
-        Assert.Equal("age >= 18", boundary.Mutant.OriginalText);
-        Assert.Equal("Comparison", boundary.Mutant.Mutator.ToString());
-        Assert.Equal("Ages.cs", Path.GetFileName(boundary.Mutant.Location.FilePath));
+        Assert.NotEmpty(boundary);
+        Assert.All(boundary, result =>
+        {
+            Assert.Equal(MutantStatus.Killed, result.Status);
+            Assert.Equal("age >= 18", result.Mutant.OriginalText);
+            Assert.Equal("Comparison", result.Mutant.Mutator.ToString());
+            Assert.Equal("Ages.cs", Path.GetFileName(result.Mutant.Location.FilePath));
+        });
 
         Assert.All(report.Results, result => Assert.Equal(MutantStatus.Killed, result.Status));
         Assert.Equal(0, report.Survived);
         Assert.Equal("100%", report.Score.ToString());
+    }
+
+    /// <summary>
+    /// Proves the catalogue works against a real project rather than only against parsed snippets:
+    /// every family produces at least one mutant, and the fixture's tests catch all of them.
+    /// </summary>
+    [Fact]
+    public async Task Every_mutator_family_is_exercised_against_the_fixture()
+    {
+        using var fixture = FixtureCopy.Create();
+
+        MutationTestReport report = await MutationTesting.RunAsync(
+            fixture.Root, cancellationToken: TestContext.Current.CancellationToken);
+
+        string[] families = [.. report.Results
+            .Select(result => result.Mutant.Mutator.ToString())
+            .Distinct()
+            .Order(StringComparer.Ordinal)];
+
+        Assert.Equal(
+            ["Arithmetic", "Comparison", "LogicalOperator", "Negation", "StringLiteral"],
+            families);
+        Assert.All(report.Results, result => Assert.Equal(MutantStatus.Killed, result.Status));
     }
 
     [Fact]
@@ -54,19 +81,18 @@ public class MutationTestingEndToEndTests
         MutationTestReport report = await MutationTesting.RunAsync(
             fixture.Root, cancellationToken: TestContext.Current.CancellationToken);
 
-        // `age > 18` is indistinguishable from `age >= 18` once 18 itself is never tested.
-        MutantResult boundary = Assert.Single(
-            report.Results, result => result.Mutant.MutatedText == "age > 18");
+        // Exactly one mutant escapes: IsAdult's boundary shift, which is indistinguishable from
+        // the original once 18 itself is never passed to it. IsEligible's identical-looking
+        // `age > 18` is still caught, because its own theory does test the boundary.
+        MutantResult survivor = Assert.Single(
+            report.Results, result => result.Status == MutantStatus.Survived);
 
-        Assert.Equal(MutantStatus.Survived, boundary.Status);
-        Assert.Equal(1, report.Survived);
+        Assert.Equal("age >= 18", survivor.Mutant.OriginalText);
+        Assert.Equal("age > 18", survivor.Mutant.MutatedText);
+        Assert.Equal("Comparison", survivor.Mutant.Mutator.ToString());
 
-        // `age < 18` is still caught: 42 is no longer an adult under it.
-        MutantResult negation = Assert.Single(
-            report.Results, result => result.Mutant.MutatedText == "age < 18");
-
-        Assert.Equal(MutantStatus.Killed, negation.Status);
-        Assert.Equal("50%", report.Score.ToString());
+        // Every other mutant in the fixture is still caught.
+        Assert.Equal(report.Total - 1, report.Killed);
     }
 
     /// <summary>

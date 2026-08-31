@@ -14,8 +14,7 @@ namespace KillMutants.Core.Tests.Mutations;
 public class MutationSiteTests
 {
     private static IReadOnlyList<Mutant> Generate(string source) =>
-        new MutantGenerator(MutatorCatalog.Default)
-            .Generate([CSharpSyntaxTree.ParseText(source, path: "/src/Sample.cs")]);
+        new MutantGenerator(MutatorCatalog.Default).Generate(TestCompilation.From(source));
 
     [Theory]
     // const field: the value is inlined into every consumer at their build time
