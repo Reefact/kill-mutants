@@ -102,6 +102,60 @@ internal sealed class FixtureCopy : IDisposable
             """);
     }
 
+    /// <summary>
+    /// Replaces the fixture's code with a type that depends on a source generator.
+    /// </summary>
+    /// <remarks>
+    /// <c>[GeneratedRegex]</c> stands in for the whole family — <c>[JsonSerializable]</c>,
+    /// <c>[LibraryImport]</c>, Mapperly, Refit, ASP.NET Core minimal APIs. MSBuild names generators
+    /// on the compiler command line under <c>/analyzer:</c> but does not list the code they
+    /// contribute, so a tool that only reads the source list cannot compile the project at all: the
+    /// partial property has no implementation and the emit fails with CS9248.
+    /// </remarks>
+    public void UseCodeThatDependsOnASourceGenerator()
+    {
+        File.WriteAllText(
+            Path.Combine(Root, "Sample.Library", "Ages.cs"),
+            """
+            using System.Text.RegularExpressions;
+
+            namespace Sample.Library;
+
+            public static partial class Codes
+            {
+                [GeneratedRegex(@"^[A-Z]{2}\d{3}$")]
+                private static partial Regex Pattern { get; }
+
+                public static bool IsValid(string code)
+                {
+                    return code.Length >= 5 && Pattern.IsMatch(code);
+                }
+            }
+
+            """);
+
+        File.WriteAllText(
+            TestSourceFile,
+            """
+            using Sample.Library;
+
+            namespace Sample.Library.Tests;
+
+            public class CodesTests
+            {
+                [Theory]
+                [InlineData("AB123", true)]
+                [InlineData("AB12", false)]
+                [InlineData("ABC12", false)]
+                public void A_code_is_two_letters_then_three_digits(string code, bool expected)
+                {
+                    Assert.Equal(expected, Codes.IsValid(code));
+                }
+            }
+
+            """);
+    }
+
     /// <summary>Copies the sample fixture into a fresh temporary directory.</summary>
     public static FixtureCopy Create()
     {

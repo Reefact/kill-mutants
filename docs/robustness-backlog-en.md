@@ -50,7 +50,7 @@ by `BinaryOperatorMutator`, which builds replacements by kind on behalf of the w
 
 ---
 
-## RB-002 — Source generators contribute code that is not on the source list · OPEN
+## RB-002 — Source generators contribute code that is not on the source list · COVERED
 
 **What Stryker does.** Runs the generator driver, and re-runs it after every `ReplaceSyntaxTree`
 (`Compiling/CsharpCompilingProcess.cs:360-364`). It also detects projects pinning a newer compiler
@@ -62,19 +62,36 @@ their output among the sources — the compiler produces it during the build.
 
 **Does it still apply?** Yes, and more than before: `[GeneratedRegex]`, `[JsonSerializable]`,
 `[LibraryImport]`, Mapperly, Refit and ASP.NET Core minimal APIs are all generator-based. Reproduced:
-a project with a `[GeneratedRegex]` partial property fails to emit with `CS9248` when generators are
-not run. Our own fixture's command line already carries eight `/analyzer:` assemblies.
+a project with a `[GeneratedRegex]` partial property failed the baseline with `CS9248`, while
+building perfectly under `dotnet build`. Even our trivial fixture's command line carries eight
+`/analyzer:` assemblies; the generator project carries seven actual generators.
 
-**Impact.** ADR-0003's claim that generated sources "come along automatically" is true only for
-SDK-emitted files. ADR-0005 makes this fail *safely* — the baseline goes red rather than producing
-false kills — but KillMutants simply does not work on such projects today.
+**Our behaviour.** `SourceGenerators` loads every generator named on the command line and runs it
+through `CSharpGeneratorDriver`, with the real `.editorconfig` / `.globalconfig` files the compiler
+was given and the project's `AdditionalFiles`, so generators reading MSBuild properties see the same
+values they would during a real build.
 
-**What we must do.** Run `CSharpGeneratorDriver` over the compilation. Two subtleties to decide
-deliberately: generator output can depend on the mutated tree, so strictly the driver must re-run per
-mutant (running once on the pristine compilation is a defensible approximation for operator-level
-mutators, and must be documented as one); and generators load into our own process, so a project
-pinning a newer Roslyn than ours silently contributes nothing — that case must be reported by name,
-not surfaced as "KillMutants could not compile your project".
+**Regenerated per mutant, and measured rather than assumed.** Generator output can depend on the
+code being mutated, so the driver is re-run for each mutant instead of its output being reused.
+Measured on the seven-generator project: the first driver run costs about a second, every later one
+**1.4 ms**, against 60 ms to emit and roughly 600 ms to run the tests. Correctness is essentially
+free here, so no approximation was needed. This lands on the same behaviour as Stryker, but for a
+reason verified on this platform rather than inherited.
+
+**Generated code is compiled, never mutated.** The generated trees must be in the compilation the
+mutators read — a semantic model that cannot see generated types answers the binding question
+wrongly — but they are excluded from mutation by path. Pinned by a test asserting every mutant comes
+from the hand-written file, since the generated regex engine is full of comparisons and arithmetic
+that nobody wrote and nobody can fix.
+
+**An analyzer that cannot be loaded is named.** Usually a project pinning a newer Roslyn than
+KillMutants runs on, which silently contributes nothing. Those assemblies are recorded and reported
+with our Roslyn version attached, rather than surfacing as "KillMutants could not compile your
+project".
+
+**Our tests.**
+`MutationTestingEndToEndTests.A_project_that_depends_on_a_source_generator_is_mutated_and_tested`,
+which fails with `CS9248` if the driver stops running.
 
 ---
 

@@ -16,28 +16,46 @@ namespace KillMutants.Analysis;
 /// </remarks>
 internal sealed class ProjectCompilation
 {
-    private readonly CSharpCompilation _compilation;
+    private readonly CSharpCompilation _sourceCompilation;
+    private readonly Compilation _generatedCompilation;
     private readonly CSharpParseOptions _parseOptions;
     private readonly EmitOptions _emitOptions;
     private readonly IReadOnlyList<ResourceDescription> _manifestResources;
 
+    private readonly SourceGenerators _generators;
+    private readonly CompilerAnalyzerConfig _analyzerConfig;
+    private readonly IReadOnlyList<AdditionalText> _additionalTexts;
+
     private ProjectCompilation(
-        CSharpCompilation compilation,
+        CSharpCompilation sourceCompilation,
+        Compilation generatedCompilation,
         CSharpParseOptions parseOptions,
         EmitOptions emitOptions,
-        IReadOnlyList<ResourceDescription> manifestResources)
+        IReadOnlyList<ResourceDescription> manifestResources,
+        SourceGenerators generators,
+        CompilerAnalyzerConfig analyzerConfig,
+        IReadOnlyList<AdditionalText> additionalTexts)
     {
-        _compilation = compilation;
+        _sourceCompilation = sourceCompilation;
+        _generatedCompilation = generatedCompilation;
         _parseOptions = parseOptions;
         _emitOptions = emitOptions;
         _manifestResources = manifestResources;
+        _generators = generators;
+        _analyzerConfig = analyzerConfig;
+        _additionalTexts = additionalTexts;
     }
 
     /// <summary>
-    /// The underlying compilation, from which mutant generation takes both the syntax trees and the
-    /// semantic models it needs to reject replacements that would not compile.
+    /// The compilation mutant generation reads, generator output included.
     /// </summary>
-    public Compilation Compilation => _compilation;
+    /// <remarks>
+    /// The generated trees must be present here even though they are never mutated: a mutator asks
+    /// the semantic model whether its replacement would compile, and a model that cannot see
+    /// generated types answers wrongly. They are excluded from mutation by their file paths, in
+    /// <see cref="Mutations.MutantGenerator"/>.
+    /// </remarks>
+    public Compilation Compilation => _generatedCompilation;
 
     /// <summary>Builds the compilation from a parsed <c>csc</c> command line.</summary>
     public static ProjectCompilation Create(CSharpCommandLineArguments arguments, string projectDirectory)
@@ -57,21 +75,32 @@ internal sealed class ProjectCompilation
             syntaxTrees.Add(CSharpSyntaxTree.ParseText(text, parseOptions, sourceFile.Path));
         }
 
-        var compilation = CSharpCompilation.Create(
+        CSharpCompilation compilation = CSharpCompilation.Create(
             assemblyName: arguments.CompilationName ?? Path.GetFileNameWithoutExtension(arguments.OutputFileName),
             syntaxTrees: syntaxTrees,
             references: ResolveReferences(arguments, projectDirectory),
             options: RelaxWarningsAsErrors(arguments.CompilationOptions));
 
+        // MSBuild names the generators on the command line but not the code they contribute, so
+        // they have to be run here or the compilation is missing whatever they produce.
+        SourceGenerators generators = SourceGenerators.LoadFrom(arguments);
+        CompilerAnalyzerConfig analyzerConfig = CompilerAnalyzerConfig.LoadFrom(arguments.AnalyzerConfigPaths);
+        AdditionalText[] additionalTexts =
+            [.. arguments.AdditionalFiles.Select(file => new CompilerAdditionalText(file.Path))];
+
         return new ProjectCompilation(
             compilation,
+            generators.Run(compilation, parseOptions, analyzerConfig, additionalTexts),
             parseOptions,
             arguments.EmitOptions,
-            arguments.ManifestResources);
+            arguments.ManifestResources,
+            generators,
+            analyzerConfig,
+            additionalTexts);
     }
 
     /// <summary>Emits the compilation exactly as it stands, with no mutation applied.</summary>
-    public EmitOutcome EmitBaseline() => Emit(_compilation);
+    public EmitOutcome EmitBaseline() => Emit(_sourceCompilation);
 
     /// <summary>Emits the compilation with one mutant's change applied.</summary>
     public EmitOutcome EmitWith(Mutations.Mutant mutant)
@@ -82,14 +111,26 @@ internal sealed class ProjectCompilation
         SyntaxNode mutatedRoot = original.GetRoot().ReplaceNode(mutant.OriginalNode, mutant.MutatedNode);
         SyntaxTree mutated = original.WithRootAndOptions(mutatedRoot, _parseOptions);
 
-        return Emit(_compilation.ReplaceSyntaxTree(original, mutated));
+        return Emit(_sourceCompilation.ReplaceSyntaxTree(original, mutated));
     }
 
+    /// <summary>
+    /// Emits from the source-only compilation, re-running the generators over it first.
+    /// </summary>
+    /// <remarks>
+    /// Generator output can depend on the code being mutated, so it is regenerated for each mutant
+    /// rather than reused. Measured on a project with seven generators: the first driver run costs
+    /// about a second, every later one 1.4 ms, against 60 ms to emit and roughly 600 ms to run the
+    /// tests. Correctness here is essentially free, so there is no reason to approximate.
+    /// </remarks>
     private EmitOutcome Emit(CSharpCompilation compilation)
     {
+        Compilation generated = _generators.Run(
+            compilation, _parseOptions, _analyzerConfig, _additionalTexts);
+
         using var assembly = new MemoryStream();
 
-        EmitResult result = compilation.Emit(
+        EmitResult result = generated.Emit(
             assembly,
             manifestResources: _manifestResources,
             options: _emitOptions);
@@ -103,10 +144,37 @@ internal sealed class ProjectCompilation
                     .Take(10)
                     .Select(diagnostic => diagnostic.ToString()));
 
-            return EmitOutcome.Failed(diagnostics);
+            return EmitOutcome.Failed(diagnostics + DescribeGenerators());
         }
 
         return EmitOutcome.Succeeded(assembly.ToArray());
+    }
+
+    /// <summary>
+    /// Adds context to a failed emit when generators are involved, so that a missing partial
+    /// implementation reads as "this generator did not contribute" rather than as an unexplained
+    /// defect in KillMutants.
+    /// </summary>
+    private string DescribeGenerators()
+    {
+        if (_generators.Unloadable.Count > 0)
+        {
+            return Environment.NewLine + Environment.NewLine +
+                   "KillMutants could not load these analyzer assemblies, so any code they generate " +
+                   "is missing from the compilation. This usually means the project targets a newer " +
+                   $"Roslyn than KillMutants runs on ({typeof(CSharpCompilation).Assembly.GetName().Version}):" +
+                   Environment.NewLine + "  " + string.Join(Environment.NewLine + "  ", _generators.Unloadable);
+        }
+
+        if (_generators.IsEmpty)
+        {
+            return string.Empty;
+        }
+
+        return Environment.NewLine + Environment.NewLine +
+               $"{_generators.Generators.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)} " +
+               "source generator(s) ran for this project. If the errors above name a missing partial " +
+               "implementation, one of them did not contribute what the build expects.";
     }
 
     private static SourceText ReadSource(string path)

@@ -43,9 +43,16 @@ Vérifié sur la fixture : 205 arguments, donnant 4 fichiers sources (dont les `
 - Pas de Buildalyzer, pas de `MSBuildWorkspace`, pas de `MSBuildLocator`, aucune dépendance tierce.
 - Rien n'est deviné. Chaque réglage est celui qui allait effectivement être passé à `csc`, y compris
   ceux auxquels personne ne pense à reconstruire avant qu'un utilisateur ne remonte un bug.
-- Les sources générées suivent automatiquement. Les omettre est une cause connue de faux positifs :
-  sans l'`AssemblyInfo.cs` généré, la version de l'assembly devient `0.0.0.0`, l'hôte de test échoue
-  à le charger, et cela se manifeste comme un échec de test ordinaire.
+- Les sources générées par le SDK suivent automatiquement. Les omettre est une cause connue de faux
+  positifs : sans l'`AssemblyInfo.cs` généré, la version de l'assembly devient `0.0.0.0`, l'hôte de
+  test échoue à le charger, et cela se manifeste comme un échec de test ordinaire.
+- **Les générateurs de source font exception, et cet ADR l'affirmait initialement de façon trop
+  large.** La ligne de commande nomme les générateurs sous `/analyzer:` mais ne liste *pas* le code
+  qu'ils produisent, puisque le compilateur le génère pendant le build. Les exécuter est une étape
+  distincte, décrite en RB-002 du backlog de robustesse. La ligne de commande fournit malgré tout
+  tout ce dont cette étape a besoin — les assemblys de générateurs, les fichiers de configuration
+  d'analyseurs et les fichiers additionnels — donc la décision tient ; elle ne fait simplement pas
+  tout le travail à elle seule.
 - Nous dépendons de `-getItem:` et de `ProvideCommandLineArgs`, qui sont des fonctionnalités MSBuild
   plutôt qu'un contrat d'API publique documenté. C'est assumé : le repli, si cela cassait un jour,
   consiste à lire la même information depuis un journal binaire, et le risque est immédiatement

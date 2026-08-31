@@ -98,6 +98,35 @@ public class MutationTestingEndToEndTests
     }
 
     /// <summary>
+    /// Closes RB-002. Without running the generators, this project cannot be compiled at all: the
+    /// partial property has no implementation and the emit fails with CS9248, which reads as a
+    /// defect in KillMutants rather than a missing step.
+    /// </summary>
+    [Fact]
+    public async Task A_project_that_depends_on_a_source_generator_is_mutated_and_tested()
+    {
+        using var fixture = FixtureCopy.Create();
+        fixture.UseCodeThatDependsOnASourceGenerator();
+
+        MutationTestReport report = await MutationTesting.RunAsync(
+            fixture.Root, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotEmpty(report.Results);
+        Assert.All(report.Results, result => Assert.Equal(MutantStatus.Killed, result.Status));
+
+        // Only the developer's own code is mutated. The generated regex engine is full of
+        // comparisons and arithmetic; mutating it would report findings against code nobody wrote.
+        Assert.All(
+            report.Results,
+            result => Assert.Equal("Ages.cs", Path.GetFileName(result.Mutant.Location.FilePath)));
+
+        // The mutants come from the hand-written expression: a comparison and a logical operator.
+        Assert.Equal(
+            ["Comparison", "LogicalOperator"],
+            report.Results.Select(r => r.Mutant.Mutator.ToString()).Distinct().Order(StringComparer.Ordinal));
+    }
+
+    /// <summary>
     /// Closes RB-010. The deadline and the process kill were both in place, but nothing had ever
     /// watched them catch a mutant that genuinely never finishes - so Timeout was a status produced
     /// by code we had not seen work.
