@@ -40,10 +40,13 @@ Reproduced independently during this project's design, at IL level: the token-sw
 tests pass, and it is recorded **Survived** — an invented gap in the user's test suite. Baseline
 verification (ADR-0005) cannot catch it, because that guards against false *kills*.
 
-**Our tests.** `GreaterThanOrEqualMutatorTests.The_replacement_node_has_the_greater_than_kind_not_merely_a_greater_than_token`
-and, behaviourally, `ProjectCompilationTests.A_mutant_emits_an_assembly_that_actually_differs_from_the_baseline`.
-The rule is stated in the `IMutator` contract so every new mutator inherits it. **Every mutator added
-to the catalogue must be covered by an equivalent assertion.**
+**Our tests.** Every family in the catalogue carries an
+`Every_replacement_carries_the_kind_it_prints` test — `ComparisonOperatorMutatorTests`,
+`LogicalOperatorMutatorTests`, `BooleanLiteralMutatorTests` — and the behavioural guard sits in
+`ProjectCompilationTests.A_mutant_emits_an_assembly_that_actually_differs_from_the_baseline`. The
+rule is stated in the `IMutator` contract so every new mutator inherits it, and enforced structurally
+by `BinaryOperatorMutator`, which builds replacements by kind on behalf of the whole family.
+**Every mutator added to the catalogue must be covered by an equivalent assertion.**
 
 ---
 

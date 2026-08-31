@@ -6,10 +6,20 @@ internal sealed class MutatorCatalog
     private MutatorCatalog(IReadOnlyList<IMutator> mutators) => Mutators = mutators;
 
     /// <summary>
-    /// The rules enabled by default. Milestone 1 deliberately ships exactly one: a single mutation
-    /// proven to work end to end is worth more than a catalog resting on an unproven engine.
+    /// The rules enabled by default: the families that carry the most signal per unit of run time.
     /// </summary>
-    public static MutatorCatalog Default { get; } = new([new GreaterThanOrEqualMutator()]);
+    /// <remarks>
+    /// Every mutant costs a full test run, so the catalogue is grown deliberately rather than
+    /// exhaustively. Each family here is covered by its own tests, including an assertion that the
+    /// replacement carries the correct syntax kind - see the remarks on <see cref="IMutator"/>.
+    /// </remarks>
+    public static MutatorCatalog Default { get; } = new(
+    [
+        new ComparisonOperatorMutator(),
+        new LogicalOperatorMutator(),
+        new BooleanLiteralMutator(),
+        new NegationMutator(),
+    ]);
 
     /// <summary>The rules in this catalog.</summary>
     public IReadOnlyList<IMutator> Mutators { get; }

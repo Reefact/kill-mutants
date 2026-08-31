@@ -15,26 +15,37 @@ public class MutantGeneratorTests
     }
 
     [Fact]
-    public void A_single_comparison_yields_a_single_mutant()
+    public void A_comparison_yields_its_boundary_shift_and_its_negation()
     {
         IReadOnlyList<Mutant> mutants = Generate(
             "static class Ages { public static bool IsAdult(int age) => age >= 18; }");
 
-        Mutant mutant = Assert.Single(mutants);
-        Assert.Equal("age >= 18", mutant.OriginalText);
-        Assert.Equal("age > 18", mutant.MutatedText);
-        Assert.Equal("GreaterThanOrEqual", mutant.Mutator.ToString());
+        Assert.All(mutants, mutant => Assert.Equal("age >= 18", mutant.OriginalText));
+        Assert.All(mutants, mutant => Assert.Equal("Comparison", mutant.Mutator.ToString()));
+        Assert.Equal(["age > 18", "age < 18"], mutants.Select(mutant => mutant.MutatedText));
     }
 
     [Fact]
-    public void Mutants_are_numbered_from_one()
+    public void Mutants_are_numbered_from_one_across_the_whole_run()
     {
         IReadOnlyList<Mutant> mutants = Generate(
             "class C { bool A(int x) => x >= 1; bool B(int x) => x >= 2; }");
 
-        Assert.Equal(2, mutants.Count);
-        Assert.Equal("M1", mutants[0].Id.ToString());
-        Assert.Equal("M2", mutants[1].Id.ToString());
+        Assert.Equal(["M1", "M2", "M3", "M4"], mutants.Select(mutant => mutant.Id.ToString()));
+    }
+
+    [Fact]
+    public void Numbering_continues_across_calls_so_one_run_never_repeats_an_identifier()
+    {
+        // M3 will generate per project. Restarting at M1 for each would make the report ambiguous.
+        var generator = new MutantGenerator(MutatorCatalog.Default);
+        SyntaxTree First() => CSharpSyntaxTree.ParseText("class C { bool M(int x) => x >= 1; }");
+
+        IReadOnlyList<Mutant> first = generator.Generate([First()]);
+        IReadOnlyList<Mutant> second = generator.Generate([First()]);
+
+        Assert.Equal(["M1", "M2"], first.Select(mutant => mutant.Id.ToString()));
+        Assert.Equal(["M3", "M4"], second.Select(mutant => mutant.Id.ToString()));
     }
 
     [Fact]
@@ -44,7 +55,7 @@ public class MutantGeneratorTests
             "class C\n{\n    bool M(int age) => age >= 18;\n}",
             path: "/src/Ages.cs");
 
-        Mutant mutant = Assert.Single(mutants);
+        Mutant mutant = mutants[0];
         Assert.Equal("/src/Ages.cs", mutant.Location.FilePath);
         Assert.Equal(3, mutant.Location.Line);
         Assert.Equal(24, mutant.Location.Character);

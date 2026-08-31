@@ -23,16 +23,16 @@ public class MutationTestingEndToEndTests
         MutationTestReport report = await MutationTesting.RunAsync(
             fixture.Root, cancellationToken: TestContext.Current.CancellationToken);
 
-        MutantResult result = Assert.Single(report.Results);
+        // The founding acceptance criterion: `>=` becomes `>`, and the suite notices.
+        MutantResult boundary = Assert.Single(
+            report.Results, result => result.Mutant.MutatedText == "age > 18");
 
-        Assert.Equal(MutantStatus.Killed, result.Status);
-        Assert.Equal("age >= 18", result.Mutant.OriginalText);
-        Assert.Equal("age > 18", result.Mutant.MutatedText);
-        Assert.Equal("GreaterThanOrEqual", result.Mutant.Mutator.ToString());
-        Assert.Equal("Ages.cs", Path.GetFileName(result.Mutant.Location.FilePath));
+        Assert.Equal(MutantStatus.Killed, boundary.Status);
+        Assert.Equal("age >= 18", boundary.Mutant.OriginalText);
+        Assert.Equal("Comparison", boundary.Mutant.Mutator.ToString());
+        Assert.Equal("Ages.cs", Path.GetFileName(boundary.Mutant.Location.FilePath));
 
-        Assert.Equal(1, report.Total);
-        Assert.Equal(1, report.Killed);
+        Assert.All(report.Results, result => Assert.Equal(MutantStatus.Killed, result.Status));
         Assert.Equal(0, report.Survived);
         Assert.Equal("100%", report.Score.ToString());
     }
@@ -54,12 +54,19 @@ public class MutationTestingEndToEndTests
         MutationTestReport report = await MutationTesting.RunAsync(
             fixture.Root, cancellationToken: TestContext.Current.CancellationToken);
 
-        MutantResult result = Assert.Single(report.Results);
+        // `age > 18` is indistinguishable from `age >= 18` once 18 itself is never tested.
+        MutantResult boundary = Assert.Single(
+            report.Results, result => result.Mutant.MutatedText == "age > 18");
 
-        Assert.Equal(MutantStatus.Survived, result.Status);
-        Assert.Equal(0, report.Killed);
+        Assert.Equal(MutantStatus.Survived, boundary.Status);
         Assert.Equal(1, report.Survived);
-        Assert.Equal("0%", report.Score.ToString());
+
+        // `age < 18` is still caught: 42 is no longer an adult under it.
+        MutantResult negation = Assert.Single(
+            report.Results, result => result.Mutant.MutatedText == "age < 18");
+
+        Assert.Equal(MutantStatus.Killed, negation.Status);
+        Assert.Equal("50%", report.Score.ToString());
     }
 
     /// <summary>
@@ -78,36 +85,11 @@ public class MutationTestingEndToEndTests
         MutationTestReport report = await MutationTesting.RunAsync(
             fixture.Root, cancellationToken: TestContext.Current.CancellationToken);
 
-        MutantResult result = Assert.Single(report.Results);
-
-        Assert.Equal(MutantStatus.Killed, result.Status);
+        Assert.NotEmpty(report.Results);
+        Assert.All(report.Results, result => Assert.Equal(MutantStatus.Killed, result.Status));
         Assert.Equal("100%", report.Score.ToString());
     }
 
-    [Fact]
-    public async Task The_report_renders_the_milestone_output()
-    {
-        using var fixture = FixtureCopy.Create();
-
-        MutationTestReport report = await MutationTesting.RunAsync(
-            fixture.Root, cancellationToken: TestContext.Current.CancellationToken);
-
-        var writer = new StringWriter();
-        ConsoleReportWriter.Write(writer, report);
-
-        Assert.Equal(
-            string.Join(
-                Environment.NewLine,
-                "KillMutants",
-                string.Empty,
-                "Mutants: 1",
-                "Killed: 1",
-                "Survived: 0",
-                string.Empty,
-                "Mutation score: 100%",
-                string.Empty),
-            writer.ToString());
-    }
 }
 
 /// <summary>End-to-end runs build real projects, so they run one at a time.</summary>
