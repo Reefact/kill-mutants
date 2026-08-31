@@ -28,8 +28,17 @@ Trois options, toutes mesurées :
 | `--server --client-port N` (JSON-RPC) | non mesuré | protocole |
 
 Le propriétaire du projet a été consulté sur le sens à donner à « Microsoft Testing Platform 2
-uniquement », et a tranché : ce sont les *projets testés* qui doivent être des projets xUnit 4 /
-MTP 2 ; KillMutants lui-même n'a pas à parler le protocole MTP.
+uniquement », et a tranché : ce sont les *projets testés* qui doivent être des projets xUnit 4 ;
+KillMutants lui-même n'a pas à parler le protocole MTP.
+
+Cette contrainte a depuis été reformulée plus précisément, et cet ADR y gagne. Le socle est
+**xUnit 4 et .NET moderne uniquement**, sans aucune compatibilité VSTest ni runners historiques.
+MTP 2 fait partie de l'écosystème visé — un projet xUnit 4 peut s'appuyer dessus, et nous le
+traitons — mais ce n'est pas une contrainte architecturale. La règle est de prendre le chemin
+d'exécution xUnit 4 le plus simple, le plus fiable et le plus performant pour le besoin, et
+d'introduire un couplage direct à MTP seulement lorsqu'un besoin concret le justifie et que xUnit 4
+n'y répond pas déjà. Sous ce cadrage, lancer l'exécutable n'est pas un compromis pragmatique face à
+une contrainte affichée : c'est simplement le bon chemin.
 
 ## Décision
 

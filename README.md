@@ -17,13 +17,15 @@ large catalog resting on an engine that has never run.
 
 KillMutants is narrow on purpose, and the narrowness is what keeps it simple.
 
-**Supported:** modern .NET, C#, xUnit 4, Microsoft Testing Platform 2, SDK-style projects.
+**Supported:** xUnit 4, modern .NET, C#, SDK-style projects.
 
 **Not supported:** xUnit 2 and earlier, NUnit, MSTest, TUnit, VSTest, .NET Framework, non-SDK
 projects, `packages.config`, F#, Visual Basic. No abstraction exists in anticipation of them.
 
 "xUnit 4" is the `xunit.v3` package family at version `4.0.0`; its Microsoft Testing Platform 2
-flavour is `xunit.v3.mtp-v2`.
+flavour is `xunit.v3.mtp-v2`. Projects built on Microsoft Testing Platform 2 are part of the
+ecosystem KillMutants targets, and it runs them — but speaking the MTP protocol is not a goal in
+itself, and no MTP coupling is introduced without a concrete need that xUnit 4 cannot already meet.
 
 ## Documentation
 
@@ -34,6 +36,7 @@ their conventional names and are English only.
 |---|---|---|
 | Architecture — the pipeline, the domain model, the risks | [architecture-en.md](docs/architecture-en.md) | [architecture-fr.md](docs/architecture-fr.md) |
 | Study of Stryker.NET — what we learned, and what we deliberately did differently | [stryker-net-en.md](docs/study/stryker-net-en.md) | [stryker-net-fr.md](docs/study/stryker-net-fr.md) |
+| Robustness backlog — edge cases inherited from Stryker.NET as specifications and tests | [robustness-backlog-en.md](docs/robustness-backlog-en.md) | [robustness-backlog-fr.md](docs/robustness-backlog-fr.md) |
 
 ### Architecture decisions
 
