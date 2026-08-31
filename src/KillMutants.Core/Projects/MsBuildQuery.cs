@@ -8,7 +8,7 @@ namespace KillMutants.Projects;
 /// </summary>
 /// <remarks>
 /// This is the whole of KillMutants' project system integration. See
-/// <c>docs/adr/0003-compilation-inputs-from-csc-command-line.md</c> for why there is no Buildalyzer,
+/// ADR-0003 in <c>docs/adr</c> for why there is no Buildalyzer,
 /// no MSBuildWorkspace and no MSBuildLocator here.
 /// </remarks>
 internal sealed class MsBuildQuery

@@ -44,7 +44,7 @@ Concretely, one run is:
 1. **Discover** the project under test and the test project that exercises it.
 2. **Analyse**: ask MSBuild for the exact `csc` command line, turn it into a `CSharpCompilation`.
 3. **Verify the baseline**: emit the *unmutated* compilation, inject it, run the tests, require
-   green. This is not optional — see [ADR-0005](adr/0005-verify-the-baseline-before-mutating.md).
+   green. This is not optional — see [ADR-0005](adr/0005-verify-the-baseline-before-mutating-en.md).
 4. **Generate** mutants by walking the syntax trees with the mutator catalog.
 5. For each mutant: replace the syntax tree, emit, write the assembly into the test project's
    output directory, run the test executable, classify the outcome, restore the original.
@@ -75,7 +75,7 @@ namespace boundaries are already where the assembly boundaries would go.
 | CLI | `KillMutants.Cli` | `dotnet killmutants` |
 
 **Instrumentation has no code of its own, by design.** Because each mutant gets its own compilation
-([ADR-0002](adr/0002-one-compilation-per-mutant.md)), "instrumenting" a mutant is one call to
+([ADR-0002](adr/0002-one-compilation-per-mutant-en.md)), "instrumenting" a mutant is one call to
 `SyntaxNode.ReplaceNode` followed by `Compilation.ReplaceSyntaxTree`. The entire apparatus that a
 schemata-based tool needs — injected control helpers, a runtime activation channel, placement
 levels, and a compile/rollback loop — does not exist here. This is the largest single simplification
