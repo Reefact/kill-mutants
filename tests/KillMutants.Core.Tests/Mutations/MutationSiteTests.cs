@@ -54,7 +54,7 @@ public class MutationSiteTests
         IReadOnlyList<Mutant> mutants = Generate(
             "class C { const bool Flag = 3 >= 2; bool M(int a) => a >= 2; }");
 
-        Mutant mutant = Assert.Single(mutants);
-        Assert.Equal("a >= 2", mutant.OriginalText);
+        Assert.NotEmpty(mutants);
+        Assert.All(mutants, mutant => Assert.Equal("a >= 2", mutant.OriginalText));
     }
 }

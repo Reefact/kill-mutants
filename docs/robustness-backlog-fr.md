@@ -44,11 +44,14 @@ tests passent, et il est consigné **Survived** — une lacune inventée dans la
 l'utilisateur. La vérification du baseline (ADR-0005) ne peut pas l'attraper, puisqu'elle protège
 contre les faux *positifs*.
 
-**Nos tests.** `GreaterThanOrEqualMutatorTests.The_replacement_node_has_the_greater_than_kind_not_merely_a_greater_than_token`
-et, au niveau comportemental,
+**Nos tests.** Chaque famille du catalogue porte un test
+`Every_replacement_carries_the_kind_it_prints` — `ComparisonOperatorMutatorTests`,
+`LogicalOperatorMutatorTests`, `BooleanLiteralMutatorTests` — et le garde-fou comportemental se
+trouve dans
 `ProjectCompilationTests.A_mutant_emits_an_assembly_that_actually_differs_from_the_baseline`. La
-règle est énoncée dans le contrat `IMutator` pour que chaque nouveau mutateur en hérite. **Tout
-mutateur ajouté au catalogue doit être couvert par une assertion équivalente.**
+règle est énoncée dans le contrat `IMutator` pour que chaque nouveau mutateur en hérite, et imposée
+structurellement par `BinaryOperatorMutator`, qui construit les remplacements par kind pour toute la
+famille. **Tout mutateur ajouté au catalogue doit être couvert par une assertion équivalente.**
 
 ---
 
