@@ -139,3 +139,32 @@ test-to-mutant mapping; M6 performance; M7 reporting; M8 CI; M9 advanced mutatio
 Nothing in M1 blocks these. Test selection (M5) narrows what `ITestRunner` is asked to run.
 Parallelism (M6) is available because each mutant is an independent assembly and an independent
 process — the property that one-compilation-per-mutant gives us for free.
+
+### What later milestones must handle, already verified
+
+An adversarial review of the committed M1 established these on this machine. They are recorded now
+because each is cheap to plan for and expensive to discover late.
+
+- **M2 needs a do-not-mutate list, and it is a correctness requirement rather than a refinement.**
+  C# bakes `const` values and default parameter values into the *call site* at compile time.
+  Mutating `const Limit = 18` to `99` in the library and swapping the assembly leaves an
+  already-compiled test project still reading `18`. Such a mutant can never be killed, so mutating
+  those constructs would manufacture guaranteed false survivals and silently depress the score.
+- **M6's blocker is injection, not compilation.** `AssemblyInjection` holds one path and
+  `MutationTestSession` hoists a single `using` above the mutant loop, so N concurrent mutants need
+  N sandboxed output directories. Measured with four sandboxes: 639 ms against 2,235 ms sequential,
+  a 3.5x gain with correct independent verdicts. Emission itself parallelises well — 3.76 ms per
+  emit at one thread, 0.85 ms at four — which strengthens ADR-0002 rather than straining it: the
+  term schemata would optimise shrinks as the run scales out.
+- **M5 and M6 collide, and the collision is in the data model.** xUnit test unique IDs are derived
+  from the assembly *path*, not its content: byte-identical sandbox copies produced different UIDs.
+  Per-mutant sandboxing and UID-based test selection are therefore mutually exclusive as stated. The
+  question "what is the coverage map keyed on" has to be answered before either is built.
+- **Coverage needs a mechanism this design does not yet name.** With nothing injected there is
+  nothing observing that a test reached a given mutation site. `-automated` yields per-*test* events,
+  which is a different problem from per-*mutation-site* reachability. M5 must choose its source
+  deliberately — a separate instrumented pass, or external coverage data mapped onto mutation
+  spans — rather than assume the runner already provides it.
+- **`MutantGenerator.Generate` numbers mutants from one on every call.** Correct for M1, which calls
+  it once. M3's per-project loop would restart identifiers at `M1` for each project unless the
+  sequence is lifted out.

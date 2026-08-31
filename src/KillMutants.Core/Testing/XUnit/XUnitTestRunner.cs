@@ -19,6 +19,23 @@ namespace KillMutants.Testing.XUnit;
 /// faster and necessary: <c>dotnet test</c> and <c>dotnet build</c> run MSBuild, which copies the
 /// pristine assembly back over an injected mutant. See ADR-0004.
 /// </para>
+/// <para>
+/// Every run passes <c>-automated</c>, which is what makes the launch work on any xUnit 4 project
+/// rather than only on default ones. The generated entry point comes in two shapes, and the
+/// property <c>UseMicrosoftTestingPlatformRunner</c> flips between them:
+/// </para>
+/// <code>
+/// // default                                   // UseMicrosoftTestingPlatformRunner=true
+/// if (--server || --internal-msbuild-node)     if (-automated || @@)
+///     MTP host;                                    xUnit console runner;
+/// else                                         else
+///     xUnit console runner;                        MTP host;
+/// </code>
+/// <para>
+/// <c>-automated</c> selects the xUnit console runner under both shapes. Without it, a project
+/// using the second shape sends our arguments to the Microsoft Testing Platform host, which
+/// rejects them with "Unknown option", exits 5 and writes no result file - verified.
+/// </para>
 /// </remarks>
 internal sealed class XUnitTestRunner : ITestRunner
 {
@@ -35,7 +52,17 @@ internal sealed class XUnitTestRunner : ITestRunner
             Path.GetTempPath(),
             $"killmutants-{Guid.NewGuid():N}.xml");
 
-        List<string> arguments = [testProject.AssemblyPath, "-noLogo", "-noColor", "-result-xml", resultPath];
+        List<string> arguments =
+        [
+            testProject.AssemblyPath,
+            // Must come first and must always be present: it is what pins the run to the xUnit
+            // console runner whichever entry point the project generated. See the remarks above.
+            "-automated",
+            "-noLogo",
+            "-noColor",
+            "-result-xml",
+            resultPath,
+        ];
 
         if (stopOnFirstFailure)
         {

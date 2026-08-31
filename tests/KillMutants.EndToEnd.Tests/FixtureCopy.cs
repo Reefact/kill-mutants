@@ -16,6 +16,26 @@ internal sealed class FixtureCopy : IDisposable
     /// <summary>The copied test source file.</summary>
     public string TestSourceFile => Path.Combine(Root, "Sample.Library.Tests", "AgesTests.cs");
 
+    /// <summary>
+    /// Sets <c>UseMicrosoftTestingPlatformRunner</c> on the copied test project, which inverts the
+    /// entry point xUnit generates so that the test application defaults to the Microsoft Testing
+    /// Platform host instead of xUnit's console runner.
+    /// </summary>
+    public void UseMicrosoftTestingPlatformRunner()
+    {
+        string project = Path.Combine(Root, "Sample.Library.Tests", "Sample.Library.Tests.csproj");
+        string content = File.ReadAllText(project);
+
+        File.WriteAllText(
+            project,
+            content.Replace(
+                "<IsPackable>false</IsPackable>",
+                "<IsPackable>false</IsPackable>" +
+                Environment.NewLine +
+                "    <UseMicrosoftTestingPlatformRunner>true</UseMicrosoftTestingPlatformRunner>",
+                StringComparison.Ordinal));
+    }
+
     /// <summary>Copies the sample fixture into a fresh temporary directory.</summary>
     public static FixtureCopy Create()
     {
