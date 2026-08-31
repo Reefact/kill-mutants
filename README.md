@@ -27,10 +27,25 @@ flavour is `xunit.v3.mtp-v2`.
 
 ## Documentation
 
-- [Architecture](docs/architecture.md) — the pipeline, the domain model, and the risks
-- [Study of Stryker.NET](docs/study/stryker-net.md) — what we learned, and what we deliberately
-  did differently
-- [Architecture decisions](docs/adr) — the few choices that are expensive to reverse
+Every document is maintained in English and in French. Files named `LICENSE` and `README.md` keep
+their conventional names and are English only.
+
+| | English | Français |
+|---|---|---|
+| Architecture — the pipeline, the domain model, the risks | [architecture-en.md](docs/architecture-en.md) | [architecture-fr.md](docs/architecture-fr.md) |
+| Study of Stryker.NET — what we learned, and what we deliberately did differently | [stryker-net-en.md](docs/study/stryker-net-en.md) | [stryker-net-fr.md](docs/study/stryker-net-fr.md) |
+
+### Architecture decisions
+
+The few choices that are expensive to reverse. Each is recorded in [docs/adr](docs/adr).
+
+| | English | Français |
+|---|---|---|
+| ADR-0001 — Record architecture decisions | [en](docs/adr/0001-record-architecture-decisions-en.md) | [fr](docs/adr/0001-record-architecture-decisions-fr.md) |
+| ADR-0002 — One compilation per mutant | [en](docs/adr/0002-one-compilation-per-mutant-en.md) | [fr](docs/adr/0002-one-compilation-per-mutant-fr.md) |
+| ADR-0003 — Compilation inputs from the csc command line | [en](docs/adr/0003-compilation-inputs-from-csc-command-line-en.md) | [fr](docs/adr/0003-compilation-inputs-from-csc-command-line-fr.md) |
+| ADR-0004 — Run tests by launching the test executable | [en](docs/adr/0004-run-tests-by-launching-the-test-executable-en.md) | [fr](docs/adr/0004-run-tests-by-launching-the-test-executable-fr.md) |
+| ADR-0005 — Verify the baseline before mutating | [en](docs/adr/0005-verify-the-baseline-before-mutating-en.md) | [fr](docs/adr/0005-verify-the-baseline-before-mutating-fr.md) |
 
 ## Licence
 

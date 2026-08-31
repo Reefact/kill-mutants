@@ -67,7 +67,7 @@ removing the mutants whose injected branches broke the build. Supporting this ar
 "instrumentation engines" and `SyntaxAnnotation` bookkeeping.
 
 The cost this pays for is compilation. We measured that cost on the target platform and it is not
-worth paying — see [ADR-0002](../adr/0002-one-compilation-per-mutant.md). Compiling one mutant per
+worth paying — see [ADR-0002](../adr/0002-one-compilation-per-mutant-en.md). Compiling one mutant per
 assembly makes every one of these mechanisms unnecessary: schemata, `MutantControl`, the random
 helper namespace, the control-level stack, the annotation bookkeeping, the rollback loop, and the
 runtime activation channel all disappear. A failed emit becomes an unambiguous fact about one
@@ -86,7 +86,7 @@ a Mono.Cecil-based embedded-resource recovery subsystem, a hand-rolled analyzer-
 provider, a custom analyzer assembly loader, and a workaround for a long-fixed Roslyn bug.
 
 On .NET 10 none of it is necessary, because MSBuild will simply hand over the exact `csc` command
-line and Roslyn will parse it. That is [ADR-0003](../adr/0003-compilation-inputs-from-csc-command-line.md).
+line and Roslyn will parse it. That is [ADR-0003](../adr/0003-compilation-inputs-from-csc-command-line-en.md).
 
 The one thing Stryker gets exactly right here, and which we copy as a *decision* rather than as
 code, is where the mutant goes: the mutated bytes are written over the source project's assembly
@@ -113,7 +113,7 @@ the exit code. Second, and more usefully, MTP 2 has gained two capabilities that
 server-mode design predates and does not use: `--list-tests json` for machine-readable discovery,
 and platform-level `--filter-uid` to run exactly a named set of test UIDs. Together they provide
 discovery and per-test selection — the two things M4 and M5 need — **with no RPC code at all**,
-which is why [ADR-0004](../adr/0004-run-tests-by-launching-the-test-executable.md) does not treat
+which is why [ADR-0004](../adr/0004-run-tests-by-launching-the-test-executable-en.md) does not treat
 server mode as inevitable.
 
 ## 6. Coverage and test-to-mutant mapping
@@ -181,5 +181,5 @@ framework (49 classes to one record), reporting (11 reporters to one console wri
 filtering (13 files to none, for now).
 
 **The major risks we inherited from this study** are recorded in
-[architecture.md](../architecture.md#risks), the most serious being *false kills* caused by an
+[architecture-en.md](../architecture-en.md#6-risks), the most serious being *false kills* caused by an
 infidelity in the reconstructed compilation rather than by the mutation itself.
