@@ -26,5 +26,10 @@ internal interface IMutator
     MutatorName Name { get; }
 
     /// <summary>Proposes the mutations that apply to <paramref name="node"/>, if any.</summary>
-    IEnumerable<MutationCandidate> Mutate(SyntaxNode node);
+    /// <param name="node">The node to consider.</param>
+    /// <param name="semanticModel">
+    /// The semantic model for the node's tree. Implementations use it to reject a replacement that
+    /// would not compile - a mutation that cannot build teaches nobody anything and costs a run.
+    /// </param>
+    IEnumerable<MutationCandidate> Mutate(SyntaxNode node, SemanticModel semanticModel);
 }

@@ -18,25 +18,29 @@ internal sealed class MutantGenerator
     }
 
     /// <summary>
-    /// Produces every mutant the catalog proposes across <paramref name="syntaxTrees"/>, skipping
+    /// Produces every mutant the catalog proposes across <paramref name="compilation"/>, skipping
     /// generated sources and sites whose mutation could never be observed.
     /// </summary>
     /// <remarks>
     /// Identifiers continue across calls, so one generator numbers a whole run. A generator per
     /// project would otherwise restart at <c>M1</c> for each of them and make the report ambiguous.
     /// </remarks>
-    public IReadOnlyList<Mutant> Generate(IEnumerable<SyntaxTree> syntaxTrees)
+    public IReadOnlyList<Mutant> Generate(Compilation compilation)
     {
-        ArgumentNullException.ThrowIfNull(syntaxTrees);
+        ArgumentNullException.ThrowIfNull(compilation);
 
         List<Mutant> mutants = [];
 
-        foreach (SyntaxTree tree in syntaxTrees)
+        foreach (SyntaxTree tree in compilation.SyntaxTrees)
         {
             if (IsGenerated(tree))
             {
                 continue;
             }
+
+            // Mutators consult the model to reject replacements that would not compile, so it is
+            // built once per tree rather than per node.
+            SemanticModel semanticModel = compilation.GetSemanticModel(tree);
 
             foreach (SyntaxNode node in tree.GetRoot().DescendantNodes())
             {
@@ -47,7 +51,7 @@ internal sealed class MutantGenerator
 
                 foreach (IMutator mutator in _catalog.Mutators)
                 {
-                    foreach (MutationCandidate candidate in mutator.Mutate(node))
+                    foreach (MutationCandidate candidate in mutator.Mutate(node, semanticModel))
                     {
                         mutants.Add(new Mutant(_nextId, candidate));
                         _nextId = _nextId.Next();

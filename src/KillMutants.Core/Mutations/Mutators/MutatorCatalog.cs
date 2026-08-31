@@ -17,8 +17,10 @@ internal sealed class MutatorCatalog
     [
         new ComparisonOperatorMutator(),
         new LogicalOperatorMutator(),
+        new ArithmeticOperatorMutator(),
         new BooleanLiteralMutator(),
         new NegationMutator(),
+        new StringLiteralMutator(),
     ]);
 
     /// <summary>The rules in this catalog.</summary>

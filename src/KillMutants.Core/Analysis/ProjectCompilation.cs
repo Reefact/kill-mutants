@@ -33,8 +33,11 @@ internal sealed class ProjectCompilation
         _manifestResources = manifestResources;
     }
 
-    /// <summary>The syntax trees the project is built from, generated sources included.</summary>
-    public IEnumerable<SyntaxTree> SyntaxTrees => _compilation.SyntaxTrees;
+    /// <summary>
+    /// The underlying compilation, from which mutant generation takes both the syntax trees and the
+    /// semantic models it needs to reject replacements that would not compile.
+    /// </summary>
+    public Compilation Compilation => _compilation;
 
     /// <summary>Builds the compilation from a parsed <c>csc</c> command line.</summary>
     public static ProjectCompilation Create(CSharpCommandLineArguments arguments, string projectDirectory)

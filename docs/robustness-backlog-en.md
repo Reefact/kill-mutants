@@ -185,3 +185,27 @@ The budget is computed from the baseline duration and `ProcessRunner` kills the 
 expiry, but **no test yet proves an endlessly looping mutant is caught end to end**. Until one
 exists, `Timeout` is a status produced by code we have not watched work. Closing this is part of the
 catalogue milestone, since a loop-condition mutator is what makes it reachable.
+
+---
+
+## RB-011 — A mutation that cannot compile is cost without signal · COVERED
+
+**Why it matters.** `"a" + "b"` is concatenation; `"a" - "b"` does not exist. An arithmetic mutator
+that rewrote it would produce a mutant that fails to emit — a correct outcome, but a useless one that
+costs analysis and clutters the report.
+
+**The general answer, rather than a list.** Every binary mutator asks the compiler whether the
+replacement would bind, via `GetSpeculativeTypeInfo`. One rule rejects string concatenation,
+user-defined types declaring only one operator of a pair, and every case nobody has thought of yet —
+while allowing delegates, where both `+` and `-` exist.
+
+**The trap inside the trap.** The test must be on the resulting **type**, not on the symbol. Verified
+against Roslyn 5.9: `a && b` rewritten to `a || b` binds to a *null symbol* — the conditional
+operators on `bool` have no operator method — while still yielding type `bool`. A symbol-based check
+compiles, passes a casual review, and silently discards every logical mutant. Our own family tests
+caught it.
+
+**Our tests.** `ArithmeticOperatorMutatorTests.String_concatenation_is_not_mutated`,
+`A_type_that_declares_only_one_operator_of_the_pair_is_not_mutated`,
+`A_type_that_declares_both_operators_is_mutated`, and the `LogicalOperatorMutatorTests` suite, which
+is what fails if the check regresses to the symbol.

@@ -44,7 +44,7 @@ internal sealed class MutationTestSession
             .ConfigureAwait(false);
 
         IReadOnlyList<Mutant> mutants = new MutantGenerator(MutatorCatalog.Default)
-            .Generate(compilation.SyntaxTrees);
+            .Generate(compilation.Compilation);
 
         List<MutantResult> results = [];
 

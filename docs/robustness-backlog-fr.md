@@ -200,3 +200,27 @@ l'expiration, mais **aucun test ne prouve encore qu'un mutant bouclant sans fin 
 bout**. Tant qu'il n'en existe pas, `Timeout` est un statut produit par du code que nous n'avons pas
 vu fonctionner. Fermer ce point fait partie du milestone catalogue, puisque c'est un mutateur de
 condition de boucle qui le rend atteignable.
+
+---
+
+## RB-011 — Un mutant qui ne compile pas est un coût sans signal · COUVERT
+
+**Pourquoi cela compte.** `"a" + "b"` est une concaténation ; `"a" - "b"` n'existe pas. Un mutateur
+arithmétique qui la réécrirait produirait un mutant qui échoue à l'émission — résultat correct, mais
+inutile, qui coûte de l'analyse et encombre le rapport.
+
+**La réponse générale, plutôt qu'une liste.** Chaque mutateur binaire demande au compilateur si le
+remplacement se lierait, via `GetSpeculativeTypeInfo`. Une seule règle rejette la concaténation de
+chaînes, les types définissant un seul opérateur d'une paire, et tous les cas auxquels personne n'a
+pensé — tout en laissant passer les délégués, où `+` et `-` existent tous deux.
+
+**Le piège dans le piège.** Le test doit porter sur le **type** résultant, pas sur le symbole.
+Vérifié sur Roslyn 5.9 : `a && b` réécrit en `a || b` se lie à un symbole *nul* — les opérateurs
+conditionnels sur `bool` n'ont pas de méthode d'opérateur — tout en donnant le type `bool`. Une
+vérification par symbole compile, passe une relecture rapide, et écarte silencieusement tous les
+mutants logiques. Ce sont nos propres tests de famille qui l'ont attrapé.
+
+**Nos tests.** `ArithmeticOperatorMutatorTests.String_concatenation_is_not_mutated`,
+`A_type_that_declares_only_one_operator_of_the_pair_is_not_mutated`,
+`A_type_that_declares_both_operators_is_mutated`, et la suite `LogicalOperatorMutatorTests`, qui est
+ce qui échoue si la vérification régresse vers le symbole.

@@ -15,7 +15,7 @@ internal sealed class BooleanLiteralMutator : IMutator
     public MutatorName Name { get; } = MutatorName.Create("BooleanLiteral");
 
     /// <inheritdoc />
-    public IEnumerable<MutationCandidate> Mutate(SyntaxNode node)
+    public IEnumerable<MutationCandidate> Mutate(SyntaxNode node, SemanticModel semanticModel)
     {
         if (node is not LiteralExpressionSyntax literal)
         {
