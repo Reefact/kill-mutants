@@ -36,6 +36,72 @@ internal sealed class FixtureCopy : IDisposable
                 StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// Replaces the fixture's code with a loop whose mutation never terminates, and the tests that
+    /// cover it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Mutating <c>value = value + 1</c> into <c>value = value - 1</c> makes the loop condition
+    /// permanently true. No dedicated mutator is needed for this: the arithmetic family already
+    /// reaches it, which is precisely why the deadline has to exist before the catalogue grows.
+    /// The fixture is replaced rather than extended so this test runs four mutants instead of
+    /// thirteen.
+    /// </para>
+    /// <para>
+    /// The counters are <c>long</c> on purpose, and the first attempt at this fixture got it wrong.
+    /// With <c>int</c>, the decrementing counter reaches <c>int.MinValue</c>, wraps to
+    /// <c>int.MaxValue</c>, and the condition goes false: the loop finishes after about two billion
+    /// iterations and the mutant is reported killed rather than timed out. Widening to
+    /// <c>long</c> puts the wrap around nine quintillion iterations away, which is endless by any
+    /// measure that matters.
+    /// </para>
+    /// </remarks>
+    public void UseCodeWhoseMutationNeverTerminates()
+    {
+        File.WriteAllText(
+            Path.Combine(Root, "Sample.Library", "Ages.cs"),
+            """
+            namespace Sample.Library;
+
+            public static class Sums
+            {
+                public static long UpTo(long limit)
+                {
+                    long total = 0;
+                    long value = 1;
+
+                    while (value <= limit)
+                    {
+                        total = total + value;
+                        value = value + 1;
+                    }
+
+                    return total;
+                }
+            }
+
+            """);
+
+        File.WriteAllText(
+            TestSourceFile,
+            """
+            using Sample.Library;
+
+            namespace Sample.Library.Tests;
+
+            public class SumsTests
+            {
+                [Fact]
+                public void Sums_every_number_up_to_the_limit()
+                {
+                    Assert.Equal(6L, Sums.UpTo(3));
+                }
+            }
+
+            """);
+    }
+
     /// <summary>Copies the sample fixture into a fresh temporary directory.</summary>
     public static FixtureCopy Create()
     {

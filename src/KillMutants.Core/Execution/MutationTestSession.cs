@@ -16,14 +16,19 @@ internal sealed class MutationTestSession
 {
     private readonly ITestRunner _testRunner;
     private readonly string _configuration;
+    private readonly TimeoutPolicy _timeoutPolicy;
 
-    public MutationTestSession(ITestRunner testRunner, string configuration)
+    public MutationTestSession(
+        ITestRunner testRunner,
+        string configuration,
+        TimeoutPolicy? timeoutPolicy = null)
     {
         ArgumentNullException.ThrowIfNull(testRunner);
         ArgumentException.ThrowIfNullOrWhiteSpace(configuration);
 
         _testRunner = testRunner;
         _configuration = configuration;
+        _timeoutPolicy = timeoutPolicy ?? TimeoutPolicy.Default;
     }
 
     /// <summary>Discovers, mutates, tests and reports.</summary>
@@ -124,7 +129,7 @@ internal sealed class MutationTestSession
                 "This may also indicate that KillMutants rebuilt the project incorrectly.");
         }
 
-        return BudgetFor(outcome.Duration);
+        return _timeoutPolicy.For(outcome.Duration);
     }
 
     private async Task<MutantResult> TestMutantAsync(
@@ -170,11 +175,4 @@ internal sealed class MutationTestSession
         return new MutantResult(mutant, outcome.AnyFailed ? MutantStatus.Killed : MutantStatus.Survived);
     }
 
-    /// <summary>
-    /// Allows a mutant three times the baseline duration plus a fixed margin. A mutation can turn a
-    /// terminating loop into an endless one, so a mutant that never finishes must be recorded as
-    /// timed out rather than allowed to hang the run.
-    /// </summary>
-    private static TimeSpan BudgetFor(TimeSpan baseline) =>
-        TimeSpan.FromSeconds((baseline.TotalSeconds * 3) + 30);
 }

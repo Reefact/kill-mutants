@@ -193,13 +193,33 @@ Sans conséquence à l'échelle actuelle ; cela en devient une à M3.
 
 ---
 
-## RB-010 — Une mutation peut transformer une boucle qui termine en boucle infinie · PARTIEL
+## RB-010 — Une mutation peut transformer une boucle qui termine en boucle infinie · COUVERT
 
-Le budget est calculé depuis la durée du baseline et `ProcessRunner` tue tout l'arbre de processus à
-l'expiration, mais **aucun test ne prouve encore qu'un mutant bouclant sans fin est attrapé de bout en
-bout**. Tant qu'il n'en existe pas, `Timeout` est un statut produit par du code que nous n'avons pas
-vu fonctionner. Fermer ce point fait partie du milestone catalogue, puisque c'est un mutateur de
-condition de boucle qui le rend atteignable.
+**Pourquoi cela existe.** Stryker dérive un délai maximal de l'exécution de référence et tue l'hôte
+de test à l'expiration, pour une seule raison : une mutation peut empêcher une boucle de finir. Aucun
+mutateur dédié n'est nécessaire pour l'atteindre. La famille arithmétique le fait déjà — réécrire
+`value = value + 1` en `value - 1` rend une condition `while (value <= limit)` définitivement vraie.
+
+**Notre comportement.** `TimeoutPolicy` dérive le budget en `baseline × facteur + marge`, par défaut
+trois fois le baseline plus trente secondes. Ce défaut est délibérément généreux : un mutant
+faussement rapporté en dépassement masque une vraie lacune des tests, ce qui est pire qu'attendre.
+`ProcessRunner` tue tout l'arbre de processus à l'expiration, et le mutant est consigné `Timeout` —
+compté comme une détection dans le score, puisqu'une mutation qui bloque la suite a bien changé le
+comportement observable.
+
+**Le piège, rencontré de plein fouet en écrivant le test.** La première fixture utilisait des
+compteurs `int` et le mutant était rapporté *tué*, pas en dépassement. Le compteur décrémenté atteint
+`int.MinValue`, repasse à `int.MaxValue`, et la condition devient fausse — la boucle finit donc après
+environ deux milliards d'itérations, en une quinzaine de secondes. Élargir les compteurs en `long`
+repousse le débordement à neuf trillions d'itérations. La leçon dépasse la fixture : **beaucoup de
+mutants qui ressemblent à des boucles infinies ne sont que des boucles très lentes**, ce qui plaide
+pour un budget conçu comme une échéance plutôt que comme une détection de non-terminaison.
+
+**Nos tests.** `MutationTestingEndToEndTests.A_mutation_that_never_terminates_is_recorded_as_timed_out`
+exécute le vrai outil sur un vrai projet et vérifie que le mutant arithmétique dépasse le délai
+pendant que les trois autres sont tués.
+`ProcessRunnerTests.A_process_that_never_finishes_is_killed_and_reported_as_timed_out` verrouille la
+mise à mort elle-même, et `TimeoutPolicyTests` l'arithmétique du budget.
 
 ---
 
