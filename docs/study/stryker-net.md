@@ -102,13 +102,42 @@ Stryker supports two runners behind one abstraction: VSTest (`Stryker.TestRunner
 against MTP's server mode). KillMutants supports only MTP-based projects, so the entire VSTest arm,
 the data collector, and the abstraction that exists to let the two coexist are all out of scope.
 
+Stryker's MTP runner starts each test assembly as a long-lived `--server --client-port N` process,
+with Stryker as the TCP listener and the test application dialling back, then speaks
+`Content-Length`-framed JSON-RPC: `initialize`, `testing/discoverTests`, `testing/runTests`, `exit`,
+with streamed `testing/testUpdates/tests` notifications terminated by a `changes: null` sentinel.
+
+Two findings made this worth not copying. First, in server mode the host **always exits 0**
+regardless of test failures, so a server-mode client must interpret the streamed nodes rather than
+the exit code. Second, and more usefully, MTP 2 has gained two capabilities that Stryker's
+server-mode design predates and does not use: `--list-tests json` for machine-readable discovery,
+and platform-level `--filter-uid` to run exactly a named set of test UIDs. Together they provide
+discovery and per-test selection — the two things M4 and M5 need — **with no RPC code at all**,
+which is why [ADR-0004](../adr/0004-run-tests-by-launching-the-test-executable.md) does not treat
+server mode as inevitable.
+
 ## 6. Coverage and test-to-mutant mapping
 
-Stryker runs a coverage pass first so that each mutant is only exercised by the tests that actually
-reach it. On VSTest this uses a data collector loaded into the test host; mutants in static
-initialisers and static constructors are a documented special case because they run once, before
-any per-test attribution is possible. Coverage-driven test selection is a pure optimisation and is
-already disabled on Stryker's MTP path. KillMutants defers all of this to M5.
+Stryker uses no coverage tool at all: it reuses the mutation-switching instrumentation as the
+coverage probe. Every mutation site is already guarded by `MutantControl.IsActive(id)`, so in
+capture mode that call registers the id and returns false, and one extra run reveals which mutants
+are reachable.
+
+Attributing *which test* reached a mutant is then plumbing, and the plumbing is where the cost
+lands. On VSTest an in-process data collector snapshots and resets the list at `TestCaseStart` /
+`TestCaseEnd`. MTP has no data collector equivalent, so Stryker falls back to environment variables
+plus memory-mapped files plus a polling "epoch relay" handshake, running literally one test per RPC
+request. Static constructors and initialisers are the entire source of the remaining complexity,
+because they run once per process and cannot be attributed to a single test.
+
+The useful discovery for M5 is that xUnit 4 offers a much simpler primitive: `-automated sync` is a
+hard, race-free per-test barrier — the host blocks until it reads a newline — which collapses
+collector, memory-mapped file and epoch handshake into "read message, act while the host is blocked,
+write newline". KillMutants needs none of this for M1, but it now knows what M5 should be built on.
+
+Note also that our design does not need the coverage probe to be an *injected* one: with one
+assembly per mutant, reachability can be established from the baseline run rather than from
+instrumentation that must survive into production code.
 
 ## 7. Performance
 
@@ -120,6 +149,17 @@ baseline run so that a mutation which introduces an infinite loop does not hang 
 Our own measurements say the first factor is the wrong one to attack on modern .NET — see ADR-0002.
 Test execution dominates by two orders of magnitude, so test *selection* and *parallelism* are where
 the wins are, and both are additive to our design rather than requiring it to change.
+
+Three details from this part of the study are worth carrying forward:
+
+- **Bail-out on the first failing test is implemented only for Stryker's legacy VSTest runner and is
+  explicitly absent from its MTP runner** (open issue #3655). KillMutants gets it for free from the
+  xUnit console runner's `-stopOnFail`, and already uses it for mutant runs.
+- **Warm test-host reuse is Stryker's biggest reported correctness problem**: reusing a process
+  across mutants leaks process-global state and inflates scores (issue #3742). This is a direct
+  argument for our process-per-mutant model, which cannot exhibit it.
+- **MTP's own `--timeout` does not reliably stop a spinning test.** The timeout must be owned by the
+  tool, with `Process.Kill(entireProcessTree: true)` on expiry. KillMutants does exactly that.
 
 ## 8. What we concluded
 

@@ -59,6 +59,28 @@ Negative, and accepted:
   costs ~1.6 s, almost all of it loading 167 metadata references — a one-off per project, not per
   mutant. Rebuilding it per mutant would invalidate this ADR's arithmetic.
 
+## The dissenting view, and why it did not prevail
+
+One of the studies commissioned for this project argued the opposite: adopt schemata from day one,
+on the grounds that "source-rewrite-and-recompile per mutant is a dead end that cannot be optimized
+later, only replaced", citing Stryker's own research notes.
+
+It was rejected for three reasons.
+
+1. **It reasons from history rather than from measurement.** Stryker's bet was made when the
+   surrounding costs were different. The measurement above is from this platform, today: schemata
+   removes about 1% of the run.
+2. **The claim that it cannot be optimised later is not borne out.** The expensive term is
+   `N x tests`, and the two things that actually attack it — coverage-driven test selection and
+   parallelism — are unaffected by how the mutant got into the assembly. If anything they are easier
+   here, because each mutant is an isolated assembly and an isolated process.
+3. **The same study supplies evidence against its own recommendation.** It reports that Stryker's
+   warm-test-host reuse, which schemata makes attractive, leaks process-global state across mutants
+   and inflates scores (issue #3742). Process-per-mutant cannot exhibit that class of bug.
+
+A separate study, which actually measured compile and test costs on this machine rather than
+reasoning from precedent, independently reached the same conclusion as this ADR.
+
 ## Revisiting
 
 This decision should be reconsidered if profiling ever shows compilation exceeding ~20% of total
