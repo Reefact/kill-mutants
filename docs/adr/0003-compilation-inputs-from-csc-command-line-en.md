@@ -41,9 +41,15 @@ Verified on the fixture: 205 arguments, yielding 4 source files (including the g
 - No Buildalyzer, no `MSBuildWorkspace`, no `MSBuildLocator`, no third-party dependency at all.
 - Nothing is guessed. Every setting is the one `csc` was actually going to be given, including the
   ones nobody thinks to reconstruct until a user reports a bug.
-- Generated sources come along automatically. Omitting them is a known cause of false kills:
+- SDK-generated sources come along automatically. Omitting them is a known cause of false kills:
   without the generated `AssemblyInfo.cs` the assembly version becomes `0.0.0.0` and the test host
   fails to load it, which surfaces as an ordinary test failure.
+- **Source generators are the exception, and this ADR originally overstated the point.** The command
+  line names generators under `/analyzer:` but does *not* list the code they contribute, because the
+  compiler produces it during the build. Running them is a separate step, described in RB-002 of the
+  robustness backlog. The command line still supplies everything that step needs — the generator
+  assemblies, the analyzer config files and the additional files — so the decision holds; it simply
+  does not do the whole job on its own.
 - We depend on `-getItem:` and `ProvideCommandLineArgs`, which are MSBuild features rather than a
   documented public API contract. This is accepted: the fallback, if it ever breaks, is to read the
   same information from a binary log, and the risk is caught immediately by ADR-0005's baseline check.

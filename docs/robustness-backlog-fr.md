@@ -55,7 +55,7 @@ famille. **Tout mutateur ajouté au catalogue doit être couvert par une asserti
 
 ---
 
-## RB-002 — Les générateurs de source produisent du code absent de la liste des sources · OUVERT
+## RB-002 — Les générateurs de source produisent du code absent de la liste des sources · COUVERT
 
 **Ce que fait Stryker.** Exécute le driver de génération, et le réexécute après chaque
 `ReplaceSyntaxTree` (`Compiling/CsharpCompilingProcess.cs:360-364`). Il détecte aussi les projets
@@ -67,22 +67,37 @@ leur sortie parmi les sources — le compilateur la produit pendant le build.
 
 **Est-ce toujours d'actualité ?** Oui, et plus qu'avant : `[GeneratedRegex]`, `[JsonSerializable]`,
 `[LibraryImport]`, Mapperly, Refit et les minimal APIs ASP.NET Core reposent tous sur des
-générateurs. Reproduit : un projet avec une propriété partielle `[GeneratedRegex]` échoue à l'émission
-avec `CS9248` si les générateurs ne sont pas exécutés. La ligne de commande de notre propre fixture
-porte déjà huit assemblys `/analyzer:`.
+générateurs. Reproduit : un projet avec une propriété partielle `[GeneratedRegex]` échouait au
+baseline sur `CS9248` alors qu'il compilait parfaitement sous `dotnet build`. Même la ligne de
+commande de notre fixture triviale porte huit assemblys `/analyzer:` ; le projet à générateur en
+porte sept réels.
 
-**Impact.** L'affirmation de l'ADR-0003 selon laquelle les sources générées « suivent
-automatiquement » n'est vraie que pour les fichiers émis par le SDK. L'ADR-0005 fait échouer cela
-*proprement* — le baseline passe au rouge au lieu de produire des faux positifs — mais KillMutants ne
-fonctionne tout simplement pas sur ces projets aujourd'hui.
+**Notre comportement.** `SourceGenerators` charge chaque générateur nommé sur la ligne de commande et
+l'exécute via `CSharpGeneratorDriver`, avec les vrais fichiers `.editorconfig` / `.globalconfig`
+fournis au compilateur et les `AdditionalFiles` du projet, afin qu'un générateur lisant des
+propriétés MSBuild voie les mêmes valeurs que lors d'un vrai build.
 
-**Ce qu'il faut faire.** Exécuter `CSharpGeneratorDriver` sur la compilation. Deux subtilités à
-trancher délibérément : la sortie d'un générateur peut dépendre de l'arbre muté, donc en toute
-rigueur le driver doit être réexécuté par mutant (l'exécuter une fois sur la compilation d'origine
-est une approximation défendable pour des mutateurs au niveau opérateur, et doit être documentée
-comme telle) ; et les générateurs se chargent dans notre propre processus, si bien qu'un projet
-épinglant un Roslyn plus récent que le nôtre ne contribue silencieusement rien — ce cas doit être
-signalé nommément, pas présenté comme « KillMutants n'a pas pu compiler votre projet ».
+**Régénéré par mutant, et mesuré plutôt que supposé.** La sortie d'un générateur peut dépendre du
+code muté : le driver est donc réexécuté pour chaque mutant au lieu de réutiliser sa sortie. Mesuré
+sur le projet à sept générateurs : la première exécution coûte environ une seconde, chaque suivante
+**1,4 ms**, contre 60 ms pour l'émission et environ 600 ms pour exécuter les tests. La correction est
+ici quasiment gratuite, donc aucune approximation n'était nécessaire. On aboutit au même comportement
+que Stryker, mais pour une raison vérifiée sur cette plateforme plutôt qu'héritée.
+
+**Le code généré est compilé, jamais muté.** Les arbres générés doivent être dans la compilation que
+lisent les mutateurs — un modèle sémantique qui ne voit pas les types générés répond faux à la
+question de liaison — mais ils sont exclus de la mutation par leur chemin. Verrouillé par un test
+vérifiant que chaque mutant provient du fichier écrit à la main, puisque le moteur de regex généré
+regorge de comparaisons et d'arithmétique que personne n'a écrites et que personne ne peut corriger.
+
+**Un analyseur impossible à charger est nommé.** Généralement un projet épinglant un Roslyn plus
+récent que celui de KillMutants, qui ne contribue alors silencieusement rien. Ces assemblys sont
+consignés et signalés avec notre version de Roslyn, plutôt que de ressortir en « KillMutants n'a pas
+pu compiler votre projet ».
+
+**Nos tests.**
+`MutationTestingEndToEndTests.A_project_that_depends_on_a_source_generator_is_mutated_and_tested`,
+qui échoue sur `CS9248` si le driver cesse de s'exécuter.
 
 ---
 
