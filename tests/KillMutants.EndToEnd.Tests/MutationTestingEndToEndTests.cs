@@ -1,5 +1,7 @@
+using KillMutants.Execution;
 using KillMutants.Mutations;
 using KillMutants.Reporting;
+using KillMutants.Testing.XUnit;
 
 namespace KillMutants.EndToEnd.Tests;
 
@@ -93,6 +95,42 @@ public class MutationTestingEndToEndTests
 
         // Every other mutant in the fixture is still caught.
         Assert.Equal(report.Total - 1, report.Killed);
+    }
+
+    /// <summary>
+    /// Closes RB-010. The deadline and the process kill were both in place, but nothing had ever
+    /// watched them catch a mutant that genuinely never finishes - so Timeout was a status produced
+    /// by code we had not seen work.
+    /// </summary>
+    [Fact]
+    public async Task A_mutation_that_never_terminates_is_recorded_as_timed_out()
+    {
+        using var fixture = FixtureCopy.Create();
+        fixture.UseCodeWhoseMutationNeverTerminates();
+
+        // The default budget is deliberately generous; a short one keeps this test quick without
+        // changing what is being demonstrated.
+        var session = new MutationTestSession(
+            new XUnitTestRunner(),
+            "Release",
+            new TimeoutPolicy(BaselineFactor: 2.0, Margin: TimeSpan.FromSeconds(5)));
+
+        MutationTestReport report = await session.RunAsync(
+            fixture.Root, TestContext.Current.CancellationToken);
+
+        MutantResult timedOut = Assert.Single(
+            report.Results, result => result.Status == MutantStatus.Timeout);
+
+        Assert.Equal("value + 1", timedOut.Mutant.OriginalText);
+        Assert.Equal("value - 1", timedOut.Mutant.MutatedText);
+        Assert.Equal("Arithmetic", timedOut.Mutant.Mutator.ToString());
+
+        // Every other mutant terminates and is caught, so the run still completes normally.
+        Assert.Equal(report.Total - 1, report.Killed);
+        Assert.Equal(0, report.Survived);
+
+        // A mutation that hangs the suite did change observable behaviour: the tests noticed.
+        Assert.Equal("100%", report.Score.ToString());
     }
 
     /// <summary>

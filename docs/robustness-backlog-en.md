@@ -179,12 +179,31 @@ M3.
 
 ---
 
-## RB-010 — A mutation can turn a terminating loop into an endless one · PARTIAL
+## RB-010 — A mutation can turn a terminating loop into an endless one · COVERED
 
-The budget is computed from the baseline duration and `ProcessRunner` kills the whole process tree on
-expiry, but **no test yet proves an endlessly looping mutant is caught end to end**. Until one
-exists, `Timeout` is a status produced by code we have not watched work. Closing this is part of the
-catalogue milestone, since a loop-condition mutator is what makes it reachable.
+**Why it exists.** Stryker derives a per-session timeout from the baseline run and force-kills the
+test host on expiry, for one reason: a mutation can make a loop never finish. No dedicated mutator is
+needed to reach this. The arithmetic family already does it — rewriting `value = value + 1` to
+`value - 1` makes a `while (value <= limit)` condition permanently true.
+
+**Our behaviour.** `TimeoutPolicy` derives the budget as `baseline x factor + margin`, defaulting to
+three times the baseline plus thirty seconds. The default is deliberately generous: a mutant wrongly
+reported as timed out hides a real gap in the tests, which is worse than waiting. `ProcessRunner`
+kills the entire process tree on expiry, and the mutant is recorded `Timeout` — counted as a
+detection in the score, because a mutation that hangs the suite did change observable behaviour.
+
+**The trap, met head-on while writing the test.** The first fixture used `int` counters and the
+mutant was reported *killed*, not timed out. The decrementing counter reaches `int.MinValue`, wraps
+to `int.MaxValue`, and the loop condition goes false — so it finishes after about two billion
+iterations, in roughly seventeen seconds. Widening the counters to `long` puts the wrap around nine
+quintillion iterations away. The lesson generalises beyond the fixture: **many mutants that look like
+infinite loops are merely very slow ones**, which is an argument for the budget being a deadline
+rather than an attempt to detect non-termination.
+
+**Our tests.** `MutationTestingEndToEndTests.A_mutation_that_never_terminates_is_recorded_as_timed_out`
+runs the real tool against a real project and asserts the arithmetic mutant times out while the other
+three are killed. `ProcessRunnerTests.A_process_that_never_finishes_is_killed_and_reported_as_timed_out`
+pins the kill itself, and `TimeoutPolicyTests` the arithmetic of the budget.
 
 ---
 
