@@ -35,19 +35,27 @@ internal sealed class MsBuildQuery
         List<string> arguments = ["msbuild", projectPath, $"-p:Configuration={_configuration}", "-nologo"];
         arguments.AddRange(propertyNames.Select(name => $"-getProperty:{name}"));
 
-        JsonDocument json = await RunAsync(projectPath, arguments, cancellationToken).ConfigureAwait(false);
+        string output = await RunRawAsync(projectPath, arguments, cancellationToken).ConfigureAwait(false);
 
-        using (json)
+        // MSBuild prints the bare value when a single property is requested, and a JSON document
+        // when several are. Both shapes are real; neither is a fallback for the other.
+        if (propertyNames.Count == 1)
         {
-            if (!json.RootElement.TryGetProperty("Properties", out JsonElement properties))
+            return new Dictionary<string, string>(StringComparer.Ordinal)
             {
-                throw new ProjectAnalysisException(
-                    $"MSBuild returned no properties for '{projectPath}'.");
-            }
-
-            return properties.EnumerateObject()
-                .ToDictionary(p => p.Name, p => p.Value.GetString() ?? string.Empty, StringComparer.Ordinal);
+                [propertyNames[0]] = output.Trim(),
+            };
         }
+
+        using JsonDocument json = ParseJson(projectPath, output);
+
+        if (!json.RootElement.TryGetProperty("Properties", out JsonElement properties))
+        {
+            throw new ProjectAnalysisException($"MSBuild returned no properties for '{projectPath}'.");
+        }
+
+        return properties.EnumerateObject()
+            .ToDictionary(p => p.Name, p => p.Value.GetString() ?? string.Empty, StringComparer.Ordinal);
     }
 
     /// <summary>
@@ -110,6 +118,30 @@ internal sealed class MsBuildQuery
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken)
     {
+        string output = await RunRawAsync(projectPath, arguments, cancellationToken).ConfigureAwait(false);
+
+        return ParseJson(projectPath, output);
+    }
+
+    private static JsonDocument ParseJson(string projectPath, string output)
+    {
+        try
+        {
+            return JsonDocument.Parse(output);
+        }
+        catch (JsonException exception)
+        {
+            throw new ProjectAnalysisException(
+                $"Could not read MSBuild's output for '{projectPath}'.{Environment.NewLine}{output}",
+                exception);
+        }
+    }
+
+    private static async Task<string> RunRawAsync(
+        string projectPath,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken)
+    {
         string workingDirectory = Path.GetDirectoryName(Path.GetFullPath(projectPath))
                                   ?? Directory.GetCurrentDirectory();
 
@@ -123,15 +155,6 @@ internal sealed class MsBuildQuery
                 $"MSBuild failed for '{projectPath}'.{Environment.NewLine}{result.CombinedOutput}");
         }
 
-        try
-        {
-            return JsonDocument.Parse(result.StandardOutput);
-        }
-        catch (JsonException exception)
-        {
-            throw new ProjectAnalysisException(
-                $"Could not read MSBuild's output for '{projectPath}'.{Environment.NewLine}{result.StandardOutput}",
-                exception);
-        }
+        return result.StandardOutput;
     }
 }
