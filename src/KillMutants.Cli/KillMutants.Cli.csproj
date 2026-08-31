@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>KillMutants.Cli</RootNamespace>
+    <AssemblyName>killmutants</AssemblyName>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>killmutants</ToolCommandName>
+    <PackageId>KillMutants</PackageId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../KillMutants.Core/KillMutants.Core.csproj" />
+  </ItemGroup>
+
+</Project>
