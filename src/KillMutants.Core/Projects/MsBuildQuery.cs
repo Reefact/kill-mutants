@@ -24,6 +24,128 @@ internal sealed class MsBuildQuery
         _configuration = configuration;
     }
 
+    /// <summary>
+    /// Reads everything KillMutants needs about a project, in a single MSBuild invocation.
+    /// </summary>
+    /// <param name="projectPath">The project to inspect.</param>
+    /// <param name="targetFramework">
+    /// The framework to resolve against. Required for a project targeting several: without it
+    /// MSBuild answers for an unspecified one, and mutants could be emitted against a framework the
+    /// test project never loads.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the query.</param>
+    /// <remarks>
+    /// Batched deliberately. Asking separately would mean several process launches per project, and
+    /// a solution of any size would spend most of a run starting MSBuild.
+    /// </remarks>
+    public async Task<ProjectFacts> GetProjectFactsAsync(
+        string projectPath,
+        string? targetFramework = null,
+        CancellationToken cancellationToken = default)
+    {
+        List<string> arguments = ["msbuild", projectPath, $"-p:Configuration={_configuration}", "-nologo"];
+
+        if (!string.IsNullOrEmpty(targetFramework))
+        {
+            arguments.Add($"-p:TargetFramework={targetFramework}");
+        }
+
+        arguments.AddRange(
+        [
+            "-getProperty:TargetFileName",
+            "-getProperty:TargetPath",
+            "-getProperty:TargetDir",
+            "-getProperty:TargetFramework",
+            "-getProperty:TargetFrameworks",
+            "-getItem:PackageReference",
+            "-getItem:ProjectReference",
+        ]);
+
+        string output = await RunRawAsync(projectPath, arguments, cancellationToken).ConfigureAwait(false);
+
+        using JsonDocument json = ParseJson(projectPath, output);
+        JsonElement root = json.RootElement;
+
+        string Property(string name) =>
+            root.TryGetProperty("Properties", out JsonElement properties) &&
+            properties.TryGetProperty(name, out JsonElement value)
+                ? value.GetString() ?? string.Empty
+                : string.Empty;
+
+        string directory = Path.GetDirectoryName(Path.GetFullPath(projectPath))!;
+
+        return new ProjectFacts(
+            ProjectPath: Path.GetFullPath(projectPath),
+            AssemblyFileName: Property("TargetFileName"),
+            AssemblyPath: Property("TargetPath"),
+            OutputDirectory: Property("TargetDir"),
+            TargetFramework: Property("TargetFramework"),
+            TargetFrameworks: Split(Property("TargetFrameworks")),
+            PackageReferences: ReadItems(root, "PackageReference", identity => identity),
+            ProjectReferences: ReadItems(
+                root, "ProjectReference", identity => Path.GetFullPath(Path.Combine(directory, identity))));
+    }
+
+    /// <summary>
+    /// Makes MSBuild re-run <c>CoreCompile</c>, by removing the cache file its incremental check
+    /// reads.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The obvious alternative - redirecting <c>IntermediateOutputPath</c> so the outputs are
+    /// missing - is a global property, so it propagates to every referenced project and makes the
+    /// command line point at reference assemblies the compiler was never allowed to produce. That
+    /// breaks any project with a project reference.
+    /// </para>
+    /// <para>
+    /// This file is a cache MSBuild regenerates, so deleting it is safe. It does leave the project
+    /// marked out of date, meaning the user's next build recompiles it - which would happen anyway,
+    /// since <c>SkipCompilerExecution</c> means our own query never produces the outputs either.
+    /// </para>
+    /// </remarks>
+    private static void ForceCompileToRun(string projectPath)
+    {
+        string objDirectory = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(projectPath))!, "obj");
+
+        if (!Directory.Exists(objDirectory))
+        {
+            return;
+        }
+
+        foreach (string cache in Directory.EnumerateFiles(
+                     objDirectory, "*.CoreCompileInputs.cache", SearchOption.AllDirectories))
+        {
+            try
+            {
+                File.Delete(cache);
+            }
+            catch (IOException)
+            {
+                // Another build holds it. The empty-command-line guard still covers us.
+            }
+        }
+    }
+
+    private static IReadOnlyList<string> Split(string value) =>
+        [.. value.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+
+    private static IReadOnlyList<string> ReadItems(
+        JsonElement root,
+        string itemName,
+        Func<string, string> project)
+    {
+        if (!root.TryGetProperty("Items", out JsonElement items) ||
+            !items.TryGetProperty(itemName, out JsonElement values))
+        {
+            return [];
+        }
+
+        return [.. values.EnumerateArray()
+            .Select(item => item.GetProperty("Identity").GetString())
+            .Where(identity => !string.IsNullOrEmpty(identity))
+            .Select(identity => project(identity!))];
+    }
+
     /// <summary>Reads MSBuild properties from a project without building it.</summary>
     public async Task<IReadOnlyDictionary<string, string>> GetPropertiesAsync(
         string projectPath,
@@ -65,19 +187,39 @@ internal sealed class MsBuildQuery
     /// <para>
     /// <c>SkipCompilerExecution</c> stops csc from actually running, and
     /// <c>ProvideCommandLineArgs</c> makes MSBuild publish the arguments it would have passed.
-    /// A dedicated <c>IntermediateOutputPath</c> keeps every generated artefact out of the user's
-    /// own <c>obj</c> directory, so analysing a project never disturbs their incremental build.
     /// </para>
     /// <para>
-    /// If MSBuild decides the project is up to date it can skip <c>CoreCompile</c> and return
-    /// nothing at all; <see cref="Analysis.CscCommandLine.Parse"/> would then happily produce an empty
-    /// compilation, which is why the result is validated rather than trusted.
+    /// Two tempting extra switches are deliberately absent, both learned the hard way on a
+    /// multi-project solution.
+    /// </para>
+    /// <para>
+    /// Redirecting <c>IntermediateOutputPath</c> to isolate the query from the user's <c>obj</c>
+    /// directory is wrong: the property is global, so it propagates to every referenced project,
+    /// and the command line then points at reference assemblies in a directory where the compiler
+    /// was never allowed to run.
+    /// </para>
+    /// <para>
+    /// Passing <c>CopyBuildOutputToOutputDirectory=false</c> is worse: nothing is copied to the
+    /// output directory, MSBuild's incremental clean then sees an assembly it did not write, and
+    /// <em>deletes the built assembly from <c>bin</c></em>. The next project's query fails trying to
+    /// copy the reference that just vanished. Leaving the copy enabled is safe precisely because
+    /// this query runs after a real build: the assembly in <c>obj</c> still exists, so the copy
+    /// succeeds and nothing is cleaned. This query must therefore never be the first thing to touch
+    /// a project.
+    /// </para>
+    /// <para>
+    /// If MSBuild decides the project is up to date it skips <c>CoreCompile</c> and returns nothing
+    /// at all - reliably so for a project that has just been built, which is exactly our situation.
+    /// <see cref="Analysis.CscCommandLine.Parse"/> would then happily produce an empty compilation,
+    /// so the target is forced to run and the result validated as well.
     /// </para>
     /// </remarks>
     public async Task<IReadOnlyList<string>> GetCscCommandLineAsync(
         string projectPath,
         CancellationToken cancellationToken = default)
     {
+        ForceCompileToRun(projectPath);
+
         List<string> arguments =
         [
             "build", projectPath,
@@ -85,8 +227,6 @@ internal sealed class MsBuildQuery
             "-t:Build",
             "-p:ProvideCommandLineArgs=true",
             "-p:SkipCompilerExecution=true",
-            "-p:CopyBuildOutputToOutputDirectory=false",
-            $"-p:IntermediateOutputPath={IntermediateOutputPath}",
             "-nologo",
             "-getItem:CscCommandLineArgs",
         ];
@@ -109,9 +249,6 @@ internal sealed class MsBuildQuery
                 .Select(value => value!)];
         }
     }
-
-    /// <summary>Where generated compiler inputs are written, relative to the analysed project.</summary>
-    internal const string IntermediateOutputPath = "obj/killmutants/";
 
     private static async Task<JsonDocument> RunAsync(
         string projectPath,

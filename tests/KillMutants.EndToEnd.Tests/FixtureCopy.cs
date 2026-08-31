@@ -156,12 +156,20 @@ internal sealed class FixtureCopy : IDisposable
             """);
     }
 
-    /// <summary>Copies the sample fixture into a fresh temporary directory.</summary>
-    public static FixtureCopy Create()
+    /// <summary>Copies the single-project sample fixture into a fresh temporary directory.</summary>
+    public static FixtureCopy Create() => CopyOf(SourceFixtureDirectory);
+
+    /// <summary>
+    /// Copies the multi-project fixture: two libraries and two test suites, where one library is
+    /// reached by both suites and the other only through a project reference.
+    /// </summary>
+    public static FixtureCopy CreateMultiProject() => CopyOf(FixtureDirectory("multi"));
+
+    private static FixtureCopy CopyOf(string source)
     {
         string destination = Path.Combine(Path.GetTempPath(), $"killmutants-e2e-{Guid.NewGuid():N}");
 
-        CopyDirectory(SourceFixtureDirectory, destination);
+        CopyDirectory(source, destination);
 
         return new FixtureCopy(destination);
     }
@@ -178,16 +186,16 @@ internal sealed class FixtureCopy : IDisposable
         }
     }
 
-    /// <summary>The repository's own fixture, resolved from this file's path.</summary>
-    public static string SourceFixtureDirectory { get; } = ResolveFixtureDirectory();
+    /// <summary>The repository's own single-project fixture, resolved from this file's path.</summary>
+    public static string SourceFixtureDirectory { get; } = FixtureDirectory("single");
 
-    private static string ResolveFixtureDirectory([CallerFilePath] string sourceFilePath = "")
+    private static string FixtureDirectory(string name, [CallerFilePath] string sourceFilePath = "")
     {
         // <root>/tests/KillMutants.EndToEnd.Tests/FixtureCopy.cs
         string repositoryRoot = Path.GetFullPath(
             Path.Combine(Path.GetDirectoryName(sourceFilePath)!, "..", ".."));
 
-        return Path.Combine(repositoryRoot, "tests", "fixtures");
+        return Path.Combine(repositoryRoot, "tests", "fixtures", name);
     }
 
     private static void CopyDirectory(string source, string destination)

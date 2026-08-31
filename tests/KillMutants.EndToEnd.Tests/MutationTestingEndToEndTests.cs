@@ -98,6 +98,41 @@ public class MutationTestingEndToEndTests
     }
 
     /// <summary>
+    /// Milestone 3. Two libraries and two test suites, where Core is reached by both suites - once
+    /// directly and once through Domain - and Domain only by its own.
+    /// </summary>
+    [Fact]
+    public async Task Several_projects_and_several_test_suites_are_all_covered()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        MutationTestReport report = await MutationTesting.RunAsync(
+            fixture.Root, cancellationToken: TestContext.Current.CancellationToken);
+
+        string[] mutatedFiles = [.. report.Results
+            .Select(result => Path.GetFileName(result.Mutant.Location.FilePath))
+            .Distinct()
+            .Order(StringComparer.Ordinal)];
+
+        // Both libraries are mutated. Basket.cs is only reachable from its own suite; Money.cs is
+        // reached transitively from Domain.Tests as well, and its mutants are injected into both
+        // suites' output directories so either can kill them.
+        Assert.Equal(["Basket.cs", "Money.cs"], mutatedFiles);
+
+        // The test projects are the yardstick, never the thing measured.
+        Assert.DoesNotContain(report.Results, result =>
+            result.Mutant.Location.FilePath.Contains(".Tests", StringComparison.Ordinal));
+
+        Assert.All(report.Results, result => Assert.Equal(MutantStatus.Killed, result.Status));
+        Assert.Equal("100%", report.Score.ToString());
+
+        // Identifiers run across the whole session rather than restarting for each project.
+        Assert.Equal(
+            report.Results.Select(result => result.Mutant.Id.ToString()).Distinct().Count(),
+            report.Total);
+    }
+
+    /// <summary>
     /// Closes RB-002. Without running the generators, this project cannot be compiled at all: the
     /// partial property has no implementation and the emit fails with CS9248, which reads as a
     /// defect in KillMutants rather than a missing step.

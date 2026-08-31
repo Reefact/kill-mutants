@@ -160,23 +160,32 @@ values, attribute arguments and enum members. They are skipped, not reported.
 
 ---
 
-## RB-006 — Injection is not crash-safe · OPEN
+## RB-006 — Injection is not crash-safe · COVERED
 
-If KillMutants is killed abnormally (CI cancellation, SIGKILL) while a mutant is injected,
-`AssemblyInjection.Dispose` never runs and the developer is left with a mutated assembly and a
-`.killmutants-original` file in `bin`. Stryker has the same wound and only logs it
+**Why it exists.** `Dispose` does not run on SIGKILL or a cancelled CI job, so a run killed while a
+mutant is injected leaves a mutated assembly and a `.killmutants-original` file in the developer's
+output directory. Stryker has the same wound and only logs it
 (`ProjectComponents/TestProjects/TestProjectsInfo.cs:51-58`).
 
-**What we should do.** Detect a leftover backup on startup and restore it before doing anything else.
-Cheap, and it turns a confusing failure into a non-event.
+**Our behaviour.** Taking custody of an assembly now restores any abandoned backup first. Finding a
+backup is proof a previous run died, and restoring it silently is right: the alternative is a
+developer whose own tests fail for reasons they cannot see, and — worse — a next KillMutants run
+that would take the mutated assembly as its baseline and report a flattering score against it.
+
+**Our tests.** `AssemblyInjectionTests.An_assembly_abandoned_by_a_killed_run_is_restored_before_anything_else`.
 
 ---
 
-## RB-007 — A multi-targeted project yields one command line per framework · OPEN
+## RB-007 — A multi-targeted project yields one command line per framework · COVERED
 
-`MsBuildQuery` asks for `CscCommandLineArgs` without pinning a target framework. On a project with
-several, the result is ambiguous, and mutants could be emitted against a framework the test project
-does not use. Must be resolved before M3.
+**Why it exists.** Asking MSBuild about a project that targets several frameworks without saying
+which one gives an answer for an unspecified one. Mutants could then be emitted against a framework
+the test project never loads.
+
+**Our behaviour.** A project under test is always resolved against the framework of the test project
+that reaches it, pinned explicitly on the MSBuild query. A *test* project that targets several is
+refused with a message naming them, rather than silently picking one and reporting a score for a
+framework the user did not choose — each would need its own run, its own output and its own verdict.
 
 ---
 
@@ -245,3 +254,33 @@ caught it.
 `A_type_that_declares_only_one_operator_of_the_pair_is_not_mutated`,
 `A_type_that_declares_both_operators_is_mutated`, and the `LogicalOperatorMutatorTests` suite, which
 is what fails if the check regresses to the symbol.
+
+---
+
+## RB-012 — Reading the compiler command line can destroy the build output · COVERED
+
+Found while making multi-project solutions work, and the single most surprising thing in this file.
+Two switches that look like sensible isolation are actively harmful, and neither fails visibly on a
+single-project solution.
+
+**`IntermediateOutputPath` is global.** Redirecting it to keep generated artefacts out of the user's
+`obj` directory propagates to every referenced project, so the command line points at reference
+assemblies in a directory where the compiler was never allowed to run. Any project with a project
+reference then fails with `FileNotFoundException` before it can be mutated.
+
+**`CopyBuildOutputToOutputDirectory=false` deletes the built assembly.** With the copy suppressed and
+the compiler skipped, MSBuild's incremental clean sees an assembly it did not write and removes it
+from `bin`. Verified: querying `Core` deleted `Core/bin/Release/net10.0/Core.dll`, and the next
+project's query then failed trying to copy the reference that had just vanished.
+
+**Our behaviour.** Neither switch is used. `CoreCompile` is forced to re-run by deleting the cache
+file its incremental check reads — a file MSBuild regenerates — and the query runs *after* the real
+build, so the intermediate assembly still exists, the copy succeeds and nothing is cleaned.
+
+**The ordering is now a rule, not an accident.** Build every test project, then read every compiler
+command line, then inject. MSBuild must not run before the build, because the query depends on its
+output; and must not run after injection, because `dotnet build` and `dotnet test` both copy the
+pristine assembly back over the mutant.
+
+**Our tests.** `MutationTestingEndToEndTests.Several_projects_and_several_test_suites_are_all_covered`,
+which runs from a clean checkout and fails if either switch comes back.

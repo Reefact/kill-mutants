@@ -6,7 +6,7 @@ namespace KillMutants.Core.Tests;
 internal static class FixtureRepository
 {
     /// <summary>The directory holding <c>Sample.Library</c> and <c>Sample.Library.Tests</c>.</summary>
-    public static string SampleDirectory { get; } = Path.Combine(RepositoryRoot(), "tests", "fixtures");
+    public static string SampleDirectory { get; } = Path.Combine(RepositoryRoot(), "tests", "fixtures", "single");
 
     public static string SampleLibraryProject { get; } =
         Path.Combine(SampleDirectory, "Sample.Library", "Sample.Library.csproj");
