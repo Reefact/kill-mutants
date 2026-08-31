@@ -54,6 +54,34 @@ code de sortie.
   test↔mutant en a réellement besoin, `ITestRunner` est le point de couture où une implémentation en
   mode serveur viendrait se greffer — une couture volontairement mince, pas un système de plugins.
 
+## Le point d'entrée a deux formes, et chaque run doit fixer le runner
+
+Découvert après la rédaction initiale de cet ADR, par une relecture adverse de l'implémentation, et
+reproduit ici. Le point d'entrée généré est inversé par la propriété MSBuild
+`UseMicrosoftTestingPlatformRunner` :
+
+```csharp
+// par défaut                                // UseMicrosoftTestingPlatformRunner=true
+if (--server || --internal-msbuild-node)     if (-automated || @@)
+    hôte MTP;                                    runner console xUnit;
+else                                         else
+    runner console xUnit;                        hôte MTP;
+```
+
+Sur un projet utilisant la seconde forme, nos arguments parvenaient à l'hôte Microsoft Testing
+Platform, qui les rejetait (`Unknown option '--noLogo'`), **sortait avec 5 et n'écrivait aucun
+fichier de résultat** — interrompant tout le run. KillMutants y était purement et simplement
+inutilisable.
+
+`-automated` sélectionne le runner console xUnit sous les *deux* formes : il est donc passé à chaque
+exécution et doit rester en tête de la liste d'arguments. Un test de non-régression end-to-end
+construit une fixture avec la propriété activée, et échoue avec exactement le diagnostic ci-dessus
+si l'option est retirée.
+
+La leçon se généralise : ce qu'une application de test fait d'une ligne de commande est une propriété
+du projet qui l'a produite, pas de la version du framework. Une seule option rend le lancement
+indépendant de la forme.
+
 ## Pourquoi pas le seul code de sortie
 
 Le runner console de xUnit sort avec **0** quand un filtre ne correspond à aucun test. Un outil qui

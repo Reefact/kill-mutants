@@ -52,6 +52,32 @@ Read the outcome from the **structured result file** (`-result-xml`), not from t
   needs it, `ITestRunner` is the seam where a server-mode implementation would be added — a
   deliberately thin seam, not a plugin system.
 
+## The entry point has two shapes, and every run must pin the runner
+
+Found after this ADR was first written, by an adversarial review of the implementation, and
+reproduced here. The generated entry point is inverted by the MSBuild property
+`UseMicrosoftTestingPlatformRunner`:
+
+```csharp
+// default                                   // UseMicrosoftTestingPlatformRunner=true
+if (--server || --internal-msbuild-node)     if (-automated || @@)
+    MTP host;                                    xUnit console runner;
+else                                         else
+    xUnit console runner;                        MTP host;
+```
+
+On a project using the second shape, our arguments reached the Microsoft Testing Platform host,
+which rejected them (`Unknown option '--noLogo'`), **exited 5 and wrote no result file** — aborting
+the whole run. KillMutants was simply unusable on such projects.
+
+`-automated` selects the xUnit console runner under *both* shapes, so it is passed on every run and
+must stay first in the argument list. An end-to-end regression test builds a fixture with the
+property set, and fails with exactly the diagnostic above if the flag is removed.
+
+The lesson generalises: what a test application does with a command line is a property of the
+project that produced it, not of the framework version. Only one flag makes the launch
+shape-independent.
+
 ## Why not the exit code alone
 
 The xUnit console runner exits **0** when a filter matches zero tests. A tool that trusted the exit

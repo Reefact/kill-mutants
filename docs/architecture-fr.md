@@ -155,3 +155,36 @@ Rien dans M1 ne bloque ces étapes. La sélection des tests (M5) restreint ce qu
 `ITestRunner` d'exécuter. La parallélisation (M6) est accessible parce que chaque mutant est un
 assembly indépendant dans un processus indépendant — la propriété que nous offre gratuitement le
 choix d'une compilation par mutant.
+
+### Ce que les milestones suivants devront traiter, déjà vérifié
+
+Une relecture adverse du M1 livré a établi les points suivants sur cette machine. Ils sont consignés
+maintenant parce que chacun est peu coûteux à anticiper et cher à découvrir tard.
+
+- **M2 a besoin d'une liste de constructions à ne pas muter, et c'est une exigence de correction, pas
+  un raffinement.** C# fige les valeurs `const` et les valeurs de paramètres par défaut dans le *site
+  d'appel* à la compilation. Muter `const Limit = 18` en `99` dans la bibliothèque et remplacer
+  l'assembly laisse un projet de test déjà compilé lire toujours `18`. Un tel mutant ne peut jamais
+  être tué : muter ces constructions fabriquerait des survies factices garanties et abaisserait
+  silencieusement le score.
+- **Le point bloquant de M6 est l'injection, pas la compilation.** `AssemblyInjection` détient un
+  seul chemin et `MutationTestSession` hisse un unique `using` au-dessus de la boucle : N mutants
+  concurrents exigent N répertoires de sortie isolés. Mesuré avec quatre bacs à sable : 639 ms contre
+  2 235 ms en séquentiel, soit un gain de 3,5×, avec des verdicts indépendants corrects. L'émission
+  elle-même se parallélise bien — 3,76 ms par émission sur un thread, 0,85 ms sur quatre — ce qui
+  renforce l'ADR-0002 au lieu de le fragiliser : le terme qu'optimiseraient les schemata rétrécit à
+  mesure que l'on parallélise.
+- **M5 et M6 entrent en collision, et la collision est dans le modèle de données.** Les identifiants
+  uniques de tests xUnit dérivent du *chemin* de l'assembly, pas de son contenu : des copies de bac à
+  sable identiques octet pour octet ont produit des UID différents. L'isolation par mutant et la
+  sélection de tests par UID sont donc mutuellement exclusives en l'état. La question « sur quoi la
+  carte de couverture est-elle indexée ? » doit être tranchée avant de construire l'une ou l'autre.
+- **La couverture réclame un mécanisme que cette conception ne nomme pas encore.** Puisque rien n'est
+  injecté, rien n'observe qu'un test a atteint un site de mutation donné. `-automated` fournit des
+  événements par *test*, ce qui est un problème différent de l'atteignabilité par *site de mutation*.
+  M5 devra choisir sa source délibérément — une passe instrumentée distincte, ou des données de
+  couverture externes projetées sur les spans de mutation — plutôt que de supposer que le runner la
+  fournit déjà.
+- **`MutantGenerator.Generate` numérote les mutants à partir de un à chaque appel.** Correct pour M1,
+  qui l'appelle une fois. La boucle par projet de M3 redémarrerait les identifiants à `M1` pour
+  chaque projet si la séquence n'est pas remontée d'un cran.

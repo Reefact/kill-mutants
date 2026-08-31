@@ -62,6 +62,28 @@ public class MutationTestingEndToEndTests
         Assert.Equal("0%", report.Score.ToString());
     }
 
+    /// <summary>
+    /// Regression test. A project setting UseMicrosoftTestingPlatformRunner generates the inverted
+    /// entry point, where the test application defaults to the Microsoft Testing Platform host.
+    /// Before `-automated` was passed on every run, our arguments reached that host, which rejected
+    /// them with "Unknown option", exited 5 and wrote no result file - aborting the whole run. The
+    /// tool must work on both project shapes.
+    /// </summary>
+    [Fact]
+    public async Task A_project_defaulting_to_the_testing_platform_host_is_still_run_correctly()
+    {
+        using var fixture = FixtureCopy.Create();
+        fixture.UseMicrosoftTestingPlatformRunner();
+
+        MutationTestReport report = await MutationTesting.RunAsync(
+            fixture.Root, cancellationToken: TestContext.Current.CancellationToken);
+
+        MutantResult result = Assert.Single(report.Results);
+
+        Assert.Equal(MutantStatus.Killed, result.Status);
+        Assert.Equal("100%", report.Score.ToString());
+    }
+
     [Fact]
     public async Task The_report_renders_the_milestone_output()
     {
