@@ -1,0 +1,31 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{json,yml,yaml,md}]
+indent_size = 2
+
+[*.{csproj,props,targets,slnx}]
+indent_size = 2
+
+[*.cs]
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_prefer_braces = true:warning
+dotnet_style_require_accessibility_modifiers = for_non_interface_members:warning
+dotnet_sort_system_directives_first = true
+
+# ---------------------------------------------------------------------------
+# Test projects
+# ---------------------------------------------------------------------------
+[tests/**/*.cs]
+# CA1707 (no underscores in member names) is disabled for tests only, deliberately.
+# A test name is a sentence describing behaviour - `Adult_age_is_adult` reads as documentation and
+# is the convention this project uses throughout. The rule remains enforced everywhere else, where
+# it is about public API naming and does apply.
+dotnet_diagnostic.CA1707.severity = none
