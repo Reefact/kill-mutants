@@ -102,6 +102,13 @@ internal sealed class MutationTestSession
             .RunAsync(target.TestProject, TimeSpan.FromMinutes(10), stopOnFirstFailure: false, cancellationToken)
             .ConfigureAwait(false);
 
+        if (outcome.Crashed)
+        {
+            throw new BaselineVerificationException(
+                $"The test application for '{target.TestProject.Name}' could not be run against " +
+                $"unmutated code.{Environment.NewLine}{outcome.CrashDetail}");
+        }
+
         if (outcome.NoTestsRan)
         {
             throw new BaselineVerificationException(
@@ -144,6 +151,13 @@ internal sealed class MutationTestSession
         if (outcome.TimedOut)
         {
             return new MutantResult(mutant, MutantStatus.Timeout);
+        }
+
+        if (outcome.Crashed)
+        {
+            // The baseline proved this host runs cleanly unmutated, so a crash here is attributable
+            // to the mutation. The suite certainly did not pass, which is what killing a mutant means.
+            return new MutantResult(mutant, MutantStatus.Killed, outcome.CrashDetail);
         }
 
         if (outcome.NoTestsRan)

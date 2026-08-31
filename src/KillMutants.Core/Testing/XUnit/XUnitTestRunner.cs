@@ -107,9 +107,14 @@ internal sealed class XUnitTestRunner : ITestRunner
     {
         if (!File.Exists(resultPath))
         {
-            throw new TestExecutionException(
-                $"The test application produced no result file." +
-                $"{Environment.NewLine}{process.CombinedOutput}");
+            // No result file. Either the host died mid-run - which a mutation can genuinely cause -
+            // or it refused to start. Report it rather than throw: deciding which of those it is
+            // belongs to the caller, who knows whether this was the baseline or a mutant.
+            return TestRunOutcome.FromCrash(
+                process.Duration,
+                $"The test application exited with code " +
+                $"{process.ExitCode.ToString(CultureInfo.InvariantCulture)} without writing a result file." +
+                $"{Environment.NewLine}{Truncate(process.CombinedOutput)}");
         }
 
         XElement? assembly = XDocument.Load(resultPath).Root?.Element("assembly");
@@ -126,6 +131,9 @@ internal sealed class XUnitTestRunner : ITestRunner
             Duration: process.Duration,
             TimedOut: false);
     }
+
+    private static string Truncate(string output) =>
+        output.Length <= 2000 ? output : output[..2000] + "...";
 
     private static int ReadCount(XElement assembly, string attributeName)
     {

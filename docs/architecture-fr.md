@@ -7,8 +7,7 @@
 Ce sont des engagements, pas des valeurs par défaut. Ce sont eux qui permettent à la conception de
 rester petite.
 
-**Supporté :** .NET moderne (net10.0), C#, xUnit 4, Microsoft Testing Platform 2, projets au format
-SDK.
+**Supporté :** xUnit 4, .NET moderne (net10.0), C#, projets au format SDK.
 
 **Non supporté, et aucune abstraction n'existe en prévision :** xUnit 2 et antérieurs, NUnit, MSTest,
 TUnit, VSTest, .NET Framework, formats de projet non-SDK, `packages.config`, F#, Visual Basic.
@@ -16,6 +15,14 @@ TUnit, VSTest, .NET Framework, formats de projet non-SDK, `packages.config`, F#,
 « xUnit 4 » désigne la famille de paquets `xunit.v3` en version `4.0.0` (publiée le 2026-08-15). Il
 n'existe pas d'identifiant de paquet `xunit.v4`. La déclinaison Microsoft Testing Platform 2 est
 `xunit.v3.mtp-v2`.
+
+**Où se situe Microsoft Testing Platform.** MTP 2 fait partie de l'écosystème que nous visons, ce
+n'est pas une contrainte autour de laquelle nous concevons. Les projets xUnit 4 peuvent ou non
+s'appuyer dessus, et KillMutants traite les deux cas. Ce dont l'outil a besoin, c'est du chemin
+d'exécution xUnit 4 le plus simple, le plus fiable et le plus performant pour le besoin considéré ;
+aujourd'hui c'est le runner propre à xUnit, qui fournit en prime `-stopOnFail`, `-list tests /json`
+et `-id <uid>`. Un couplage direct à MTP — un client JSON-RPC, par exemple — ne sera introduit que
+lorsqu'un besoin concret de KillMutants le justifiera *et* que xUnit 4 ne saura pas y répondre.
 
 KillMutants ne prend **aucune dépendance envers un paquet xUnit ou MTP**. Il lance l'exécutable du
 projet de test comme processus enfant. Le couplage est la connaissance d'un contrat de ligne de

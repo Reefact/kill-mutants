@@ -58,7 +58,7 @@ internal sealed class ProjectCompilation
             assemblyName: arguments.CompilationName ?? Path.GetFileNameWithoutExtension(arguments.OutputFileName),
             syntaxTrees: syntaxTrees,
             references: ResolveReferences(arguments, projectDirectory),
-            options: NeutraliseWarningsAsErrors(arguments.CompilationOptions));
+            options: RelaxWarningsAsErrors(arguments.CompilationOptions));
 
         return new ProjectCompilation(
             compilation,
@@ -132,10 +132,30 @@ internal sealed class ProjectCompilation
     }
 
     /// <summary>
-    /// Clears any project-wide <c>/warnaserror+</c>. A mutation can legitimately make previously
-    /// live code unreachable (CS0162) or a variable unused; under warnings-as-errors that mutant
-    /// would be reported as a compile error rather than tested, which quietly understates the score.
+    /// Stops warnings from failing a mutant's compilation. A mutation can legitimately make live
+    /// code unreachable (CS0162) or a variable unused (CS0219); under warnings-as-errors such a
+    /// mutant would be recorded as a compile error instead of being tested, quietly understating
+    /// the score.
     /// </summary>
-    private static CSharpCompilationOptions NeutraliseWarningsAsErrors(CSharpCompilationOptions options) =>
-        options.WithGeneralDiagnosticOption(ReportDiagnostic.Default);
+    /// <remarks>
+    /// Clearing the general option is not enough, which is the trap here.
+    /// <c>WithGeneralDiagnosticOption</c> leaves <c>SpecificDiagnosticOptions</c> untouched, so a
+    /// project built with <c>/warnaserror+:CS0162,CS0219</c> still maps both to
+    /// <see cref="ReportDiagnostic.Error"/> afterwards - verified. Every diagnostic explicitly
+    /// escalated to an error is therefore demoted back to a warning. Suppressions are left alone:
+    /// the user silenced those deliberately and honouring that cannot cost us a mutant.
+    /// </remarks>
+    internal static CSharpCompilationOptions RelaxWarningsAsErrors(CSharpCompilationOptions options)
+    {
+        Dictionary<string, ReportDiagnostic> escalated = options.SpecificDiagnosticOptions
+            .Where(option => option.Value == ReportDiagnostic.Error)
+            .ToDictionary(option => option.Key, _ => ReportDiagnostic.Warn, StringComparer.Ordinal);
+
+        CSharpCompilationOptions relaxed = options.WithGeneralDiagnosticOption(ReportDiagnostic.Default);
+
+        return escalated.Count == 0
+            ? relaxed
+            : relaxed.WithSpecificDiagnosticOptions(
+                options.SpecificDiagnosticOptions.SetItems(escalated));
+    }
 }

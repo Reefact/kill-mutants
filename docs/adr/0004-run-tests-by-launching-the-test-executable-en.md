@@ -28,8 +28,16 @@ Three options, all measured:
 | `--server --client-port N` (JSON-RPC) | not measured | protocol |
 
 The project owner was asked to arbitrate what "Microsoft Testing Platform 2 only" means, and chose:
-the *projects under test* must be xUnit 4 / MTP 2 projects; KillMutants itself need not speak the
-MTP protocol.
+the *projects under test* must be xUnit 4 projects; KillMutants itself need not speak the MTP
+protocol.
+
+That constraint has since been restated more precisely, and this ADR is stronger for it. The
+foundation is **xUnit 4 and modern .NET only**, with no VSTest or legacy-runner compatibility. MTP 2
+is part of the ecosystem we target — an xUnit 4 project may run on it, and we handle that — but it is
+not an architectural constraint. The rule is to take the simplest, most reliable and fastest xUnit 4
+execution path for the job, and to introduce direct MTP coupling only when a concrete need justifies
+it and xUnit 4 cannot already meet it. Under that framing, launching the executable is not a
+pragmatic compromise against a stated constraint; it is simply the right path.
 
 ## Decision
 

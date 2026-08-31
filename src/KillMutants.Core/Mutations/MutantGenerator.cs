@@ -8,6 +8,8 @@ internal sealed class MutantGenerator
 {
     private readonly MutatorCatalog _catalog;
 
+    private MutantId _nextId = MutantId.First;
+
     public MutantGenerator(MutatorCatalog catalog)
     {
         ArgumentNullException.ThrowIfNull(catalog);
@@ -17,14 +19,17 @@ internal sealed class MutantGenerator
 
     /// <summary>
     /// Produces every mutant the catalog proposes across <paramref name="syntaxTrees"/>, skipping
-    /// generated sources.
+    /// generated sources and sites whose mutation could never be observed.
     /// </summary>
+    /// <remarks>
+    /// Identifiers continue across calls, so one generator numbers a whole run. A generator per
+    /// project would otherwise restart at <c>M1</c> for each of them and make the report ambiguous.
+    /// </remarks>
     public IReadOnlyList<Mutant> Generate(IEnumerable<SyntaxTree> syntaxTrees)
     {
         ArgumentNullException.ThrowIfNull(syntaxTrees);
 
         List<Mutant> mutants = [];
-        MutantId nextId = MutantId.First;
 
         foreach (SyntaxTree tree in syntaxTrees)
         {
@@ -35,12 +40,17 @@ internal sealed class MutantGenerator
 
             foreach (SyntaxNode node in tree.GetRoot().DescendantNodes())
             {
+                if (!MutationSite.IsObservable(node))
+                {
+                    continue;
+                }
+
                 foreach (IMutator mutator in _catalog.Mutators)
                 {
                     foreach (MutationCandidate candidate in mutator.Mutate(node))
                     {
-                        mutants.Add(new Mutant(nextId, candidate));
-                        nextId = nextId.Next();
+                        mutants.Add(new Mutant(_nextId, candidate));
+                        _nextId = _nextId.Next();
                     }
                 }
             }
