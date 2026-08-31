@@ -139,9 +139,16 @@ duration already recorded for the budget.*
 
 ## 7. Roadmap position
 
-Milestone 1 is one project pair, one mutator (`>=` becomes `>`), one mutant, executed for real.
-M2 grows the catalog; M3 handles real solution structure; M4 test discovery; M5 coverage and
-test-to-mutant mapping; M6 performance; M7 reporting; M8 CI; M9 advanced mutations.
+Milestone 1 was one project pair, one mutator (`>=` becomes `>`), one mutant, executed for real.
+M2 grew the catalogue to six families. M3 handles real solution structure: several test projects,
+several projects under test, project references followed transitively, and a framework pinned per
+project. Still ahead: M4 test discovery; M5 coverage and test-to-mutant mapping; M6 performance;
+M7 reporting; M8 CI; M9 advanced mutations.
+
+**The ordering rule M3 established.** Build every test project, then read every compiler command
+line, then inject. MSBuild must not run before the build, because reading a command line relies on
+its output; and must not run after injection, because `dotnet build` and `dotnet test` both copy the
+pristine assembly back over a mutant. See RB-012 in the robustness backlog.
 
 Nothing in M1 blocks these. Test selection (M5) narrows what `ITestRunner` is asked to run.
 Parallelism (M6) is available because each mutant is an independent assembly and an independent
@@ -172,6 +179,6 @@ because each is cheap to plan for and expensive to discover late.
   which is a different problem from per-*mutation-site* reachability. M5 must choose its source
   deliberately — a separate instrumented pass, or external coverage data mapped onto mutation
   spans — rather than assume the runner already provides it.
-- **`MutantGenerator.Generate` numbers mutants from one on every call.** Correct for M1, which calls
-  it once. M3's per-project loop would restart identifiers at `M1` for each project unless the
-  sequence is lifted out.
+- **Mutant numbering runs across a whole session.** One generator serves every project, so
+  identifiers never repeat; a generator per project would restart at `M1` for each and make the
+  report ambiguous. Done, and pinned by a test.

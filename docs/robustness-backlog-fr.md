@@ -171,23 +171,34 @@ ignorés, pas rapportés.
 
 ---
 
-## RB-006 — L'injection ne résiste pas à un arrêt brutal · OUVERT
+## RB-006 — L'injection ne résiste pas à un arrêt brutal · COUVERT
 
-Si KillMutants est tué anormalement (annulation CI, SIGKILL) alors qu'un mutant est injecté,
-`AssemblyInjection.Dispose` ne s'exécute jamais et le développeur se retrouve avec un assembly muté
-et un fichier `.killmutants-original` dans `bin`. Stryker souffre de la même plaie et se contente de
-la journaliser (`ProjectComponents/TestProjects/TestProjectsInfo.cs:51-58`).
+**Pourquoi cela existe.** `Dispose` ne s'exécute pas sur un SIGKILL ni sur un job CI annulé : un run
+tué alors qu'un mutant est injecté laisse un assembly muté et un fichier `.killmutants-original` dans
+le répertoire de sortie du développeur. Stryker souffre de la même plaie et se contente de la
+journaliser (`ProjectComponents/TestProjects/TestProjectsInfo.cs:51-58`).
 
-**Ce qu'il faudrait faire.** Détecter une sauvegarde résiduelle au démarrage et la restaurer avant
-toute autre chose. Peu coûteux, et cela transforme un échec déroutant en non-événement.
+**Notre comportement.** Prendre en charge un assembly restaure d'abord toute sauvegarde abandonnée.
+Trouver une sauvegarde prouve qu'un run précédent est mort, et la restaurer silencieusement est le
+bon choix : sinon le développeur voit ses propres tests échouer sans comprendre pourquoi, et — pire —
+le prochain run de KillMutants prendrait l'assembly muté comme baseline et rapporterait un score
+flatteur mesuré contre lui.
+
+**Nos tests.** `AssemblyInjectionTests.An_assembly_abandoned_by_a_killed_run_is_restored_before_anything_else`.
 
 ---
 
-## RB-007 — Un projet multi-cible produit une ligne de commande par framework · OUVERT
+## RB-007 — Un projet multi-cible produit une ligne de commande par framework · COUVERT
 
-`MsBuildQuery` demande `CscCommandLineArgs` sans épingler de framework cible. Sur un projet qui en
-vise plusieurs, le résultat est ambigu, et des mutants pourraient être émis contre un framework que
-le projet de test n'utilise pas. À résoudre avant M3.
+**Pourquoi cela existe.** Interroger MSBuild sur un projet visant plusieurs frameworks sans préciser
+lequel donne une réponse pour un framework indéterminé. Des mutants pourraient alors être émis contre
+un framework que le projet de test ne charge jamais.
+
+**Notre comportement.** Un projet à muter est toujours résolu contre le framework du projet de test
+qui l'atteint, épinglé explicitement sur la requête MSBuild. Un *projet de test* qui en vise
+plusieurs est refusé avec un message les nommant, plutôt que d'en choisir un en silence et de
+rapporter un score pour un framework que l'utilisateur n'a pas choisi — chacun demanderait son propre
+run, sa propre sortie et son propre verdict.
 
 ---
 
@@ -259,3 +270,36 @@ mutants logiques. Ce sont nos propres tests de famille qui l'ont attrapé.
 `A_type_that_declares_only_one_operator_of_the_pair_is_not_mutated`,
 `A_type_that_declares_both_operators_is_mutated`, et la suite `LogicalOperatorMutatorTests`, qui est
 ce qui échoue si la vérification régresse vers le symbole.
+
+---
+
+## RB-012 — Lire la ligne de commande du compilateur peut détruire la sortie de build · COUVERT
+
+Découvert en faisant fonctionner les solutions multi-projets, et c'est le point le plus surprenant de
+ce fichier. Deux options qui ressemblent à une isolation raisonnable sont en réalité nuisibles, et
+aucune des deux n'échoue visiblement sur une solution mono-projet.
+
+**`IntermediateOutputPath` est une propriété globale.** La rediriger pour garder les artefacts
+générés hors du `obj` de l'utilisateur la propage à chaque projet référencé : la ligne de commande
+pointe alors vers des assemblys de référence dans un répertoire où le compilateur n'a jamais eu le
+droit de tourner. Tout projet ayant une référence de projet échoue en `FileNotFoundException` avant
+même de pouvoir être muté.
+
+**`CopyBuildOutputToOutputDirectory=false` supprime l'assembly construit.** La copie étant supprimée
+et le compilateur sauté, le nettoyage incrémental de MSBuild voit un assembly qu'il n'a pas écrit et
+le retire de `bin`. Vérifié : interroger `Core` supprimait
+`Core/bin/Release/net10.0/Core.dll`, et la requête du projet suivant échouait en tentant de copier la
+référence qui venait de disparaître.
+
+**Notre comportement.** Aucune des deux options n'est utilisée. `CoreCompile` est forcé à se
+réexécuter en supprimant le fichier de cache que lit sa vérification d'incrémentalité — un fichier que
+MSBuild régénère — et la requête tourne *après* le vrai build, si bien que l'assembly intermédiaire
+existe encore, que la copie réussit et que rien n'est nettoyé.
+
+**L'ordre est désormais une règle, pas un hasard.** Construire chaque projet de test, puis lire chaque
+ligne de commande, puis injecter. MSBuild ne doit pas tourner avant le build, car la requête dépend de
+sa sortie ; ni après l'injection, car `dotnet build` et `dotnet test` recopient tous deux l'assembly
+d'origine par-dessus le mutant.
+
+**Nos tests.** `MutationTestingEndToEndTests.Several_projects_and_several_test_suites_are_all_covered`,
+qui part d'une arborescence propre et échoue si l'une des deux options revient.

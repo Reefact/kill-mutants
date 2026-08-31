@@ -153,10 +153,18 @@ la durée du baseline étant déjà enregistrée pour en dériver le budget.*
 
 ## 7. Position dans la roadmap
 
-Le milestone 1 comprend un couple de projets, un mutateur (`>=` devient `>`), un mutant, exécuté pour
-de vrai. M2 étoffe le catalogue ; M3 traite les structures de solution réelles ; M4 la découverte des
-tests ; M5 la couverture et l'association tests ↔ mutants ; M6 la performance ; M7 le reporting ;
-M8 la CI ; M9 les mutations avancées.
+Le milestone 1 comprenait un couple de projets, un mutateur (`>=` devient `>`), un mutant, exécuté
+pour de vrai. M2 a étoffé le catalogue à six familles. M3 traite les structures de solution réelles :
+plusieurs projets de test, plusieurs projets à muter, les références de projet suivies
+transitivement, et un framework épinglé par projet. Restent devant : M4 la découverte des tests ;
+M5 la couverture et l'association tests ↔ mutants ; M6 la performance ; M7 le reporting ; M8 la CI ;
+M9 les mutations avancées.
+
+**La règle d'ordre établie par M3.** Construire chaque projet de test, puis lire chaque ligne de
+commande du compilateur, puis injecter. MSBuild ne doit pas tourner avant le build, car la lecture
+d'une ligne de commande dépend de sa sortie ; ni après l'injection, car `dotnet build` et
+`dotnet test` recopient tous deux l'assembly d'origine par-dessus un mutant. Voir RB-012 du backlog
+de robustesse.
 
 Rien dans M1 ne bloque ces étapes. La sélection des tests (M5) restreint ce qu'on demande à
 `ITestRunner` d'exécuter. La parallélisation (M6) est accessible parce que chaque mutant est un
@@ -192,6 +200,6 @@ maintenant parce que chacun est peu coûteux à anticiper et cher à découvrir 
   M5 devra choisir sa source délibérément — une passe instrumentée distincte, ou des données de
   couverture externes projetées sur les spans de mutation — plutôt que de supposer que le runner la
   fournit déjà.
-- **`MutantGenerator.Generate` numérote les mutants à partir de un à chaque appel.** Correct pour M1,
-  qui l'appelle une fois. La boucle par projet de M3 redémarrerait les identifiants à `M1` pour
-  chaque projet si la séquence n'est pas remontée d'un cran.
+- **La numérotation des mutants court sur toute la session.** Un seul générateur sert tous les
+  projets, si bien que les identifiants ne se répètent jamais ; un générateur par projet
+  redémarrerait à `M1` pour chacun et rendrait le rapport ambigu. Fait, et verrouillé par un test.
