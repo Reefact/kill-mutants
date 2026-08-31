@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/KillMutants.Cli/KillMutants.Cli.csproj" />
+    <Project Path="src/KillMutants.Core/KillMutants.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/KillMutants.Core.Tests/KillMutants.Core.Tests.csproj" />
+    <Project Path="tests/KillMutants.EndToEnd.Tests/KillMutants.EndToEnd.Tests.csproj" />
+  </Folder>
+</Solution>

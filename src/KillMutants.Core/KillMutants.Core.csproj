@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="KillMutants.Core.Tests" />
+    <InternalsVisibleTo Include="KillMutants.EndToEnd.Tests" />
+  </ItemGroup>
+
+</Project>
