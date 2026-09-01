@@ -138,9 +138,16 @@ internal sealed class MutationTestSession
                     .ConfigureAwait(false)
                 : null;
 
-            return await TestMutantsAsync(
+            MutantResult[] results = await TestMutantsAsync(
                     compilation, sandboxes, mutants, coverage, budget, cancellationToken)
                 .ConfigureAwait(false);
+
+            // Only now that every worker has stopped, so a re-run competes with nothing.
+            await ConfirmTimeoutsAloneAsync(
+                    compilation, sandboxes[0], mutants, results, coverage, budget, cancellationToken)
+                .ConfigureAwait(false);
+
+            return results;
         }
         finally
         {
@@ -162,7 +169,7 @@ internal sealed class MutationTestSession
     /// milliseconds. Results are re-ordered afterwards so the report does not depend on which worker
     /// happened to finish first.
     /// </remarks>
-    private async Task<IReadOnlyList<MutantResult>> TestMutantsAsync(
+    private async Task<MutantResult[]> TestMutantsAsync(
         ProjectCompilation compilation,
         IReadOnlyList<TestSandbox> sandboxes,
         IReadOnlyList<Mutant> mutants,
@@ -190,6 +197,55 @@ internal sealed class MutationTestSession
         await Task.WhenAll(sandboxes.Select(WorkAsync)).ConfigureAwait(false);
 
         return [.. results.Select(result => result!)];
+    }
+
+    /// <summary>
+    /// Re-tests every mutant that timed out, alone, and keeps whatever verdict that produces.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The budget is derived from a baseline measured with nothing else running, and then spent by
+    /// workers competing with each other for the machine. A healthy but slow mutant can exceed it
+    /// for that reason alone - and a timeout counts as a <em>detection</em>, so the mistake inflates
+    /// the score rather than depressing it. That is the worst direction for an error to go in:
+    /// a suite is credited with catching something it never noticed.
+    /// </para>
+    /// <para>
+    /// Widening the budget or scaling it by the worker count would make this less likely without
+    /// making it impossible, and would slow every genuine endless loop down in exchange. Running the
+    /// timeouts again once the workers have finished removes the cause instead: at that point
+    /// nothing else of ours is running, so a mutant that still exceeds its budget is slow on its own
+    /// merits. The cost is one extra run per timeout, and timeouts are rare - on a suite where they
+    /// are not, they are the mutants that already dominate the run.
+    /// </para>
+    /// <para>
+    /// Measured on a four-core machine, four concurrent runs of a start-up-dominated suite cost 18%
+    /// more than one alone, which the default budget absorbs easily. A CPU-bound suite has no such
+    /// bound, which is why this is a rule rather than a wider margin.
+    /// </para>
+    /// </remarks>
+    private async Task ConfirmTimeoutsAloneAsync(
+        ProjectCompilation compilation,
+        TestSandbox sandbox,
+        IReadOnlyList<Mutant> mutants,
+        MutantResult[] results,
+        CoverageMap? coverage,
+        TimeSpan budget,
+        CancellationToken cancellationToken)
+    {
+        int[] timedOut = [.. Enumerable
+            .Range(0, results.Length)
+            .Where(index => results[index].Status == MutantStatus.Timeout)];
+
+        foreach (int index in timedOut)
+        {
+            _progress?.Report(new MutationTestProgress(
+                MutationTestPhase.ConfirmingTimeouts, 0, timedOut.Length, mutants[index].Id.ToString()));
+
+            results[index] = await TestMutantAsync(
+                    compilation, sandbox, mutants[index], coverage, budget, cancellationToken)
+                .ConfigureAwait(false);
+        }
     }
 
     private async Task<ProjectCompilation> BuildCompilationAsync(
