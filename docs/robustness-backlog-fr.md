@@ -680,6 +680,13 @@ chemin n'existe plus. La liste `Directories` que parcourt le repli `Resolving` e
 aussi, si bien que les répertoires d'analyseurs d'une exécution restent sur la liste de toutes les
 suivantes.
 
+Cela se manifeste sous deux formes, toutes deux observées. La deuxième exécution récupère les
+générateurs de la première — le cas ci-dessus — ou bien elle n'en récupère aucun : sur la suite
+complète, une exécution du projet de test à générateur a annoncé huit générateurs là où elle aurait
+dû en avoir neuf, celui du projet n'ayant discrètement rien apporté, et la compilation a ensuite
+échoué sur le code qu'il aurait dû produire. Rien n'a été consigné comme non chargeable : l'exécution
+ignorait qu'il manquait quoi que ce soit.
+
 **Ce que cela coûte.** Rien via la ligne de commande, qui exécute une session par processus puis
 s'arrête. Via l'API — `MutationTesting.RunAsync` appelé deux fois, ce que font nos propres tests et
 ce que ferait un mode surveillance ou une intégration dans un IDE — une deuxième exécution génère
