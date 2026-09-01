@@ -156,7 +156,7 @@ internal sealed class MutationTestSession
                 sandbox.Dispose();
             }
 
-            DeleteQuietly(sandboxRoot);
+            Scratch.DeleteDirectory(sandboxRoot);
         }
     }
 
@@ -393,21 +393,6 @@ internal sealed class MutationTestSession
         }
 
         return new MutantResult(mutant, MutantStatus.Survived);
-    }
-
-    private static void DeleteQuietly(string directory)
-    {
-        try
-        {
-            if (Directory.Exists(directory))
-            {
-                Directory.Delete(directory, recursive: true);
-            }
-        }
-        catch (IOException)
-        {
-            // A leftover temporary directory is not worth failing a run over.
-        }
     }
 
 }

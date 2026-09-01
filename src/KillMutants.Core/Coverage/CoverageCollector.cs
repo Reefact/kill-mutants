@@ -199,19 +199,8 @@ internal sealed class CoverageCollector
         }
         finally
         {
-            DeleteQuietly(outputPath);
+            Scratch.DeleteFile(outputPath);
         }
     }
 
-    private static void DeleteQuietly(string path)
-    {
-        try
-        {
-            File.Delete(path);
-        }
-        catch (IOException)
-        {
-            // A leftover temp file is not worth failing a run over.
-        }
-    }
 }

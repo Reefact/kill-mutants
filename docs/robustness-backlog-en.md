@@ -218,11 +218,40 @@ top of the file, before any code, as the convention specifies; a comment further
 
 ---
 
-## RB-009 — Retaining every mutant's artefacts will not scale · OPEN
+## RB-009 — Retaining every mutant's artefacts will not scale · ACCEPTED
 
-Mutated syntax trees, emitted byte arrays and per-mutant diagnostics are all held for the whole run.
-Real solutions reach tens of thousands of mutants. Not a problem at current scale; it becomes one at
-M3.
+Recorded as a worry, then measured. The worry was wrong about what is retained, and the measurement
+says so plainly.
+
+**What was assumed.** "Mutated syntax trees, emitted byte arrays and per-mutant diagnostics are all
+held for the whole run." Emitted assemblies are not: `EmitWith` returns them to a local, the sandbox
+writes them to disk, and nothing keeps a reference. What a finished mutant actually retains is its
+two syntax nodes — whose green nodes are shared with the tree the compilation already holds — a
+status, and a diagnostics string only when it failed to compile.
+
+**The measurement.** Resident set sampled every two seconds through a full run over
+`KillMutants.Core`, 384 mutants on four cores:
+
+| Point in the run | RSS |
+|---|---|
+| Start | 39 MB |
+| After building the test projects | 41 MB |
+| After reading the compiler command lines | 47 MB |
+| After building the Roslyn compilation and running the generators | 210 MB |
+| Start of the mutant phase | 321 MB |
+| End of the mutant phase | 399 MB (peak 402 MB) |
+
+The shape is what settles it. Within the mutant phase, RSS reaches 399 MB after about 100 seconds
+and then stays between 396 and 402 MB for the remaining 255 seconds — roughly three hundred more
+mutants at no additional cost. Retention linear in the mutant count would have climbed throughout;
+it does not. The rise that does happen is the heap reaching its working size against transient emit
+buffers, most of which land on the large object heap and are then reused.
+
+**Why it is accepted rather than fixed.** The fixed cost is Roslyn: 280 MB of the 402 is the
+compilation, its semantic models and seven source generators, and it is there before the first
+mutant. Making the per-mutant state smaller would not move a number that is already flat. If a much
+larger solution ever shows a rising profile rather than a flat one, the measurement to repeat is this
+one, and the thing to look at first is the compilation, not the mutants.
 
 ---
 

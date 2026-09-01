@@ -155,11 +155,17 @@ d'entiers.
 - `MutatorName` — nomme la règle ayant produit la mutation.
 - `SourceLocation` — fichier, ligne et colonne, pour le rapport.
 - `Mutant` — identifiant, nom du mutateur, nœuds syntaxiques d'origine et de remplacement, position.
-- `MutantStatus` — `Killed`, `Survived`, `CompileError`, `Timeout`, `NoCoverage`, `Pending`. Le
-  milestone 1 ne produit que `Killed` et `Survived`, mais le vocabulaire est figé dès maintenant afin
-  que les milestones suivants ajoutent du comportement au lieu de remodeler le modèle.
+- `MutantStatus` — ce qu'est devenu un mutant : `Killed`, `Survived`, `Timeout`, `NoCoverage`,
+  `CompileError`.
+- `MutantOutcome` — ce que cela *vaut* : `Detected` (`Killed`, `Timeout`), `Undetected` (`Survived`,
+  `NoCoverage`), `Untestable` (`CompileError`). Séparé du statut à dessein, pour qu'aucun rapporteur
+  ni aucun seuil ne décide pour lui-même de ce que signifie un timeout ou un mutant non couvert.
 - `MutationScore` — un type valeur qui sait se calculer et se rendre, de sorte qu'aucun appelant ne
-  divise deux entiers et ne formate un pourcentage à la main.
+  divise deux entiers et ne formate un pourcentage à la main. Il vaut
+  `Detected / (Detected + Undetected)`. Seuls les mutants non testables sont exclus, et seulement
+  parce que la suite n'a jamais été interrogée à leur sujet : un mutant que rien ne couvre *est* non
+  détecté, et l'exclure signifierait qu'un projet peut augmenter son score en ajoutant du code
+  qu'aucun test ne touche.
 
 ## 6. Risques
 
@@ -228,16 +234,38 @@ ci-dessus étant décidées et non oubliées. M10 en fait un outil et non plus u
 exécuté sur le code source de KillMutants lui-même, ce qui a fait apparaître RB-016 en quelques
 secondes.
 
-**Ce qu'a mesuré la première exécution réelle.** 345 mutants sur `KillMutants.Core`, 4,8 minutes sur
-quatre cœurs, 90 tués, 102 survivants, un tué par timeout, aucun en échec de compilation. Deux
-chiffres méritent une réserve plutôt qu'un titre. Les 152 mutants signalés non couverts sont en
-grande partie un artefact de la configuration du run : il excluait la suite de bout en bout, qui est
-précisément ce qui exerce l'essentiel du code de découverte, d'analyse et d'exécution ; ces mutants
-sont donc non couverts *par la suite exécutée*, pas non testés. Et parmi les 102 survivants, une part
-importante sont des mutants `StringLiteral` sur des messages d'erreur que rien n'asserte — des
-constats vrais, mais les moins utiles par unité de temps d'exécution, et la première indication de là
-où le catalogue gagne réellement sa place sur du vrai code. Le score est donc rapporté ici comme une
-mesure, pas comme un verdict sur la suite de tests.
+**Ce que mesure l'exécution sur lui-même.** 384 mutants sur `KillMutants.Core`, 6,8 minutes sur
+quatre cœurs : 106 tués, 111 survivants, un tué par timeout, 166 non couverts, aucun en échec de
+compilation — un score de mutation de 27,86 %. Deux chiffres méritent une réserve plutôt qu'un titre.
+Les mutants non couverts sont en grande partie un artefact de la configuration du run : il exclut la
+suite de bout en bout, qui est précisément ce qui exerce l'essentiel du code de découverte, d'analyse
+et d'exécution ; ces mutants sont donc non couverts *par la suite exécutée*, pas non testés. Et parmi
+les survivants, une part importante sont des mutants `StringLiteral` sur des messages d'erreur que
+rien n'asserte — des constats vrais, mais les moins utiles par unité de temps d'exécution, et la
+première indication de là où le catalogue gagne réellement sa place sur du vrai code. Le score est
+rapporté ici comme une mesure, pas comme un verdict sur la suite de tests.
+
+**Où passe réellement le temps d'un run.** Mesuré sur `KillMutants.Core`, quatre cœurs, 384 mutants,
+72 méthodes de test, 6,8 minutes de bout en bout :
+
+| Phase | Temps | Part |
+|---|---|---|
+| Découverte de cinq projets | 2,2 s | 0,5 % |
+| Build des projets de test | 3,1 s | 0,8 % |
+| Lecture des lignes de commande du compilateur et construction des compilations | 5,2 s | 1,3 % |
+| Vérification du baseline | 22,1 s | 5,5 % |
+| Mesure de la couverture, une exécution par méthode de test | 73,9 s | 18,2 % |
+| Test des mutants | 299,0 s | 73,7 % |
+
+Deux conclusions en découlent, et toutes deux sont des raisons de *ne rien* changer pour l'instant. La
+mesure de couverture n'est pas le goulot d'étranglement à cette échelle : elle coûte un lancement de
+processus par test, environ 1,0 s ici, et permet d'écarter d'emblée 166 mutants non couverts. Et elle
+croît avec le nombre de *tests* quand la phase des mutants croît avec le nombre de mutants : la
+stratégie cesse donc d'être rentable seulement lorsque les tests dépassent largement les mutants — une
+suite de mille tests passerait dix-sept minutes à mesurer. C'est le chiffre à surveiller, et tant
+qu'un vrai projet ne l'atteint pas, l'attribution exacte qu'achète une exécution par test vaut plus
+que le temps qu'un schéma plus malin ferait gagner. Voir
+[ADR-0007](adr/0007-measure-coverage-with-a-type-preserving-probe-fr.md).
 
 **Deux flux de sortie, délibérément.** La progression part sur la sortie d'erreur et le rapport sur la
 sortie standard : `killmutants > rapport.txt` capture donc le rapport sans y mêler la ligne de

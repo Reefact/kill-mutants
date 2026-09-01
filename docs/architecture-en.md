@@ -143,11 +143,16 @@ Mutants are modelled explicitly. A mutant is never a tuple of strings and intege
 - `MutatorName` — names the rule that produced the mutation.
 - `SourceLocation` — file, line and character span, for reporting.
 - `Mutant` — id, mutator name, the original and replacement syntax nodes, and the location.
-- `MutantStatus` — `Killed`, `Survived`, `CompileError`, `Timeout`, `NoCoverage`, `Pending`.
-  Milestone 1 only produces `Killed` and `Survived`, but the vocabulary is fixed now so that later
-  milestones add behaviour rather than reshape the model.
+- `MutantStatus` — what became of a mutant: `Killed`, `Survived`, `Timeout`, `NoCoverage`,
+  `CompileError`.
+- `MutantOutcome` — what that is *worth*: `Detected` (`Killed`, `Timeout`), `Undetected`
+  (`Survived`, `NoCoverage`), `Untestable` (`CompileError`). Kept apart from the status on purpose,
+  so no reporter or threshold decides for itself what a timeout or an uncovered mutant means.
 - `MutationScore` — a value type that knows how to compute and render itself, so no caller ever
-  divides two integers and formats a percentage by hand.
+  divides two integers and formats a percentage by hand. It is `Detected / (Detected + Undetected)`.
+  Only untestable mutants are excluded, and only because the suite was never asked about them: a
+  mutant nothing covers *is* undetected, and excluding it would mean a project could raise its score
+  by adding code no test touches.
 
 ## 6. Risks
 
@@ -212,15 +217,36 @@ omissions listed above decided rather than overlooked. M10 makes it a tool rathe
 `dotnet killmutants`, given the `--exclude` a real repository needs, and — the point of the milestone
 — run against KillMutants' own source, which found RB-016 within seconds.
 
-**What the first real run measured.** 345 mutants over `KillMutants.Core`, 4.8 minutes on four
-cores, 90 killed, 102 survived, one killed by timeout, none failing to compile. Two numbers deserve
-their caveats rather than a headline. The 152 mutants reported as uncovered are largely an artefact
-of the run's own configuration: it excluded the end-to-end suite, which is what exercises most of the
-discovery, analysis and execution code, so those mutants are uncovered *by the suite that was run*
-rather than untested. And of the 102 survivors, a large share are `StringLiteral` mutants on error
-messages nothing asserts on — true findings, but the least useful ones per unit of run time, and the
-first evidence about where the catalogue earns its keep on real code. The score is therefore reported
-here as a measurement, not as a verdict on the test suite.
+**What running it on itself measures.** 384 mutants over `KillMutants.Core`, 6.8 minutes on four
+cores: 106 killed, 111 survived, one killed by timeout, 166 uncovered, none failing to compile — a
+mutation score of 27.86%. Two numbers deserve their caveats rather than a headline. The uncovered
+mutants are largely an artefact of the run's own configuration: it excludes the end-to-end suite,
+which is what exercises most of the discovery, analysis and execution code, so those mutants are
+uncovered *by the suite that was run* rather than untested. And of the survivors, a large share are
+`StringLiteral` mutants on error messages nothing asserts on — true findings, but the least useful
+ones per unit of run time, and the first evidence about where the catalogue earns its keep on real
+code. The score is reported here as a measurement, not as a verdict on the test suite.
+
+**Where a run's time actually goes.** Measured over `KillMutants.Core` on four cores, 384 mutants,
+72 test methods, 6.8 minutes end to end:
+
+| Phase | Time | Share |
+|---|---|---|
+| Discovering five projects | 2.2 s | 0.5% |
+| Building the test projects | 3.1 s | 0.8% |
+| Reading the compiler command lines and building the compilations | 5.2 s | 1.3% |
+| Verifying the baseline | 22.1 s | 5.5% |
+| Measuring coverage, one run per test method | 73.9 s | 18.2% |
+| Testing the mutants | 299.0 s | 73.7% |
+
+Two things follow, and both are reasons *not* to change anything yet. Coverage measurement is not the
+bottleneck at this shape: it costs one process launch per test, about 1.0 s each here, and buys the
+skipping of 166 uncovered mutants outright. And it scales with the *test* count while the mutant
+phase scales with the mutant count, so the strategy stops paying only when tests greatly outnumber
+mutants — a suite of a thousand tests would spend seventeen minutes measuring. That is the number to
+watch, and until a real project reaches it the exact attribution one run per test buys is worth more
+than the time a cleverer scheme would save. See
+[ADR-0007](adr/0007-measure-coverage-with-a-type-preserving-probe-en.md).
 
 **Two output streams, on purpose.** Progress goes to standard error and the report to standard
 output, so `killmutants > report.txt` captures the report without the progress line threaded through
