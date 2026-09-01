@@ -34,6 +34,7 @@ Every number below was measured on this platform (SDK 10.0.111, runtime 10.0.11)
 | Roslyn emit, reusing the compilation | **6 ms / mutant** |
 | `dotnet build` of the same project | ~1400 ms |
 | Test executable run (2 tests) | ~600 ms |
+| Mutant phase, 60 mutants, 4 cores — 1 / 2 / 4 workers | 1.0x / ~2.1x / ~3.2x |
 | `dotnet test --no-build` | ~1500 ms |
 | Test exe exit code — pass / fail | 0 / **1** |
 | `dotnet test` exit code — pass / fail / no tests | 0 / 2 / 8 |
@@ -142,8 +143,16 @@ duration already recorded for the budget.*
 Milestone 1 was one project pair, one mutator (`>=` becomes `>`), one mutant, executed for real.
 M2 grew the catalogue to six families. M3 handles real solution structure: several test projects,
 several projects under test, project references followed transitively, and a framework pinned per
-project. Still ahead: M4 test discovery; M5 coverage and test-to-mutant mapping; M6 performance;
-M7 reporting; M8 CI; M9 advanced mutations.
+project. M6 tests mutants in parallel, each worker in a private copy of the test output directory. Still
+ahead: M4 test discovery; M5 coverage and test-to-mutant mapping; M7 reporting; M8 CI; M9 advanced
+mutations.
+
+**Why sandboxes rather than a shared, warmed-up test host.** Reusing one host across mutants is the
+most tempting optimisation available and the one we refuse: it is the source of Stryker's
+longest-standing correctness complaint, where process-global state leaks between mutants and inflates
+scores. A private output directory per worker costs a directory copy and some disk, and buys the
+guarantee that no two mutants can ever observe each other. It also means KillMutants never writes
+into the developer's build output at all.
 
 **The ordering rule M3 established.** Build every test project, then read every compiler command
 line, then inject. MSBuild must not run before the build, because reading a command line relies on

@@ -39,6 +39,7 @@ tiré de connaissances antérieures.
 | Émission Roslyn, en réutilisant la compilation | **6 ms / mutant** |
 | `dotnet build` du même projet | ~1400 ms |
 | Exécution de l'application de test (2 tests) | ~600 ms |
+| Phase mutants, 60 mutants, 4 cœurs — 1 / 2 / 4 workers | 1,0× / ~2,1× / ~3,2× |
 | `dotnet test --no-build` | ~1500 ms |
 | Code de sortie de l'exécutable de test — succès / échec | 0 / **1** |
 | Code de sortie de `dotnet test` — succès / échec / aucun test | 0 / 2 / 8 |
@@ -156,9 +157,16 @@ la durée du baseline étant déjà enregistrée pour en dériver le budget.*
 Le milestone 1 comprenait un couple de projets, un mutateur (`>=` devient `>`), un mutant, exécuté
 pour de vrai. M2 a étoffé le catalogue à six familles. M3 traite les structures de solution réelles :
 plusieurs projets de test, plusieurs projets à muter, les références de projet suivies
-transitivement, et un framework épinglé par projet. Restent devant : M4 la découverte des tests ;
-M5 la couverture et l'association tests ↔ mutants ; M6 la performance ; M7 le reporting ; M8 la CI ;
-M9 les mutations avancées.
+transitivement, et un framework épinglé par projet. M6 teste les mutants en parallèle, chaque worker dans une copie privée du
+répertoire de sortie des tests. Restent devant : M4 la découverte des tests ; M5 la couverture et
+l'association tests ↔ mutants ; M7 le reporting ; M8 la CI ; M9 les mutations avancées.
+
+**Pourquoi des bacs à sable plutôt qu'un hôte de test réutilisé à chaud.** Réutiliser un hôte d'un
+mutant à l'autre est l'optimisation la plus tentante et celle que nous refusons : c'est la source de
+la plainte de correction la plus ancienne chez Stryker, où de l'état global de processus fuit entre
+mutants et gonfle les scores. Un répertoire de sortie privé par worker coûte une copie de répertoire
+et un peu de disque, et achète la garantie qu'aucun mutant ne peut en observer un autre. Cela
+signifie aussi que KillMutants n'écrit plus du tout dans la sortie de build du développeur.
 
 **La règle d'ordre établie par M3.** Construire chaque projet de test, puis lire chaque ligne de
 commande du compilateur, puis injecter. MSBuild ne doit pas tourner avant le build, car la lecture

@@ -38,7 +38,7 @@ internal static class Program
         try
         {
             MutationTestReport report = await MutationTesting
-                .RunAsync(options.Directory, options.Configuration)
+                .RunAsync(options.Directory, options.Configuration, options.WorkerCount)
                 .ConfigureAwait(false);
 
             ConsoleReportWriter.Write(Console.Out, report);
@@ -70,6 +70,7 @@ internal static class Program
 
             Options:
               -c, --configuration <cfg> Build configuration to analyse and run. Defaults to Release.
+              -p, --parallel <n>        Mutants to test at once. Defaults to half the processors.
               -h, --help                Show this help.
             """);
     }
