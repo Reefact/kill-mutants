@@ -9,7 +9,7 @@ namespace KillMutants.Reporting;
 /// <param name="ProcessorCount">Logical processors the machine offered.</param>
 /// <param name="WorkerCount">How many mutants were tested at once.</param>
 /// <param name="TestFramework">The xUnit the test applications ran on, or null when unknown.</param>
-/// <param name="TimeoutBudgets">The per-mutant time budget allowed, one entry per project mutated.</param>
+/// <param name="TimeoutBudgets">The per-mutant time budget, and what it was derived from, one entry per project mutated.</param>
 /// <remarks>
 /// <para>
 /// Two reports without this are not comparable, and nobody notices. The case that earned it: the
@@ -30,13 +30,13 @@ public sealed record RunEnvironment(
     int ProcessorCount,
     int WorkerCount,
     string? TestFramework,
-    IReadOnlyList<TimeSpan> TimeoutBudgets)
+    IReadOnlyList<TimeBudget> TimeoutBudgets)
 {
     /// <summary>Reads what can be read from the machine, given what the run decided.</summary>
     internal static RunEnvironment Describe(
         int workerCount,
         string? testFramework,
-        IReadOnlyList<TimeSpan> timeoutBudgets) =>
+        IReadOnlyList<TimeBudget> timeoutBudgets) =>
         new(
             RuntimeInformation.FrameworkDescription,
             RuntimeInformation.OSDescription,
@@ -47,7 +47,18 @@ public sealed record RunEnvironment(
 
     /// <summary>The budgets as they are written in a report.</summary>
     public IReadOnlyList<double> TimeoutBudgetsInSeconds =>
-        [.. TimeoutBudgets.Select(budget => Math.Round(budget.TotalSeconds, 2))];
+        [.. TimeoutBudgets.Select(budget => Math.Round(budget.Budget.TotalSeconds, 2))];
+
+    /// <summary>
+    /// The baselines the budgets rest on, each measured with nothing else of ours running.
+    /// </summary>
+    /// <remarks>
+    /// The denominator of the whole calculation, and the one number a reader needs to judge whether
+    /// a timeout was the mutant's doing. It is measured alone and then spent under concurrency,
+    /// which is exactly why it has to be said rather than assumed.
+    /// </remarks>
+    public IReadOnlyList<double> BaselineSecondsAlone =>
+        [.. TimeoutBudgets.Select(budget => Math.Round(budget.Baseline.TotalSeconds, 2))];
 
     /// <summary>Renders as one line, for the console report.</summary>
     public override string ToString()
@@ -55,10 +66,7 @@ public sealed record RunEnvironment(
         var culture = CultureInfo.InvariantCulture;
         string budgets = TimeoutBudgets.Count == 0
             ? "none"
-            : string.Join(
-                ", ",
-                TimeoutBudgets.Select(budget =>
-                    budget.TotalSeconds.ToString("0.#", culture) + " s"));
+            : string.Join(", ", TimeoutBudgets.Select(budget => budget.ToString()));
 
         return
             $"{Runtime} on {OperatingSystem}, " +

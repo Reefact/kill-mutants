@@ -75,6 +75,12 @@ public static class JsonReportWriter
 
         // Without this a mutant reported as timed out cannot be explained after the fact.
         timeoutBudgetSeconds = environment.TimeoutBudgetsInSeconds,
+
+        // The three inputs, not just the answer: a budget nobody can recompute is a number a reader
+        // has to take on trust, and a timeout cannot be explained after the fact without it.
+        baselineSecondsAlone = environment.BaselineSecondsAlone,
+        timeoutBaselineFactor = environment.TimeoutBudgets.Select(b => b.Factor).Distinct(),
+        timeoutMarginSeconds = environment.TimeoutBudgets.Select(b => b.Margin.TotalSeconds).Distinct(),
     };
 
     private static object Describe(MutatorSummary family) => new

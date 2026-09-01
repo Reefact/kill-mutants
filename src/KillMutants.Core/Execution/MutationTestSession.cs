@@ -102,7 +102,7 @@ internal sealed class MutationTestSession
 
         // Recorded as the run goes, because a budget is derived per project and a report that omits
         // it cannot explain a timeout afterwards.
-        List<TimeSpan> budgets = [];
+        List<TimeBudget> budgets = [];
 
         foreach ((MutationTestTarget target, ProjectCompilation compilation) in targets.Zip(compilations))
         {
@@ -120,7 +120,7 @@ internal sealed class MutationTestSession
         MutationTestTarget target,
         ProjectCompilation compilation,
         MutantGenerator generator,
-        List<TimeSpan> budgets,
+        List<TimeBudget> budgets,
         CancellationToken cancellationToken)
     {
         IReadOnlyList<Mutant> mutants = generator.Generate(compilation.Compilation);
@@ -143,10 +143,12 @@ internal sealed class MutationTestSession
                     Path.Combine(sandboxRoot, index.ToString(CultureInfo.InvariantCulture))));
             }
 
-            TimeSpan budget = await VerifyBaselineAsync(target, compilation, sandboxes[0], cancellationToken)
+            TimeBudget measured = await VerifyBaselineAsync(target, compilation, sandboxes[0], cancellationToken)
                 .ConfigureAwait(false);
 
-            budgets.Add(budget);
+            budgets.Add(measured);
+
+            TimeSpan budget = measured.Budget;
 
             CoverageMap? coverage = _measureCoverage
                 ? await new CoverageCollector(_testRunner, _progress)
@@ -385,8 +387,8 @@ internal sealed class MutationTestSession
     /// reconstructed compilation is wrong in any way, every mutant would fail for that reason and
     /// be reported killed - a perfect score from a tool that is testing nothing.
     /// </remarks>
-    /// <returns>The time budget to allow each mutant's test run.</returns>
-    private async Task<TimeSpan> VerifyBaselineAsync(
+    /// <returns>The time budget to allow each mutant's test run, and what it was derived from.</returns>
+    private async Task<TimeBudget> VerifyBaselineAsync(
         MutationTestTarget target,
         ProjectCompilation compilation,
         TestSandbox sandbox,

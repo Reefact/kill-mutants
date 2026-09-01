@@ -18,10 +18,14 @@ internal sealed record TimeoutPolicy(double BaselineFactor, TimeSpan Margin)
     public static TimeoutPolicy Default { get; } = new(BaselineFactor: 3.0, Margin: TimeSpan.FromSeconds(30));
 
     /// <summary>The budget to allow, given how long the unmutated suite took.</summary>
-    public TimeSpan For(TimeSpan baseline)
+    /// <remarks>
+    /// Returns the calculation rather than its result: a budget nobody can recompute is a number a
+    /// reader has to take on trust, and a timeout is unexplainable without it.
+    /// </remarks>
+    public Reporting.TimeBudget For(TimeSpan baseline)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(baseline.Ticks);
 
-        return TimeSpan.FromSeconds(baseline.TotalSeconds * BaselineFactor) + Margin;
+        return new Reporting.TimeBudget(baseline, BaselineFactor, Margin);
     }
 }
