@@ -122,13 +122,8 @@ internal sealed class ProjectCompilation
         foreach (IGrouping<SyntaxTree, KeyValuePair<SyntaxNode, int>> inTree in
                  sites.IdentifierByNode.GroupBy(site => site.Key.SyntaxTree))
         {
-            Dictionary<SyntaxNode, int> identifiers = inTree.ToDictionary(site => site.Key, site => site.Value);
-
-            // The callback receives the rewritten node as well as the original, so nested mutation
-            // sites - a comparison inside a logical operator, say - each keep their own recorder.
-            SyntaxNode root = inTree.Key.GetRoot().ReplaceNodes(
-                identifiers.Keys,
-                (original, rewritten) => Record(rewritten, identifiers[original]));
+            SyntaxNode root = Coverage.CoverageRewriter.Instrument(
+                inTree.Key.GetRoot(), inTree.ToDictionary(site => site.Key, site => site.Value));
 
             instrumented = instrumented.ReplaceSyntaxTree(
                 inTree.Key, inTree.Key.WithRootAndOptions(root, _parseOptions));
@@ -137,12 +132,6 @@ internal sealed class ProjectCompilation
         return Emit(instrumented.AddSyntaxTrees(
             CSharpSyntaxTree.ParseText(Coverage.CoverageProbe.Source, _parseOptions, "KillMutantsCoverageProbe.g.cs")));
     }
-
-    private static ExpressionSyntax Record(SyntaxNode expression, int identifier) =>
-        SyntaxFactory.ParseExpression(
-                $"{Coverage.CoverageProbe.HitMethod}({identifier.ToString(System.Globalization.CultureInfo.InvariantCulture)}, " +
-                $"{expression.ToFullString()})")
-            .WithTriviaFrom(expression);
 
     /// <summary>Emits the compilation with one mutant's change applied.</summary>
     public EmitOutcome EmitWith(Mutations.Mutant mutant)

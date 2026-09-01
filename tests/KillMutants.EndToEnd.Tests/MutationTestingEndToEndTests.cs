@@ -281,6 +281,36 @@ public class MutationTestingEndToEndTests
     }
 
     /// <summary>
+    /// Stryker.NET carries a whole mechanism for this - `IsStaticValue`, `MustBeTestedInIsolation`,
+    /// and a run against every test not trusted to miss the mutant - because a static initialiser
+    /// runs once per process and their coverage pass shares one: whichever test happens to touch the
+    /// type first is credited with covering it, while every later test silently uses the value it
+    /// computed.
+    /// </summary>
+    /// <remarks>
+    /// One process per test removes the cause rather than compensating for it, and this is the test
+    /// that says so out loud. Two tests reach the same static value through different methods; both
+    /// must be able to kill the mutant in it, and it must not be reported uncovered.
+    /// </remarks>
+    [Fact]
+    public async Task A_mutant_in_a_static_initialiser_is_covered_by_every_test_that_reaches_it()
+    {
+        using var fixture = FixtureCopy.Create();
+        fixture.AddCodeBehindAStaticInitialiser();
+
+        MutationTestReport report = await MutationTesting.RunAsync(
+            fixture.Root, cancellationToken: TestContext.Current.CancellationToken);
+
+        MutantResult[] inInitialiser = [.. report.Results.Where(result =>
+            Path.GetFileName(result.Mutant.Location.FilePath) == "Thresholds.cs" &&
+            result.Mutant.OriginalText == "9 * 2")];
+
+        Assert.NotEmpty(inInitialiser);
+        Assert.All(inInitialiser, result => Assert.Equal(MutantStatus.Killed, result.Status));
+        Assert.All(report.Results, result => Assert.Equal(MutantStatus.Killed, result.Status));
+    }
+
+    /// <summary>
     /// A generator is rarely one file: Mapperly, Refit and protobuf all ship helper assemblies
     /// beside themselves, and this fixture reproduces that shape with a generator whose output is
     /// computed by a second assembly. Two separate defects made this project fail before M11.

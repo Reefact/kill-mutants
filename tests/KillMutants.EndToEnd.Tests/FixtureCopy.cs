@@ -214,6 +214,69 @@ internal sealed class FixtureCopy : IDisposable
             """);
     }
 
+    /// <summary>
+    /// Adds a type whose value is computed once, in a static initialiser, and read by two tests.
+    /// </summary>
+    /// <remarks>
+    /// Stryker.NET marks such mutants <c>IsStaticValue</c> and runs them against every test that is
+    /// not trusted to miss them, because a static initialiser runs once per process and their
+    /// coverage pass shares one. This fixture is how we check that the same trap does not exist
+    /// here - see the test that uses it.
+    /// </remarks>
+    public void AddCodeBehindAStaticInitialiser()
+    {
+        File.WriteAllText(
+            Path.Combine(Root, "Sample.Library", "Thresholds.cs"),
+            """
+            namespace Sample.Library;
+
+            public static class Thresholds
+            {
+                // Evaluated once, the first time anything in this class is touched.
+                public static readonly int Adult = 9 * 2;
+
+                public static bool IsAdult(int age)
+                {
+                    return age >= Adult;
+                }
+
+                public static bool IsMinor(int age)
+                {
+                    return age < Adult;
+                }
+            }
+
+            """);
+
+        File.WriteAllText(
+            Path.Combine(Root, "Sample.Library.Tests", "ThresholdsTests.cs"),
+            """
+            using Sample.Library;
+
+            namespace Sample.Library.Tests;
+
+            public class ThresholdsTests
+            {
+                // Two tests in two different classes, each reaching the static value through a
+                // different method, so neither can be the only one credited with covering it.
+                [Fact]
+                public void Adulthood_starts_at_eighteen()
+                {
+                    Assert.True(Thresholds.IsAdult(18));
+                    Assert.False(Thresholds.IsAdult(17));
+                }
+
+                [Fact]
+                public void Minority_ends_at_eighteen()
+                {
+                    Assert.True(Thresholds.IsMinor(17));
+                    Assert.False(Thresholds.IsMinor(18));
+                }
+            }
+
+            """);
+    }
+
     /// <summary>Copies the single-project sample fixture into a fresh temporary directory.</summary>
     public static FixtureCopy Create() => CopyOf(SourceFixtureDirectory);
 
