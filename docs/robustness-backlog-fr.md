@@ -337,3 +337,20 @@ parce que la bonne réponse n'est pas encore évidente — mesurer le baseline s
 représentative, rechronométrer un dépassement suspect sur un worker au repos, ou simplement élargir
 la marge sont tous plausibles, et trancher demande des données d'un vrai projet plutôt que d'une
 fixture.
+
+---
+
+## RB-014 — Le démarrage de processus est désormais le plancher · ASSUMÉ
+
+Avec la sélection par couverture en place, l'exécution d'un mutant coûte environ 0,5 s de lancement
+d'un hôte de test contre 0,12 s de test réel. Sélectionner moins de tests ne peut plus beaucoup
+aider ; c'est le lancement qui domine.
+
+Le levier évident suivant serait un hôte de test réutilisé à chaud, et il est **délibérément
+refusé**. C'est la source de la plainte de correction la plus ancienne chez Stryker (issue #3742), où
+de l'état global de processus fuit d'un mutant au suivant et gonfle les scores. Un outil dont le seul
+propos est de dire la vérité sur une suite de tests ne peut pas acheter de la vitesse avec un
+mécanisme qui rapporte silencieusement des mutants comme tués alors qu'ils ne l'étaient pas.
+
+Consigné comme assumé plutôt qu'ouvert : le coût est compris, l'alternative est comprise, et
+l'arbitrage a été fait exprès.

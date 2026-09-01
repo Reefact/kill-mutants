@@ -4,7 +4,9 @@ namespace KillMutants.Cli;
 /// <param name="Directory">Where to look for projects.</param>
 /// <param name="Configuration">The build configuration to analyse and run.</param>
 /// <param name="WorkerCount">How many mutants to test at once, or null for the default.</param>
-internal sealed record CommandLineOptions(string Directory, string Configuration, int? WorkerCount)
+/// <param name="MeasureCoverage">Run only the tests that reach each mutant.</param>
+internal sealed record CommandLineOptions(
+    string Directory, string Configuration, int? WorkerCount, bool MeasureCoverage)
 {
     /// <summary>
     /// Parses the command line. The defaults are chosen so that <c>dotnet killmutants</c> with no
@@ -18,6 +20,7 @@ internal sealed record CommandLineOptions(string Directory, string Configuration
         string? directory = null;
         string configuration = "Release";
         int? workerCount = null;
+        bool measureCoverage = true;
 
         for (int index = 0; index < args.Count; index++)
         {
@@ -55,6 +58,11 @@ internal sealed record CommandLineOptions(string Directory, string Configuration
 
                     break;
 
+                case "--no-coverage":
+                    measureCoverage = false;
+
+                    break;
+
                 default:
                     if (argument.StartsWith('-'))
                     {
@@ -75,6 +83,7 @@ internal sealed record CommandLineOptions(string Directory, string Configuration
         return new CommandLineOptions(
             Path.GetFullPath(directory ?? System.IO.Directory.GetCurrentDirectory()),
             configuration,
-            workerCount);
+            workerCount,
+            measureCoverage);
     }
 }

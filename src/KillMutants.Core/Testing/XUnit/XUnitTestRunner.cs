@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using System.Xml.Linq;
 using KillMutants.Processes;
 using KillMutants.Projects;
@@ -39,22 +40,63 @@ namespace KillMutants.Testing.XUnit;
 /// </remarks>
 internal sealed class XUnitTestRunner : ITestRunner
 {
+    private static readonly TimeSpan DiscoveryBudget = TimeSpan.FromMinutes(5);
+
+    private static readonly Dictionary<string, string> QuietEnvironment = new(StringComparer.Ordinal)
+    {
+        // Keep the runner quiet and deterministic: no CI reporter should latch on to an environment
+        // variable and change the output we parse.
+        ["TESTINGPLATFORM_TELEMETRY_OPTOUT"] = "1",
+        ["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1",
+    };
+
     /// <inheritdoc />
-    public async Task<TestRunOutcome> RunAsync(
+    public async Task<IReadOnlyList<TestName>> DiscoverAsync(
         TestProject testProject,
-        TimeSpan timeout,
-        bool stopOnFirstFailure,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(testProject);
 
-        string resultPath = Path.Combine(
-            Path.GetTempPath(),
-            $"killmutants-{Guid.NewGuid():N}.xml");
+        ProcessResult result = await RunProcessAsync(
+                testProject,
+                [testProject.AssemblyPath, "-automated", "-noLogo", "-list", "tests/json"],
+                DiscoveryBudget,
+                environment: null,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (result.TimedOut)
+        {
+            throw new TestExecutionException($"Listing the tests in '{testProject.Name}' timed out.");
+        }
+
+        try
+        {
+            return [.. JsonSerializer.Deserialize<string[]>(result.StandardOutput)!
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .Select(TestName.Create)];
+        }
+        catch (Exception exception) when (exception is JsonException or NullReferenceException)
+        {
+            throw new TestExecutionException(
+                $"Could not read the list of tests in '{testProject.Name}'." +
+                $"{Environment.NewLine}{result.CombinedOutput}",
+                exception);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<TestRunOutcome> RunAsync(
+        TestRunRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        string resultPath = Path.Combine(Path.GetTempPath(), $"killmutants-{Guid.NewGuid():N}.xml");
 
         List<string> arguments =
         [
-            testProject.AssemblyPath,
+            request.TestProject.AssemblyPath,
             // Must come first and must always be present: it is what pins the run to the xUnit
             // console runner whichever entry point the project generated. See the remarks above.
             "-automated",
@@ -64,39 +106,55 @@ internal sealed class XUnitTestRunner : ITestRunner
             resultPath,
         ];
 
-        if (stopOnFirstFailure)
+        if (request.StopOnFirstFailure)
         {
             arguments.Add("-stopOnFail");
         }
 
+        foreach (TestName testName in request.TestNames ?? [])
+        {
+            // Repeating -method is a union, so this selects exactly the named tests.
+            arguments.Add("-method");
+            arguments.Add(testName.ToString());
+        }
+
         try
         {
-            ProcessResult process = await ProcessRunner.RunAsync(
-                    "dotnet",
-                    arguments,
-                    testProject.OutputDirectory,
-                    timeout,
-                    // Keep the runner quiet and deterministic: no CI reporter should latch on to
-                    // an environment variable and change the output we parse.
-                    environment: new Dictionary<string, string>(StringComparer.Ordinal)
-                    {
-                        ["TESTINGPLATFORM_TELEMETRY_OPTOUT"] = "1",
-                        ["DOTNET_CLI_TELEMETRY_OPTOUT"] = "1",
-                    },
-                    cancellationToken: cancellationToken)
+            ProcessResult process = await RunProcessAsync(
+                    request.TestProject, arguments, request.Timeout, request.Environment, cancellationToken)
                 .ConfigureAwait(false);
 
-            if (process.TimedOut)
-            {
-                return TestRunOutcome.FromTimeout(process.Duration);
-            }
-
-            return ReadOutcome(resultPath, process);
+            return process.TimedOut
+                ? TestRunOutcome.FromTimeout(process.Duration)
+                : ReadOutcome(resultPath, process);
         }
         finally
         {
             DeleteQuietly(resultPath);
         }
+    }
+
+    private static Task<ProcessResult> RunProcessAsync(
+        TestProject testProject,
+        IReadOnlyList<string> arguments,
+        TimeSpan timeout,
+        IReadOnlyDictionary<string, string>? environment,
+        CancellationToken cancellationToken)
+    {
+        Dictionary<string, string> merged = new(QuietEnvironment, StringComparer.Ordinal);
+
+        foreach ((string key, string value) in environment ?? new Dictionary<string, string>(StringComparer.Ordinal))
+        {
+            merged[key] = value;
+        }
+
+        return ProcessRunner.RunAsync(
+            "dotnet",
+            arguments,
+            testProject.OutputDirectory,
+            timeout,
+            merged,
+            cancellationToken);
     }
 
     /// <summary>
@@ -121,7 +179,7 @@ internal sealed class XUnitTestRunner : ITestRunner
 
         if (assembly is null)
         {
-            throw new TestExecutionException($"The test application's result file names no assembly.");
+            throw new TestExecutionException("The test application's result file names no assembly.");
         }
 
         return new TestRunOutcome(

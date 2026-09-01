@@ -31,6 +31,13 @@ public static class ConsoleReportWriter
             writer.WriteLine($"Compile errors: {Format(report.CompileErrors)}");
         }
 
+        if (report.Uncovered > 0)
+        {
+            // Worth naming rather than hiding: it says the code has no tests at all, which is a
+            // different and often more urgent finding than a surviving mutant.
+            writer.WriteLine($"No coverage: {Format(report.Uncovered)}");
+        }
+
         writer.WriteLine();
         writer.WriteLine($"Mutation score: {report.Score}");
     }

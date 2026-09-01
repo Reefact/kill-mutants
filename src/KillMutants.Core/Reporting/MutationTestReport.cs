@@ -15,6 +15,7 @@ public sealed class MutationTestReport
         Survived = Count(MutantStatus.Survived);
         TimedOut = Count(MutantStatus.Timeout);
         CompileErrors = Count(MutantStatus.CompileError);
+        Uncovered = Count(MutantStatus.NoCoverage);
         Score = MutationScore.FromCounts(Killed, Survived, TimedOut);
 
         int Count(MutantStatus status) => results.Count(result => result.Status == status);
@@ -37,6 +38,9 @@ public sealed class MutationTestReport
 
     /// <summary>Mutants that did not compile and so could not be tested.</summary>
     public int CompileErrors { get; }
+
+    /// <summary>Mutants in code no test reaches, which were therefore never run.</summary>
+    public int Uncovered { get; }
 
     /// <summary>The share of tested mutants that were caught.</summary>
     public MutationScore Score { get; }

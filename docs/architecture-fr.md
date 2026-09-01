@@ -40,6 +40,8 @@ tiré de connaissances antérieures.
 | `dotnet build` du même projet | ~1400 ms |
 | Exécution de l'application de test (2 tests) | ~600 ms |
 | Phase mutants, 60 mutants, 4 cœurs — 1 / 2 / 4 workers | 1,0× / ~2,1× / ~3,2× |
+| 60 mutants, suite lente — suite entière vs sélection par couverture | 29,3 s vs 22,6 s |
+| Lancement de l'hôte de test vs le test lui-même | ~0,5 s vs ~0,12 s |
 | `dotnet test --no-build` | ~1500 ms |
 | Code de sortie de l'exécutable de test — succès / échec | 0 / **1** |
 | Code de sortie de `dotnet test` — succès / échec / aucun test | 0 / 2 / 8 |
@@ -84,10 +86,10 @@ namespace sont déjà placées là où passeraient les frontières d'assembly.
 | Représentation d'un mutant | `KillMutants.Mutations` | `Mutant`, `MutantId`, `MutantStatus`, `SourceLocation` |
 | Instrumentation | *(absorbée)* | Voir ci-dessous |
 | Compilation | `KillMutants.Compilation` | Émet un assembly muté |
-| Découverte des tests | *(reportée en M4)* | Point d'accroche identifié : `-list tests /json` |
+| Découverte des tests | `KillMutants.Testing` | `-list tests /json`, par nom (ADR-0006) |
 | Exécution des tests | `KillMutants.Testing` | `ITestRunner`, `TestRunOutcome` |
 | Spécificités xUnit 4 / MTP 2 | `KillMutants.Testing.XUnit` | Le seul endroit qui connaît la CLI du runner |
-| Association tests ↔ mutants | *(reportée en M5)* | Point d'accroche identifié : `-id <uid>` |
+| Association tests ↔ mutants | `KillMutants.Coverage` | Sonde préservant le type, une exécution par test (ADR-0007) |
 | Orchestration | `KillMutants.Execution` | La liste de phases, courte et linéaire |
 | Résultats | `KillMutants.Reporting` | `MutationTestReport`, écriture console |
 | CLI | `KillMutants.Cli` | `dotnet killmutants` |
@@ -158,8 +160,9 @@ Le milestone 1 comprenait un couple de projets, un mutateur (`>=` devient `>`), 
 pour de vrai. M2 a étoffé le catalogue à six familles. M3 traite les structures de solution réelles :
 plusieurs projets de test, plusieurs projets à muter, les références de projet suivies
 transitivement, et un framework épinglé par projet. M6 teste les mutants en parallèle, chaque worker dans une copie privée du
-répertoire de sortie des tests. Restent devant : M4 la découverte des tests ; M5 la couverture et
-l'association tests ↔ mutants ; M7 le reporting ; M8 la CI ; M9 les mutations avancées.
+répertoire de sortie des tests. M4 et M5 découvrent les tests et mesurent lesquels atteignent quels
+mutants : les mutants non couverts ne sont jamais exécutés, et les autres n'exécutent que ce qui peut
+les tuer. Restent devant : M7 le reporting ; M8 la CI ; M9 les mutations avancées.
 
 **Pourquoi des bacs à sable plutôt qu'un hôte de test réutilisé à chaud.** Réutiliser un hôte d'un
 mutant à l'autre est l'optimisation la plus tentante et celle que nous refusons : c'est la source de

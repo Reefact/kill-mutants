@@ -17,6 +17,10 @@ public static class MutationTesting
     /// How many mutants to test at once. Defaults to half the logical processors, because each
     /// worker starts a test host that runs the suite's own tests in parallel too.
     /// </param>
+    /// <param name="measureCoverage">
+    /// Measure which tests reach which mutants, and run only those. Turning this off runs the whole
+    /// suite for every mutant, which is slower but needs no instrumented build.
+    /// </param>
     /// <param name="cancellationToken">Cancels the run.</param>
     /// <exception cref="Projects.ProjectAnalysisException">The projects could not be analysed.</exception>
     /// <exception cref="BaselineVerificationException">The unmutated code does not pass its tests.</exception>
@@ -25,10 +29,11 @@ public static class MutationTesting
         string searchDirectory,
         string configuration = "Release",
         int? workerCount = null,
+        bool measureCoverage = true,
         CancellationToken cancellationToken = default)
     {
         var session = new MutationTestSession(
-            new XUnitTestRunner(), configuration, timeoutPolicy: null, workerCount);
+            new XUnitTestRunner(), configuration, timeoutPolicy: null, workerCount, measureCoverage);
 
         return session.RunAsync(searchDirectory, cancellationToken);
     }

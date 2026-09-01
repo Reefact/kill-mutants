@@ -314,3 +314,20 @@ half the logical processors used by default. It is recorded rather than fixed be
 answer is not yet obvious — measuring the baseline under representative load, re-timing a suspected
 timeout on an idle worker, and simply widening the margin are all plausible, and choosing between
 them needs data from a real project rather than from a fixture.
+
+---
+
+## RB-014 — Process startup is now the floor · ACCEPTED
+
+With coverage-driven selection in place, a mutant's run costs roughly 0.5 s to launch a test host
+against 0.12 s of actually testing. Selecting fewer tests can no longer help much; the launch
+dominates.
+
+The obvious next lever is a warm, reused test host, and it is **deliberately refused**. It is the
+source of Stryker's longest-standing correctness complaint (issue #3742), where process-global state
+leaks from one mutant to the next and inflates scores. A tool whose whole purpose is to tell the
+truth about a test suite cannot buy speed with a mechanism that quietly reports mutants as killed
+when they were not.
+
+Recorded as accepted rather than open: the cost is understood, the alternative is understood, and
+the trade has been made on purpose.

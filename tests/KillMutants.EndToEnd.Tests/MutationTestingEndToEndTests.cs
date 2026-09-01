@@ -98,6 +98,58 @@ public class MutationTestingEndToEndTests
     }
 
     /// <summary>
+    /// Milestone 5. Code no test reaches produces mutants that could only ever be reported as
+    /// survived - which would read as a gap in the tests rather than as their absence. They are
+    /// recorded as NoCoverage instead, never run, and excluded from the score.
+    /// </summary>
+    [Fact]
+    public async Task Mutants_in_code_no_test_reaches_are_reported_as_uncovered()
+    {
+        using var fixture = FixtureCopy.Create();
+        fixture.AddCodeNoTestReaches();
+
+        MutationTestReport report = await MutationTesting.RunAsync(
+            fixture.Root, cancellationToken: TestContext.Current.CancellationToken);
+
+        MutantResult[] uncovered = [.. report.Results.Where(r => r.Status == MutantStatus.NoCoverage)];
+
+        Assert.NotEmpty(uncovered);
+        Assert.All(
+            uncovered,
+            result => Assert.Equal("Untested.cs", Path.GetFileName(result.Mutant.Location.FilePath)));
+
+        // Everything the tests do reach is still killed, and the untestable mutants do not drag the
+        // score down: a mutant that cannot be tested says nothing about the quality of the tests.
+        Assert.All(
+            report.Results.Where(r => r.Status != MutantStatus.NoCoverage),
+            result => Assert.Equal(MutantStatus.Killed, result.Status));
+        Assert.Equal("100%", report.Score.ToString());
+    }
+
+    /// <summary>
+    /// The property that makes test selection safe: running only the tests that reach a mutant must
+    /// reach the same verdict as running all of them.
+    /// </summary>
+    [Fact]
+    public async Task Selecting_tests_by_coverage_gives_the_same_verdicts_as_running_them_all()
+    {
+        using var selected = FixtureCopy.Create();
+        using var everything = FixtureCopy.Create();
+
+        MutationTestReport withSelection = await MutationTesting.RunAsync(
+            selected.Root, cancellationToken: TestContext.Current.CancellationToken);
+
+        MutationTestReport withoutSelection = await MutationTesting.RunAsync(
+            everything.Root, measureCoverage: false,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        static string[] Verdicts(MutationTestReport report) =>
+            [.. report.Results.Select(r => $"{r.Mutant.Id} {r.Mutant.MutatedText} {r.Status}")];
+
+        Assert.Equal(Verdicts(withoutSelection), Verdicts(withSelection));
+    }
+
+    /// <summary>
     /// Milestone 6's correctness property, and the one that matters more than its speed: running
     /// mutants concurrently must not change a single verdict. Each worker owns a private copy of the
     /// test output directory, so no two mutants can ever see each other's assembly - the failure

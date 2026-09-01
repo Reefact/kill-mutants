@@ -38,7 +38,7 @@ internal static class Program
         try
         {
             MutationTestReport report = await MutationTesting
-                .RunAsync(options.Directory, options.Configuration, options.WorkerCount)
+                .RunAsync(options.Directory, options.Configuration, options.WorkerCount, options.MeasureCoverage)
                 .ConfigureAwait(false);
 
             ConsoleReportWriter.Write(Console.Out, report);
@@ -71,6 +71,8 @@ internal static class Program
             Options:
               -c, --configuration <cfg> Build configuration to analyse and run. Defaults to Release.
               -p, --parallel <n>        Mutants to test at once. Defaults to half the processors.
+                  --no-coverage         Run every test for every mutant, instead of only the ones
+                                        that reach it.
               -h, --help                Show this help.
             """);
     }
