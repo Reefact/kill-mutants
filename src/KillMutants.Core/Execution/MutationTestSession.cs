@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Globalization;
 using KillMutants.Analysis;
 using KillMutants.Coverage;
+using KillMutants.Filtering;
 using KillMutants.Mutations;
 using KillMutants.Mutations.Mutators;
 using KillMutants.Projects;
@@ -22,6 +23,7 @@ internal sealed class MutationTestSession
     private readonly TimeoutPolicy _timeoutPolicy;
     private readonly int _workerCount;
     private readonly bool _measureCoverage;
+    private readonly IReadOnlyList<string> _exclude;
     private readonly IProgress<MutationTestProgress>? _progress;
 
     public MutationTestSession(
@@ -30,6 +32,7 @@ internal sealed class MutationTestSession
         TimeoutPolicy? timeoutPolicy = null,
         int? workerCount = null,
         bool measureCoverage = true,
+        IEnumerable<string>? exclude = null,
         IProgress<MutationTestProgress>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(testRunner);
@@ -40,6 +43,7 @@ internal sealed class MutationTestSession
         _timeoutPolicy = timeoutPolicy ?? TimeoutPolicy.Default;
         _workerCount = workerCount ?? DefaultWorkerCount;
         _measureCoverage = measureCoverage;
+        _exclude = [.. exclude ?? []];
         _progress = progress;
     }
 
@@ -59,7 +63,11 @@ internal sealed class MutationTestSession
         CancellationToken cancellationToken = default)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        var discovery = new ProjectDiscovery(_configuration, _progress);
+
+        // Built here rather than in the constructor: the patterns are relative to the directory the
+        // run was pointed at, which only this call knows.
+        PathFilter exclusions = PathFilter.Excluding(searchDirectory, _exclude);
+        var discovery = new ProjectDiscovery(_configuration, exclusions, _progress);
 
         IReadOnlyList<MutationTestTarget> targets = await discovery
             .DiscoverAsync(searchDirectory, cancellationToken)
@@ -83,7 +91,7 @@ internal sealed class MutationTestSession
         }
 
         // One generator for the whole session, so mutant identifiers never repeat across projects.
-        var generator = new MutantGenerator(MutatorCatalog.Default);
+        var generator = new MutantGenerator(MutatorCatalog.Default, exclusions);
         List<MutantResult> results = [];
 
         foreach ((MutationTestTarget target, ProjectCompilation compilation) in targets.Zip(compilations))
@@ -272,7 +280,9 @@ internal sealed class MutationTestSession
         TimeSpan budget,
         CancellationToken cancellationToken)
     {
-        // A null map means coverage was not measured, so every test is a candidate.
+        // Null twice over means the same thing and is treated the same way: coverage was not
+        // measured at all, or this site could carry no recorder. Either way every test is a
+        // candidate, which is slower but never wrong.
         IReadOnlyList<TestName>? covering = coverage?.TestsReaching(mutant.Id);
 
         if (covering is { Count: 0 })

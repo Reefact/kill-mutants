@@ -81,6 +81,7 @@ namespace sont déjà placées là où passeraient les frontières d'assembly.
 |---|---|---|
 | Découverte du projet | `KillMutants.Projects` | Localise le projet à muter et son projet de test |
 | Analyse du code | `KillMutants.Analysis` | Ligne de commande `csc` -> `CSharpCompilation` |
+| Filtrage du périmètre | `KillMutants.Filtering` | Ce qu'un run laisse tranquille (`--exclude`) |
 | Génération des mutations | `KillMutants.Mutations` | Parcourt les arbres, produit les candidats |
 | Catalogue des mutateurs | `KillMutants.Mutations.Mutators` | `IMutator` et ses implémentations |
 | Représentation d'un mutant | `KillMutants.Mutations` | `Mutant`, `MutantId`, `MutantStatus`, `SourceLocation` |
@@ -176,6 +177,19 @@ sort avec `0` quand un filtre ne correspond à rien, ce qui classerait un mutant
 *Atténué en lisant le fichier de résultats structuré et en exigeant un nombre de tests exécutés
 strictement positif, plutôt qu'en se fiant au code de sortie.*
 
+**Élevé — mutations et instrumentation qui cassent l'affectation définie.** Une variable de motif ou
+`out` n'est définie que *conditionnellement*. Muter l'expression qui la déclare change le moment où
+ses parties sont évaluées, et envelopper cette expression dans la sonde de couverture fait passer cet
+état par un appel de méthode ; dans les deux cas le projet cesse de compiler. Découvert en quelques
+secondes en exécutant l'outil sur son propre code source, où les clauses de garde de cette forme sont
+partout. *Atténué en ne mutant pas une expression qui déclare une variable, ce qui la retire du même
+coup des sites d'instrumentation — [RB-016](robustness-backlog-fr.md).*
+
+**Moyen — un site dont la sonde ne peut pas accepter la valeur.** `Hit<T>` ne peut pas prendre un ref
+struct, un pointeur ni `void` comme argument de type, et une expression conditionnelle sur deux
+`Span<T>` a exactement ce type. *Atténué en n'instrumentant pas ces sites et en testant leurs mutants
+contre la suite complète — [RB-017](robustness-backlog-fr.md).*
+
 **Moyen — mutations introduisant une boucle infinie.** Hors d'atteinte pour l'unique mutateur du
 milestone 1, mais le délai maximal doit exister avant que le catalogue ne grossisse. *Reporté en M2,
 la durée du baseline étant déjà enregistrée pour en dériver le budget.*
@@ -191,7 +205,21 @@ mutants : les mutants non couverts ne sont jamais exécutés, et les autres n'ex
 les tuer. M7 rapporte : progression en direct, constats groupés par fichier, et un rapport JSON pour
 tout ce qui n'est pas un humain. M8 en fait une barrière de qualité utilisable : un seuil optionnel
 `--break-at` et des codes de sortie qui séparent une suite de tests faible d'un run cassé. M9
-achève le catalogue d'opérateurs.
+achève le catalogue d'opérateurs. M10 en fait un outil et non plus un moteur : empaqueté en
+`dotnet killmutants`, doté du `--exclude` qu'exige un vrai dépôt, et — c'est le cœur du milestone —
+exécuté sur le code source de KillMutants lui-même, ce qui a fait apparaître RB-016 en quelques
+secondes.
+
+**Ce qu'a mesuré la première exécution réelle.** 345 mutants sur `KillMutants.Core`, 4,8 minutes sur
+quatre cœurs, 90 tués, 102 survivants, un tué par timeout, aucun en échec de compilation. Deux
+chiffres méritent une réserve plutôt qu'un titre. Les 152 mutants signalés non couverts sont en
+grande partie un artefact de la configuration du run : il excluait la suite de bout en bout, qui est
+précisément ce qui exerce l'essentiel du code de découverte, d'analyse et d'exécution ; ces mutants
+sont donc non couverts *par la suite exécutée*, pas non testés. Et parmi les 102 survivants, une part
+importante sont des mutants `StringLiteral` sur des messages d'erreur que rien n'asserte — des
+constats vrais, mais les moins utiles par unité de temps d'exécution, et la première indication de là
+où le catalogue gagne réellement sa place sur du vrai code. Le score est donc rapporté ici comme une
+mesure, pas comme un verdict sur la suite de tests.
 
 **Deux flux de sortie, délibérément.** La progression part sur la sortie d'erreur et le rapport sur la
 sortie standard : `killmutants > rapport.txt` capture donc le rapport sans y mêler la ligne de

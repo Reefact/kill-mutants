@@ -21,6 +21,11 @@ public static class MutationTesting
     /// Measure which tests reach which mutants, and run only those. Turning this off runs the whole
     /// suite for every mutant, which is slower but needs no instrumented build.
     /// </param>
+    /// <param name="exclude">
+    /// Patterns for projects and source files to leave alone, relative to
+    /// <paramref name="searchDirectory"/> and written with <c>/</c>. An excluded project is neither
+    /// mutated nor used to run tests; an excluded file is still compiled but never mutated.
+    /// </param>
     /// <param name="progress">Told where the run has got to, so a caller can show it.</param>
     /// <param name="cancellationToken">Cancels the run.</param>
     /// <exception cref="Projects.ProjectAnalysisException">The projects could not be analysed.</exception>
@@ -31,11 +36,13 @@ public static class MutationTesting
         string configuration = "Release",
         int? workerCount = null,
         bool measureCoverage = true,
+        IEnumerable<string>? exclude = null,
         IProgress<Reporting.MutationTestProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         var session = new MutationTestSession(
-            new XUnitTestRunner(), configuration, timeoutPolicy: null, workerCount, measureCoverage, progress);
+            new XUnitTestRunner(), configuration, timeoutPolicy: null, workerCount, measureCoverage,
+            exclude, progress);
 
         return session.RunAsync(searchDirectory, cancellationToken);
     }

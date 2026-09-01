@@ -32,6 +32,33 @@ public class MutationSiteTests
         Assert.Empty(Generate(source));
     }
 
+    /// <summary>
+    /// Closes RB-016, found by running KillMutants on its own source. A pattern or `out` variable is
+    /// definitely assigned only conditionally, and every mutation this tool makes to the expression
+    /// that declares it changes when its parts are evaluated. `x is not T t || f(t)` turned into
+    /// `x is not T t &amp;&amp; f(t)` leaves `t` unassigned; so does swapping the branches of
+    /// `d.TryGetValue(k, out var v) ? v : 0`. Neither compiles, so neither is proposed.
+    /// </summary>
+    [Theory]
+    // a pattern variable read after the guard: `||` into `&&` orphans it
+    [InlineData("class C { int M(object o) { if (o is not string s || s.Length >= 3) { return 0; } return s.Length; } }",
+                "s.Length >= 3")]
+    // an `out` variable, the other half of the same problem
+    [InlineData("class C { int M(System.Collections.Generic.Dictionary<int,int> d) " +
+                "{ if (!d.TryGetValue(1, out int v) || v >= 3) { return 0; } return v; } }",
+                "v >= 3")]
+    public void An_expression_that_declares_a_variable_is_not_mutated(string source, string stillMutated)
+    {
+        IReadOnlyList<Mutant> mutants = Generate(source);
+
+        // The declaring expression yields nothing...
+        Assert.DoesNotContain(mutants, mutant => mutant.OriginalText.Contains("is not", StringComparison.Ordinal));
+        Assert.DoesNotContain(mutants, mutant => mutant.OriginalText.Contains("TryGetValue", StringComparison.Ordinal));
+
+        // ...while the ordinary expressions beside it still do. The rule must not swallow the file.
+        Assert.Contains(mutants, mutant => mutant.OriginalText == stillMutated);
+    }
+
     [Theory]
     // an ordinary expression-bodied member
     [InlineData("class C { bool M(int a) => a >= 2; }")]

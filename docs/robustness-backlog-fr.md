@@ -398,3 +398,90 @@ cible — donc un type nul ne doit pas être lu comme un échec, contrairement �
 `Every_mutator_family_is_exercised_against_the_fixture`, qui échoue si une famille cesse de produire
 des mutants contre un vrai projet.
 
+---
+
+## RB-016 — Une mutation ne doit pas laisser une déclaration orpheline · COUVERT
+
+Découvert à la toute première exécution de KillMutants sur son propre code source, ce qui est
+précisément la raison pour laquelle M10 l'a fait. Le problème est apparu deux fois, sous deux
+déguisements différents, avant même qu'un seul mutant ait été testé.
+
+**Le fait sous-jacent.** Une variable de motif ou une variable `out` n'est définie que
+**conditionnellement** — « affectée quand cette expression est fausse » — et toutes les mutations que
+fait cet outil sur une telle expression changent le moment où ses parties sont évaluées. Ceci, du C#
+ordinaire et omniprésent dans ce dépôt :
+
+```csharp
+if (node is not BinaryExpressionSyntax binary ||
+    !Replacements.TryGetValue(binary.Kind(), out IReadOnlyList<SyntaxKind>? replacements))
+{
+    yield break;
+}
+```
+
+muté de `||` en `&&` laisse `binary` et `replacements` non affectées à chaque usage ultérieur :
+`CS0165`. Même chose pour un ternaire : échanger les branches de
+`d.TryGetValue(k, out var v) ? v : 0` déplace `v` dans la branche où elle n'a jamais été affectée.
+Seize mutants du premier run de dogfooding étaient des erreurs de compilation, tous de cette forme.
+
+**Le second déguisement, celui qui a arrêté le run.** La sonde de couverture efface le même état pour
+une autre raison : `Hit(id, value)` retourne son argument, donc elle ne peut pas changer ce qu'une
+expression *vaut*, mais l'affectation définie conditionnelle ne survit pas au passage par un appel de
+méthode. Envelopper ce même `||` a produit dix `CS0165` répartis sur sept fichiers, et le build
+instrumenté a échoué net : pas de couverture, pas de run, pas de rapport.
+
+**Pourquoi c'était invisible jusqu'ici.** Le code des fixtures — comparaisons, arithmétique, un
+ternaire, un `??` — ne contient aucune variable de motif. Toute cette famille était hors de portée des
+fixtures. Seul du vrai code a des clauses de garde.
+
+**Une règle, deux symptômes.** Une expression qui déclare une variable, où que ce soit en dessous,
+n'est pas mutée. C'est vérifié une seule fois, à la génération, dans
+`MutationSite.DeclaresAVariable` — et comme un site est par définition un nœud que remplace un
+mutant, un nœud jamais muté n'est jamais instrumenté non plus. La défaillance d'instrumentation
+disparaît par conséquence, sans règle propre.
+
+La règle est délibérément grossière : toute déclaration sous le nœud, même une dont la portée ne
+pourrait pas s'en échapper. Ce qu'elle coûte, c'est la rare mutation d'une déclaration que personne ne
+relit ensuite ; ce qu'elle achète, c'est qu'aucune des deux défaillances ne peut se reproduire.
+
+**Nos tests.** `MutationSiteTests.An_expression_that_declares_a_variable_is_not_mutated`, qui vérifie
+aussi que les expressions ordinaires voisines de la garde sont toujours mutées — une règle qui
+avalerait le fichier passerait un test plus faible.
+
+---
+
+## RB-017 — La sonde ne peut pas accepter tous les types qu'un site peut avoir · COUVERT
+
+Le frère de RB-016, et la raison pour laquelle son argument « un site jamais muté n'est jamais
+instrumenté » ne clôt pas entièrement le sujet.
+
+**Pourquoi cela compte.** L'enregistreur est `T Hit<T>(int id, T value)`, et C# n'autorise pas
+n'importe quel type comme `T`. Vérifié sur le SDK .NET 10 :
+
+```
+error CS9244: The type 'Span<int>' may not be a ref struct or a type parameter allowing ref
+              structs in order to use it as parameter 'T'
+```
+
+Une expression conditionnelle est un site de mutation, et `flag ? a : b` sur deux spans a exactement
+ce type. Le cas est donc atteignable dans du code ordinaire et, contrairement à RB-016, la mutation
+elle-même est parfaitement valide : c'est seulement la *mesure* qui ne peut pas s'exprimer.
+
+**Pourquoi la réparation évidente est refusée.** `where T : allows ref struct` règle le problème en un
+mot, et exige C# 13. La sonde est compilée dans le projet de l'**utilisateur**, dont nous ne
+contrôlons pas la version de langage ;
+[ADR-0007](adr/0007-measure-coverage-with-a-type-preserving-probe-fr.md) garde ce source délibérément
+conservateur pour exactement cette raison. Acheter la couverture des spans au prix d'un refus de
+tourner sur une version de langage plus ancienne est un mauvais échange.
+
+**La règle.** Un site dont la valeur est un ref struct, un pointeur ou `void` ne porte pas
+d'enregistreur. Ses mutants sont alors testés contre la suite complète : plus lent, jamais faux.
+C'est ce qui fait que `CoverageMap.TestsReaching` répond trois choses au lieu de deux : une liste de
+tests, une liste vide (mesuré, rien ne l'atteint — `NoCoverage`), et `null` (non mesuré — tout
+exécuter). Confondre les deux dernières reviendrait à reporter `NoCoverage` sur du code que les tests
+exercent réellement.
+
+**Nos tests.** `MutationSitesTests.A_site_whose_value_is_a_ref_struct_carries_no_recorder`,
+`An_ordinary_expression_still_carries_one`,
+`Every_mutant_keeps_a_representative_and_every_site_lands_in_one_bucket`.
+

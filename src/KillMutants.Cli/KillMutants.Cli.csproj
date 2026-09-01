@@ -4,10 +4,29 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>KillMutants.Cli</RootNamespace>
     <AssemblyName>killmutants</AssemblyName>
+  </PropertyGroup>
+
+  <PropertyGroup>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>killmutants</ToolCommandName>
     <PackageId>KillMutants</PackageId>
+    <Version>0.1.0-alpha</Version>
+    <Description>A modern, opinionated mutation testing tool for .NET, built for xUnit 4.</Description>
+    <Authors>Reefact</Authors>
+    <Company>Reefact</Company>
+    <PackageTags>mutation-testing;testing;xunit;roslyn;dotnet-tool</PackageTags>
+    <PackageProjectUrl>https://github.com/Reefact/kill-mutants</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Reefact/kill-mutants</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Packed at the root of the package: NuGet resolves both properties above against it. -->
+    <None Include="../../LICENSE" Pack="true" PackagePath="/" />
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../KillMutants.Core/KillMutants.Core.csproj" />

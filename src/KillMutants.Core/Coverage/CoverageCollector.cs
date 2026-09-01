@@ -51,7 +51,7 @@ internal sealed class CoverageCollector
         ArgumentNullException.ThrowIfNull(compilation);
         ArgumentNullException.ThrowIfNull(mutants);
 
-        MutationSites sites = MutationSites.From(mutants);
+        MutationSites sites = MutationSites.From(mutants, compilation.Compilation);
         EmitOutcome instrumented = compilation.EmitInstrumented(sites);
 
         if (!instrumented.Success)

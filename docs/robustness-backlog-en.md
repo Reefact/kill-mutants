@@ -371,3 +371,86 @@ read as a failure the way `BinaryOperatorMutator` reads it.
 `Every_mutator_family_is_exercised_against_the_fixture`, which fails if any family stops producing
 mutants against a real project.
 
+---
+
+## RB-016 — A mutation must not orphan a declaration · COVERED
+
+Found on the very first run of KillMutants against its own source, which is the whole reason M10 did
+that. It showed up twice, in two different disguises, before a single mutant had been tested.
+
+**The underlying fact.** A pattern variable or an `out` variable is definitely assigned only
+**conditionally** — "assigned when this expression is false" — and every mutation this tool makes to
+such an expression changes when its parts are evaluated. This, which is ordinary C# and everywhere in
+this codebase:
+
+```csharp
+if (node is not BinaryExpressionSyntax binary ||
+    !Replacements.TryGetValue(binary.Kind(), out IReadOnlyList<SyntaxKind>? replacements))
+{
+    yield break;
+}
+```
+
+mutated from `||` to `&&` leaves both `binary` and `replacements` unassigned at every later use:
+`CS0165`. The same happens to a ternary — swapping the branches of
+`d.TryGetValue(k, out var v) ? v : 0` moves `v` into the branch where it was never assigned. Sixteen
+mutants in the first dogfood run were compile errors, every one of this shape.
+
+**The second disguise, and the one that stopped the run.** The coverage probe erases the same state
+for a different reason: `Hit(id, value)` returns its argument, so it cannot change what an expression
+*evaluates to*, but conditional definite assignment does not survive being passed through a method
+call. Wrapping that same `||` produced ten `CS0165`s across seven files, and the instrumented build
+failed outright — no coverage, no run, no report.
+
+**Why it was invisible until now.** The fixture code — comparisons, arithmetic, a ternary, a
+null-coalesce — contains no pattern variables at all. The entire family sat outside what fixtures
+could reach. Only real code has guard clauses.
+
+**One rule, both symptoms.** An expression that declares a variable anywhere beneath it is not
+mutated. That is checked once, at generation, in `MutationSite.DeclaresAVariable` — and because a
+site is by definition a node some mutant replaces, a node that is never mutated is never instrumented
+either. The instrumentation failure disappears as a consequence rather than needing a rule of its own.
+
+The rule is deliberately blunt: any declaration beneath the node, even one whose scope could not
+escape it. What it costs is the rare mutation of a declaration nothing reads afterwards; what it buys
+is that neither failure can recur.
+
+**Our tests.** `MutationSiteTests.An_expression_that_declares_a_variable_is_not_mutated`, which also
+asserts that the ordinary expressions beside the guard are still mutated — a rule that swallowed the
+file would pass a weaker test.
+
+---
+
+## RB-017 — The probe cannot accept every type a site can have · COVERED
+
+The sibling of RB-016, and the reason its "sites are never instrumented if they are never mutated"
+argument does not close the subject entirely.
+
+**Why it matters.** The recorder is `T Hit<T>(int id, T value)`, and C# does not let every type be a
+`T`. Verified against the .NET 10 SDK:
+
+```
+error CS9244: The type 'Span<int>' may not be a ref struct or a type parameter allowing ref
+              structs in order to use it as parameter 'T'
+```
+
+A conditional expression is a mutation site, and `flag ? a : b` over two spans has exactly that type.
+So this is reachable in ordinary code, and unlike RB-016 the mutation itself is perfectly valid — it
+is only the *measurement* that cannot be expressed.
+
+**Why the obvious repair is refused.** `where T : allows ref struct` fixes it in one word, and needs
+C# 13. The probe is compiled into the **user's** project, whose language version we do not control;
+[ADR-0007](adr/0007-measure-coverage-with-a-type-preserving-probe-en.md) keeps that source
+deliberately conservative for exactly this reason. Buying coverage for spans at the price of refusing
+to run on an older language version is the wrong trade.
+
+**The rule.** A site whose value is a ref struct, a pointer, or `void` carries no recorder. Its
+mutants are then tested against the whole suite, which is slower and never wrong. This is what makes
+`CoverageMap.TestsReaching` answer three things rather than two: a list of tests, an empty list
+(measured, nothing reaches it — `NoCoverage`), and `null` (not measured — run everything). Collapsing
+the last two would report `NoCoverage` against code the tests do exercise.
+
+**Our tests.** `MutationSitesTests.A_site_whose_value_is_a_ref_struct_carries_no_recorder`,
+`An_ordinary_expression_still_carries_one`,
+`Every_mutant_keeps_a_representative_and_every_site_lands_in_one_bucket`.
+

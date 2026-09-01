@@ -1,3 +1,4 @@
+using KillMutants.Filtering;
 using KillMutants.Processes;
 using KillMutants.Reporting;
 
@@ -12,13 +13,18 @@ internal sealed class ProjectDiscovery
 
     private readonly MsBuildQuery _msBuild;
     private readonly string _configuration;
+    private readonly PathFilter _exclusions;
     private readonly IProgress<MutationTestProgress>? _progress;
 
-    public ProjectDiscovery(string configuration, IProgress<MutationTestProgress>? progress = null)
+    public ProjectDiscovery(
+        string configuration,
+        PathFilter? exclusions = null,
+        IProgress<MutationTestProgress>? progress = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(configuration);
 
         _configuration = configuration;
+        _exclusions = exclusions ?? PathFilter.None;
         _progress = progress;
         _msBuild = new MsBuildQuery(configuration);
     }
@@ -155,15 +161,25 @@ internal sealed class ProjectDiscovery
             throw new ProjectAnalysisException($"'{searchDirectory}' is not a directory.");
         }
 
-        string[] paths = [.. Directory
+        string[] found = [.. Directory
             .EnumerateFiles(searchDirectory, "*.csproj", SearchOption.AllDirectories)
             .Where(path => !IsUnderBuildOutput(path, searchDirectory))
             .Select(Path.GetFullPath)
             .Order(StringComparer.Ordinal)];
 
-        if (paths.Length == 0)
+        if (found.Length == 0)
         {
             throw new ProjectAnalysisException($"No C# project was found under '{searchDirectory}'.");
+        }
+
+        string[] paths = [.. found.Where(path => !_exclusions.Excludes(path))];
+
+        // Worth its own message: "no project found" would send the user looking at the directory
+        // they gave rather than at the pattern they wrote.
+        if (paths.Length == 0)
+        {
+            throw new ProjectAnalysisException(
+                $"Every C# project under '{searchDirectory}' was excluded, so there is nothing to do.");
         }
 
         List<ProjectFacts> projects = [];

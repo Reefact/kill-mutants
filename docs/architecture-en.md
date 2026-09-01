@@ -71,6 +71,7 @@ namespace boundaries are already where the assembly boundaries would go.
 |---|---|---|
 | Project discovery | `KillMutants.Projects` | Locates the project under test and its test project |
 | Code analysis | `KillMutants.Analysis` | `csc` command line -> `CSharpCompilation` |
+| Scope filtering | `KillMutants.Filtering` | What a run leaves alone (`--exclude`) |
 | Mutation generation | `KillMutants.Mutations` | Walks trees, produces candidates |
 | Mutator catalog | `KillMutants.Mutations.Mutators` | `IMutator` and its implementations |
 | Mutant representation | `KillMutants.Mutations` | `Mutant`, `MutantId`, `MutantStatus`, `SourceLocation` |
@@ -162,6 +163,19 @@ filter matches no tests, which would classify a mutant as `Survived`. *Mitigated
 structured result file and requiring a positive executed-test count, rather than trusting the exit
 code alone.*
 
+**High — mutations and instrumentation that break definite assignment.** A pattern or `out` variable
+is definitely assigned only *conditionally*. Mutating the expression that declares it changes when
+its parts are evaluated, and wrapping that expression in the coverage probe passes the state through
+a method call; either way the project stops compiling. Found within seconds of running the tool on
+its own source, where guard clauses of this shape are everywhere. *Mitigated by not mutating an
+expression that declares a variable, which also removes it as an instrumentation site —
+[RB-016](robustness-backlog-en.md).*
+
+**Medium — a site whose value the probe cannot accept.** `Hit<T>` cannot take a ref struct, a pointer
+or `void` as its type argument, and a conditional expression over two `Span<T>` has exactly that
+type. *Mitigated by leaving those sites uninstrumented and testing their mutants against the whole
+suite — [RB-017](robustness-backlog-en.md).*
+
 **Medium — mutations that introduce an infinite loop.** Not reachable by milestone 1's single
 mutator, but the timeout must exist before the catalog grows. *Deferred to M2, with the baseline
 duration already recorded for the budget.*
@@ -176,7 +190,19 @@ discover the tests and measure which ones reach which mutants, so uncovered muta
 the rest run only what can kill them. M7 reports: live progress, findings grouped by file, and a JSON
 report for anything that is not a person. M8 makes it usable as a quality gate: an opt-in
 `--break-at` threshold and exit codes that separate a weak test suite from a broken run. M9
-completes the operator catalogue.
+completes the operator catalogue. M10 makes it a tool rather than an engine: packaged as
+`dotnet killmutants`, given the `--exclude` a real repository needs, and — the point of the milestone
+— run against KillMutants' own source, which found RB-016 within seconds.
+
+**What the first real run measured.** 345 mutants over `KillMutants.Core`, 4.8 minutes on four
+cores, 90 killed, 102 survived, one killed by timeout, none failing to compile. Two numbers deserve
+their caveats rather than a headline. The 152 mutants reported as uncovered are largely an artefact
+of the run's own configuration: it excluded the end-to-end suite, which is what exercises most of the
+discovery, analysis and execution code, so those mutants are uncovered *by the suite that was run*
+rather than untested. And of the 102 survivors, a large share are `StringLiteral` mutants on error
+messages nothing asserts on — true findings, but the least useful ones per unit of run time, and the
+first evidence about where the catalogue earns its keep on real code. The score is therefore reported
+here as a measurement, not as a verdict on the test suite.
 
 **Two output streams, on purpose.** Progress goes to standard error and the report to standard
 output, so `killmutants > report.txt` captures the report without the progress line threaded through

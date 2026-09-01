@@ -87,6 +87,21 @@ public class CommandLineTests
         Assert.Equal(Success, exitCode);
     }
 
+    /// <summary>
+    /// Excluding every project is a mistake worth its own message: "no project found" would send
+    /// the user looking at the directory they gave rather than at the pattern they wrote.
+    /// </summary>
+    [Fact]
+    public async Task Excluding_everything_says_so_rather_than_reporting_an_empty_directory()
+    {
+        using var fixture = FixtureCopy.Create();
+
+        (int exitCode, _, string error) = await RunAsync(fixture.Root, "-e", "*");
+
+        Assert.Equal(CouldNotRun, exitCode);
+        Assert.Contains("was excluded", error, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task A_score_below_the_threshold_is_distinguishable_from_a_broken_run()
     {

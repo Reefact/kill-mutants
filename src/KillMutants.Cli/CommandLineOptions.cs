@@ -5,6 +5,7 @@ namespace KillMutants.Cli;
 /// <param name="Configuration">The build configuration to analyse and run.</param>
 /// <param name="WorkerCount">How many mutants to test at once, or null for the default.</param>
 /// <param name="MeasureCoverage">Run only the tests that reach each mutant.</param>
+/// <param name="Exclude">Patterns for projects and source files to leave alone.</param>
 /// <param name="JsonReportPath">Where to write the machine-readable report, or null for none.</param>
 /// <param name="Threshold">
 /// The mutation score the run must reach, as a percentage, or null when the run only reports.
@@ -14,6 +15,7 @@ internal sealed record CommandLineOptions(
     string Configuration,
     int? WorkerCount,
     bool MeasureCoverage,
+    IReadOnlyList<string> Exclude,
     string? JsonReportPath,
     double? Threshold)
 {
@@ -30,6 +32,7 @@ internal sealed record CommandLineOptions(
         string configuration = "Release";
         int? workerCount = null;
         bool measureCoverage = true;
+        List<string> exclude = [];
         string? jsonReportPath = null;
         double? threshold = null;
 
@@ -71,6 +74,18 @@ internal sealed record CommandLineOptions(
 
                 case "--no-coverage":
                     measureCoverage = false;
+
+                    break;
+
+                case "-e" or "--exclude":
+                    index++;
+
+                    if (index >= args.Count || string.IsNullOrWhiteSpace(args[index]))
+                    {
+                        throw new ArgumentException($"'{argument}' needs a path pattern.");
+                    }
+
+                    exclude.Add(args[index]);
 
                     break;
 
@@ -129,6 +144,7 @@ internal sealed record CommandLineOptions(
             configuration,
             workerCount,
             measureCoverage,
+            exclude,
             jsonReportPath,
             threshold);
     }
