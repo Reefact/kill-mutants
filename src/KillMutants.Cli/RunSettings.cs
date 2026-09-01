@@ -42,7 +42,10 @@ internal sealed record RunSettings(
     /// finds there is no way to say so.
     /// </para>
     /// </remarks>
-    /// <exception cref="ArgumentException">A named mutator family does not exist.</exception>
+    /// <exception cref="ArgumentException">
+    /// A named mutator family does not exist, or a value in the file is one the command line would
+    /// have refused.
+    /// </exception>
     public static RunSettings From(CommandLineOptions options, ConfigurationFile? file)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -51,6 +54,7 @@ internal sealed record RunSettings(
         IReadOnlyList<MutatorName> without = Families(options.WithoutMutators, file?.Without);
 
         RejectUnknown([.. mutators, .. without]);
+        RejectImpossible(file);
 
         return new RunSettings(
             options.Directory,
@@ -63,6 +67,47 @@ internal sealed record RunSettings(
             options.VerifyKills ?? file?.VerifyKills ?? 0,
             options.JsonReportPath ?? Resolve(file?.ReportJson, file?.Directory),
             options.Threshold ?? file?.BreakAt);
+    }
+
+    /// <summary>
+    /// Holds the file to the same rules as the command line, because they are the same settings.
+    /// </summary>
+    /// <remarks>
+    /// The command line parses and validates in one step, so the file was the only way in for a
+    /// value that cannot mean anything. <c>"parallel": 0</c> was the sharp one: it reached the
+    /// session, which built no sandbox and then indexed the first one, so a setting a user could
+    /// reasonably try produced an IndexOutOfRangeException and exit code 134 rather than the
+    /// documented bad-usage exit.
+    /// </remarks>
+    private static void RejectImpossible(ConfigurationFile? file)
+    {
+        if (file is null)
+        {
+            return;
+        }
+
+        // Worded like the command line's own refusals, with the setting named: a value read from a
+        // file has to say where it was read from, or the reader looks at their shell history.
+        if (file.Parallel is { } parallel && parallel < 1)
+        {
+            throw new ArgumentException(
+                $"'{parallel.ToString(CultureInfo.InvariantCulture)}' is not a positive number of " +
+                $"workers ('parallel' in {ConfigurationFile.Name}).");
+        }
+
+        if (file.VerifyKills is { } verifyKills && verifyKills < 0)
+        {
+            throw new ArgumentException(
+                $"'{verifyKills.ToString(CultureInfo.InvariantCulture)}' is not a count of mutants " +
+                $"to test again, zero or more ('verifyKills' in {ConfigurationFile.Name}).");
+        }
+
+        if (file.BreakAt is { } breakAt && (breakAt < 0 || breakAt > 100))
+        {
+            throw new ArgumentException(
+                $"'{breakAt.ToString(CultureInfo.InvariantCulture)}' is not a percentage between " +
+                $"0 and 100 ('breakAt' in {ConfigurationFile.Name}).");
+        }
     }
 
     private static IReadOnlyList<MutatorName> Families(

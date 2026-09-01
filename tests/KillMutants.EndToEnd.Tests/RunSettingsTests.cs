@@ -120,4 +120,54 @@ public class RunSettingsTests
         Assert.Contains("StringLiterals", error.Message, StringComparison.Ordinal);
         Assert.Contains("Comparison", error.Message, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// The command line refuses these values at parse time, so the file was the only way in. The
+    /// worst of them reached the session, which built no sandbox and then indexed the first one.
+    /// </summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void A_worker_count_the_command_line_would_refuse_is_refused_in_the_file(int parallel)
+    {
+        ArgumentException refusal = Assert.Throws<ArgumentException>(
+            () => RunSettings.From(Asked(), new ConfigurationFile(Parallel: parallel)));
+
+        Assert.Contains("positive number of workers", refusal.Message, StringComparison.Ordinal);
+
+        // And it says where to look, which a message about a setting read from a file has to.
+        Assert.Contains("killmutants.json", refusal.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_negative_sample_of_kills_to_verify_is_refused_in_the_file()
+    {
+        ArgumentException refusal = Assert.Throws<ArgumentException>(
+            () => RunSettings.From(Asked(), new ConfigurationFile(VerifyKills: -1)));
+
+        Assert.Contains("verifyKills", refusal.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(-1d)]
+    [InlineData(101d)]
+    public void A_threshold_outside_a_percentage_is_refused_in_the_file(double breakAt)
+    {
+        ArgumentException refusal = Assert.Throws<ArgumentException>(
+            () => RunSettings.From(Asked(), new ConfigurationFile(BreakAt: breakAt)));
+
+        Assert.Contains("percentage between 0 and 100", refusal.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>And the values at the edge of each rule are accepted, or the rules are too strict.</summary>
+    [Fact]
+    public void The_smallest_values_each_rule_allows_are_accepted()
+    {
+        RunSettings settings = RunSettings.From(
+            Asked(), new ConfigurationFile(Parallel: 1, VerifyKills: 0, BreakAt: 0));
+
+        Assert.Equal(1, settings.WorkerCount);
+        Assert.Equal(0, settings.VerifyKills);
+        Assert.Equal(0, settings.Threshold);
+    }
 }
