@@ -13,13 +13,37 @@ namespace KillMutants.Reporting;
 /// <param name="Disagreement">
 /// Why this verdict is not to be trusted, when testing the mutant again did not reproduce it.
 /// </param>
+/// <param name="Overturned">
+/// How an earlier verdict for this mutant was corrected, when re-running it alone reached a
+/// different one that is known to be the better of the two.
+/// </param>
 public sealed record MutantResult(
     Mutant Mutant,
     MutantStatus Status,
     string? Detail = null,
     IReadOnlyList<TestName>? KilledBy = null,
-    string? Disagreement = null)
+    string? Disagreement = null,
+    string? Overturned = null)
 {
+    /// <summary>
+    /// Set when this mutant's first verdict was replaced by a re-run whose conditions were better,
+    /// and null when it was not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Deliberately not a <see cref="Disagreement"/>, which says the opposite thing. A disagreement
+    /// is two runs of equal standing reaching different answers, and this tool refusing to choose
+    /// between them. This is a correction: the first verdict was reached while workers competed for
+    /// the machine, the second alone, and the second is the one to believe.
+    /// </para>
+    /// <para>
+    /// It is recorded because the correction is itself a measurement - of the time budget, not of
+    /// the mutant. A run that overturns many timeouts is a run whose budget is too tight for its
+    /// concurrency, and without this the only trace of that is a number quietly getting better.
+    /// </para>
+    /// </remarks>
+    public string? Overturned { get; init; } = Overturned;
+
     /// <summary>
     /// Set when a re-run of this mutant reached a different verdict, and null when it did not or was
     /// never attempted.

@@ -48,6 +48,20 @@ public sealed record RunWarning(string Text)
                 "before being believed, so contention is not the cause - the time budget is."));
         }
 
+        MutantResult[] overturned = [.. report.Results.Where(result => result.Overturned is not null)];
+
+        if (overturned.Length > 0)
+        {
+            warnings.Add(new RunWarning(
+                $"{Count(overturned.Length)} mutant(s) timed out while the workers were running and " +
+                "did not when re-run on their own: " +
+                string.Join(", ", overturned.Select(result => result.Mutant.Key)) +
+                ". Their corrected verdicts are the ones reported. This says nothing about those " +
+                "mutants and something about the run: the time budget is tight for this level of " +
+                "concurrency, and a tool without that second pass would have counted every one of " +
+                "them as detected."));
+        }
+
         MutantResult[] disputed = [.. report.Results.Where(result => result.Disagreement is not null)];
 
         if (disputed.Length > 0)

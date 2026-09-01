@@ -264,9 +264,23 @@ internal sealed class MutationTestSession
             _progress?.Report(new MutationTestProgress(
                 MutationTestPhase.ConfirmingTimeouts, 0, timedOut.Length, mutants[index].Id.ToString()));
 
-            results[index] = await TestMutantAsync(
+            MutantResult alone = await TestMutantAsync(
                     compilation, sandbox, mutants[index], coverage, budget, cancellationToken)
                 .ConfigureAwait(false);
+
+            // The second verdict wins - that is the whole point of taking it. But a timeout that
+            // does not survive being re-run alone is evidence about the budget, and replacing the
+            // status without saying so leaves the run silently better than it was measured. A tool
+            // that corrects itself has to be able to say how often it had to.
+            results[index] = alone.Status == MutantStatus.Timeout
+                ? alone
+                : alone with
+                {
+                    Overturned =
+                        $"timed out with {_workerCount.ToString(CultureInfo.InvariantCulture)} " +
+                        $"worker(s) running, then {alone.Status} when re-run on its own. The budget " +
+                        "was exceeded because of the load, not because of the mutation.",
+                };
         }
     }
 
