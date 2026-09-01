@@ -173,18 +173,19 @@ ignorés, pas rapportés.
 
 ## RB-006 — L'injection ne résiste pas à un arrêt brutal · COUVERT
 
-**Pourquoi cela existe.** `Dispose` ne s'exécute pas sur un SIGKILL ni sur un job CI annulé : un run
-tué alors qu'un mutant est injecté laisse un assembly muté et un fichier `.killmutants-original` dans
-le répertoire de sortie du développeur. Stryker souffre de la même plaie et se contente de la
-journaliser (`ProjectComponents/TestProjects/TestProjectsInfo.cs:51-58`).
+**Pourquoi cela existe.** Un run tué par SIGKILL ou par un job CI annulé ne peut pas faire son
+ménage : il laisse un assembly muté dans le répertoire de sortie du développeur. Stryker souffre de
+la même plaie et se contente de la journaliser
+(`ProjectComponents/TestProjects/TestProjectsInfo.cs:51-58`).
 
-**Notre comportement.** Prendre en charge un assembly restaure d'abord toute sauvegarde abandonnée.
-Trouver une sauvegarde prouve qu'un run précédent est mort, et la restaurer silencieusement est le
-bon choix : sinon le développeur voit ses propres tests échouer sans comprendre pourquoi, et — pire —
-le prochain run de KillMutants prendrait l'assembly muté comme baseline et rapporterait un score
-flatteur mesuré contre lui.
+**Comment nous l'avions d'abord corrigé, et pourquoi cela a changé.** Prendre en charge un assembly
+restaurait d'abord toute sauvegarde abandonnée. Cela fonctionnait, mais c'était une règle à retenir.
 
-**Nos tests.** `AssemblyInjectionTests.An_assembly_abandoned_by_a_killed_run_is_restored_before_anything_else`.
+La parallélisation l'a rendue inutile. Chaque worker travaille désormais depuis une copie privée du
+répertoire de sortie des tests : **KillMutants n'écrit plus du tout dans la sortie de build du
+développeur**. Un run qui meurt en cours de route ne laisse qu'un répertoire temporaire. Le mode de
+défaillance disparaît par construction plutôt que par nettoyage, ce qui est la meilleure sorte de
+correction : il n'y a plus de règle à oublier.
 
 ---
 
@@ -319,3 +320,20 @@ d'origine par-dessus le mutant.
 
 **Nos tests.** `MutationTestingEndToEndTests.Several_projects_and_several_test_suites_are_all_covered`,
 qui part d'une arborescence propre et échoue si l'une des deux options revient.
+
+---
+
+## RB-013 — Le budget de temps est mesuré à vide mais dépensé sous charge · OUVERT
+
+Le budget par mutant est dérivé d'une exécution de référence réalisée sans rien d'autre en cours,
+alors que les mutants sont ensuite testés avec jusqu'à `--parallel` frères se disputant la machine. Un
+mutant sain mais lent pourrait dépasser son budget uniquement à cause de cette contention et être
+consigné `Timeout` — compté comme une détection dans le score, si bien que l'effet est de le
+*gonfler* plutôt que de l'abaisser.
+
+Les réglages par défaut rendent cela improbable : trois fois le baseline plus trente secondes de
+marge, avec la moitié des processeurs logiques utilisée par défaut. C'est consigné plutôt que corrigé
+parce que la bonne réponse n'est pas encore évidente — mesurer le baseline sous une charge
+représentative, rechronométrer un dépassement suspect sur un worker au repos, ou simplement élargir
+la marge sont tous plausibles, et trancher demande des données d'un vrai projet plutôt que d'une
+fixture.

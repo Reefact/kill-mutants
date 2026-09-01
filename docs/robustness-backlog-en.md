@@ -162,17 +162,17 @@ values, attribute arguments and enum members. They are skipped, not reported.
 
 ## RB-006 — Injection is not crash-safe · COVERED
 
-**Why it exists.** `Dispose` does not run on SIGKILL or a cancelled CI job, so a run killed while a
-mutant is injected leaves a mutated assembly and a `.killmutants-original` file in the developer's
-output directory. Stryker has the same wound and only logs it
-(`ProjectComponents/TestProjects/TestProjectsInfo.cs:51-58`).
+**Why it exists.** A run killed by SIGKILL or a cancelled CI job cannot clean up after itself, so it
+leaves a mutated assembly in the developer's output directory. Stryker has the same wound and only
+logs it (`ProjectComponents/TestProjects/TestProjectsInfo.cs:51-58`).
 
-**Our behaviour.** Taking custody of an assembly now restores any abandoned backup first. Finding a
-backup is proof a previous run died, and restoring it silently is right: the alternative is a
-developer whose own tests fail for reasons they cannot see, and — worse — a next KillMutants run
-that would take the mutated assembly as its baseline and report a flattering score against it.
+**How we first fixed it, and why that changed.** Taking custody of an assembly restored any
+abandoned backup before doing anything else. That worked, but it was a rule to remember.
 
-**Our tests.** `AssemblyInjectionTests.An_assembly_abandoned_by_a_killed_run_is_restored_before_anything_else`.
+Parallelism made it unnecessary. Each worker now runs from a private copy of the test output
+directory, so **KillMutants never writes into the developer's build output at all**. A run that dies
+halfway leaves nothing behind but a temporary directory. The failure mode is gone by construction
+rather than by cleanup, which is the better kind of fix: there is no longer a rule to forget.
 
 ---
 
@@ -299,3 +299,18 @@ pristine assembly back over the mutant.
 
 **Our tests.** `MutationTestingEndToEndTests.Several_projects_and_several_test_suites_are_all_covered`,
 which runs from a clean checkout and fails if either switch comes back.
+
+---
+
+## RB-013 — The timeout budget is measured alone but spent under load · OPEN
+
+The per-mutant budget is derived from a baseline run that happens with nothing else running, while
+mutants are then tested with up to `--parallel` siblings competing for the machine. A healthy but slow
+mutant could exceed its budget purely because of that contention and be recorded `Timeout` — counted
+in the score as a detection, so the effect is to *inflate* the score rather than to depress it.
+
+The default settings make this unlikely: three times the baseline plus a thirty-second margin, with
+half the logical processors used by default. It is recorded rather than fixed because the right
+answer is not yet obvious — measuring the baseline under representative load, re-timing a suspected
+timeout on an idle worker, and simply widening the margin are all plausible, and choosing between
+them needs data from a real project rather than from a fixture.

@@ -98,6 +98,36 @@ public class MutationTestingEndToEndTests
     }
 
     /// <summary>
+    /// Milestone 6's correctness property, and the one that matters more than its speed: running
+    /// mutants concurrently must not change a single verdict. Each worker owns a private copy of the
+    /// test output directory, so no two mutants can ever see each other's assembly - the failure
+    /// mode that makes shared, warmed-up test hosts unsafe.
+    /// </summary>
+    [Fact]
+    public async Task Testing_mutants_in_parallel_gives_exactly_the_same_verdicts()
+    {
+        using var sequentialFixture = FixtureCopy.Create();
+        using var parallelFixture = FixtureCopy.Create();
+
+        MutationTestReport sequential = await MutationTesting.RunAsync(
+            sequentialFixture.Root, workerCount: 1,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        MutationTestReport concurrent = await MutationTesting.RunAsync(
+            parallelFixture.Root, workerCount: 4,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        static string[] Verdicts(MutationTestReport report) =>
+            [.. report.Results.Select(result =>
+                $"{result.Mutant.Id} {result.Mutant.Location} {result.Mutant.MutatedText} {result.Status}")];
+
+        // Identical, and in the same order: results are re-sequenced after the workers finish, so a
+        // report never depends on which worker happened to finish first.
+        Assert.Equal(Verdicts(sequential), Verdicts(concurrent));
+        Assert.Equal(sequential.Score.ToString(), concurrent.Score.ToString());
+    }
+
+    /// <summary>
     /// Milestone 3. Two libraries and two test suites, where Core is reached by both suites - once
     /// directly and once through Domain - and Domain only by its own.
     /// </summary>

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using KillMutants.Analysis;
 using KillMutants.Mutations;
@@ -18,11 +19,13 @@ internal sealed class MutationTestSession
     private readonly ITestRunner _testRunner;
     private readonly string _configuration;
     private readonly TimeoutPolicy _timeoutPolicy;
+    private readonly int _workerCount;
 
     public MutationTestSession(
         ITestRunner testRunner,
         string configuration,
-        TimeoutPolicy? timeoutPolicy = null)
+        TimeoutPolicy? timeoutPolicy = null,
+        int? workerCount = null)
     {
         ArgumentNullException.ThrowIfNull(testRunner);
         ArgumentException.ThrowIfNullOrWhiteSpace(configuration);
@@ -30,7 +33,18 @@ internal sealed class MutationTestSession
         _testRunner = testRunner;
         _configuration = configuration;
         _timeoutPolicy = timeoutPolicy ?? TimeoutPolicy.Default;
+        _workerCount = workerCount ?? DefaultWorkerCount;
     }
+
+    /// <summary>
+    /// How many mutants are tested at once by default.
+    /// </summary>
+    /// <remarks>
+    /// Half the logical processors, because each worker starts a test host that runs the suite's own
+    /// tests in parallel too. Claiming every core for workers would oversubscribe the machine and
+    /// make each run slower, which also inflates the timeout budget derived from the baseline.
+    /// </remarks>
+    private static int DefaultWorkerCount => Math.Max(1, Environment.ProcessorCount / 2);
 
     /// <summary>Discovers, mutates, tests and reports.</summary>
     public async Task<MutationTestReport> RunAsync(
@@ -75,20 +89,76 @@ internal sealed class MutationTestSession
         MutantGenerator generator,
         CancellationToken cancellationToken)
     {
-        using var injection = AssemblyInjection.Protect(target.InjectionPaths);
+        IReadOnlyList<Mutant> mutants = generator.Generate(compilation.Compilation);
 
-        TimeSpan mutantBudget = await VerifyBaselineAsync(target, compilation, injection, cancellationToken)
-            .ConfigureAwait(false);
-
-        List<MutantResult> results = [];
-
-        foreach (Mutant mutant in generator.Generate(compilation.Compilation))
+        if (mutants.Count == 0)
         {
-            results.Add(await TestMutantAsync(target, compilation, injection, mutant, mutantBudget, cancellationToken)
-                .ConfigureAwait(false));
+            return [];
         }
 
-        return results;
+        string sandboxRoot = Path.Combine(Path.GetTempPath(), $"killmutants-{Guid.NewGuid():N}");
+        int workerCount = Math.Min(_workerCount, mutants.Count);
+        List<TestSandbox> sandboxes = [];
+
+        try
+        {
+            for (int index = 0; index < workerCount; index++)
+            {
+                sandboxes.Add(TestSandbox.CreateFor(
+                    target,
+                    Path.Combine(sandboxRoot, index.ToString(CultureInfo.InvariantCulture))));
+            }
+
+            TimeSpan budget = await VerifyBaselineAsync(target, compilation, sandboxes[0], cancellationToken)
+                .ConfigureAwait(false);
+
+            return await TestMutantsAsync(target, compilation, sandboxes, mutants, budget, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            foreach (TestSandbox sandbox in sandboxes)
+            {
+                sandbox.Dispose();
+            }
+
+            DeleteQuietly(sandboxRoot);
+        }
+    }
+
+    /// <summary>
+    /// Tests every mutant, one per worker at a time, each worker in its own sandbox.
+    /// </summary>
+    /// <remarks>
+    /// Workers pull from a shared queue rather than taking a fixed share, because mutants are not
+    /// equally expensive: one that times out costs the whole budget while its neighbours finish in
+    /// milliseconds. Results are re-ordered afterwards so the report does not depend on which worker
+    /// happened to finish first.
+    /// </remarks>
+    private async Task<IReadOnlyList<MutantResult>> TestMutantsAsync(
+        MutationTestTarget target,
+        ProjectCompilation compilation,
+        IReadOnlyList<TestSandbox> sandboxes,
+        IReadOnlyList<Mutant> mutants,
+        TimeSpan budget,
+        CancellationToken cancellationToken)
+    {
+        var pending = new ConcurrentQueue<int>(Enumerable.Range(0, mutants.Count));
+        var results = new MutantResult?[mutants.Count];
+
+        async Task WorkAsync(TestSandbox sandbox)
+        {
+            while (pending.TryDequeue(out int index))
+            {
+                results[index] = await TestMutantAsync(
+                        target, compilation, sandbox, mutants[index], budget, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+
+        await Task.WhenAll(sandboxes.Select(WorkAsync)).ConfigureAwait(false);
+
+        return [.. results.Select(result => result!)];
     }
 
     private async Task<ProjectCompilation> BuildCompilationAsync(
@@ -118,7 +188,7 @@ internal sealed class MutationTestSession
     private async Task<TimeSpan> VerifyBaselineAsync(
         MutationTestTarget target,
         ProjectCompilation compilation,
-        AssemblyInjection injection,
+        TestSandbox sandbox,
         CancellationToken cancellationToken)
     {
         EmitOutcome baseline = compilation.EmitBaseline();
@@ -130,11 +200,11 @@ internal sealed class MutationTestSession
                 $"command line MSBuild reported.{Environment.NewLine}{baseline.Diagnostics}");
         }
 
-        injection.Inject(baseline.Assembly!);
+        sandbox.Inject(baseline.Assembly!);
 
         var total = TimeSpan.Zero;
 
-        foreach (TestProject testProject in target.TestProjects)
+        foreach (TestProject testProject in sandbox.TestProjects)
         {
             TestRunOutcome outcome = await _testRunner
                 .RunAsync(testProject, TimeSpan.FromMinutes(10), stopOnFirstFailure: false, cancellationToken)
@@ -171,7 +241,7 @@ internal sealed class MutationTestSession
     private async Task<MutantResult> TestMutantAsync(
         MutationTestTarget target,
         ProjectCompilation compilation,
-        AssemblyInjection injection,
+        TestSandbox sandbox,
         Mutant mutant,
         TimeSpan budget,
         CancellationToken cancellationToken)
@@ -183,10 +253,10 @@ internal sealed class MutationTestSession
             return new MutantResult(mutant, MutantStatus.CompileError, emitted.Diagnostics);
         }
 
-        injection.Inject(emitted.Assembly!);
+        sandbox.Inject(emitted.Assembly!);
 
         // A mutant is killed by the first suite that notices it; the rest would add nothing.
-        foreach (TestProject testProject in target.TestProjects)
+        foreach (TestProject testProject in sandbox.TestProjects)
         {
             TestRunOutcome outcome = await _testRunner
                 .RunAsync(testProject, budget, stopOnFirstFailure: true, cancellationToken)
@@ -219,4 +289,20 @@ internal sealed class MutationTestSession
 
         return new MutantResult(mutant, MutantStatus.Survived);
     }
+
+    private static void DeleteQuietly(string directory)
+    {
+        try
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+            // A leftover temporary directory is not worth failing a run over.
+        }
+    }
+
 }
