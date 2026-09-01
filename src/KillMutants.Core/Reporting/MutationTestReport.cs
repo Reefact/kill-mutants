@@ -24,6 +24,22 @@ public sealed class MutationTestReport
         Untestable = CountOutcome(MutantOutcome.Untestable);
         Score = MutationScore.FromCounts(Detected, Undetected);
 
+        // Ordered by what each family cost, because that is the order a reader acts on: the
+        // expensive families with little to show are the ones worth reconsidering.
+        ByMutator =
+        [
+            .. results
+                .GroupBy(result => result.Mutant.Mutator)
+                .Select(family => new MutatorSummary(
+                    family.Key,
+                    family.Count(),
+                    family.Count(result => result.Outcome == MutantOutcome.Detected),
+                    family.Count(result => result.Outcome == MutantOutcome.Undetected),
+                    family.Count(result => result.Outcome == MutantOutcome.Untestable)))
+                .OrderByDescending(family => family.Total)
+                .ThenBy(family => family.Mutator.ToString(), StringComparer.Ordinal),
+        ];
+
         int Count(MutantStatus status) => results.Count(result => result.Status == status);
         int CountOutcome(MutantOutcome outcome) => results.Count(result => result.Outcome == outcome);
     }
@@ -67,4 +83,7 @@ public sealed class MutationTestReport
 
     /// <summary>The share of judged mutants the suite detected.</summary>
     public MutationScore Score { get; }
+
+    /// <summary>What each mutator family cost and bought, most mutants first.</summary>
+    public IReadOnlyList<MutatorSummary> ByMutator { get; }
 }

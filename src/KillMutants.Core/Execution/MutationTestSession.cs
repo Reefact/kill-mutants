@@ -24,6 +24,7 @@ internal sealed class MutationTestSession
     private readonly int _workerCount;
     private readonly bool _measureCoverage;
     private readonly IReadOnlyList<string> _exclude;
+    private readonly MutatorCatalog _catalog;
     private readonly IProgress<MutationTestProgress>? _progress;
 
     public MutationTestSession(
@@ -33,6 +34,7 @@ internal sealed class MutationTestSession
         int? workerCount = null,
         bool measureCoverage = true,
         IEnumerable<string>? exclude = null,
+        MutatorCatalog? catalog = null,
         IProgress<MutationTestProgress>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(testRunner);
@@ -44,6 +46,7 @@ internal sealed class MutationTestSession
         _workerCount = workerCount ?? DefaultWorkerCount;
         _measureCoverage = measureCoverage;
         _exclude = [.. exclude ?? []];
+        _catalog = catalog ?? MutatorCatalog.Default;
         _progress = progress;
     }
 
@@ -91,7 +94,7 @@ internal sealed class MutationTestSession
         }
 
         // One generator for the whole session, so mutant identifiers never repeat across projects.
-        var generator = new MutantGenerator(MutatorCatalog.Default, exclusions);
+        var generator = new MutantGenerator(_catalog, exclusions);
         List<MutantResult> results = [];
 
         foreach ((MutationTestTarget target, ProjectCompilation compilation) in targets.Zip(compilations))

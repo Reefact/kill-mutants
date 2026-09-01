@@ -1,3 +1,5 @@
+using KillMutants.Mutations;
+
 namespace KillMutants.Cli;
 
 /// <summary>How this run was invoked.</summary>
@@ -6,6 +8,8 @@ namespace KillMutants.Cli;
 /// <param name="WorkerCount">How many mutants to test at once, or null for the default.</param>
 /// <param name="MeasureCoverage">Run only the tests that reach each mutant.</param>
 /// <param name="Exclude">Patterns for projects and source files to leave alone.</param>
+/// <param name="Mutators">The only mutator families to run, or empty for all of them.</param>
+/// <param name="WithoutMutators">Families to leave out, applied after <paramref name="Mutators"/>.</param>
 /// <param name="JsonReportPath">Where to write the machine-readable report, or null for none.</param>
 /// <param name="Threshold">
 /// The mutation score the run must reach, as a percentage, or null when the run only reports.
@@ -16,6 +20,8 @@ internal sealed record CommandLineOptions(
     int? WorkerCount,
     bool MeasureCoverage,
     IReadOnlyList<string> Exclude,
+    IReadOnlyList<MutatorName> Mutators,
+    IReadOnlyList<MutatorName> WithoutMutators,
     string? JsonReportPath,
     double? Threshold)
 {
@@ -33,6 +39,8 @@ internal sealed record CommandLineOptions(
         int? workerCount = null;
         bool measureCoverage = true;
         List<string> exclude = [];
+        List<MutatorName> mutators = [];
+        List<MutatorName> withoutMutators = [];
         string? jsonReportPath = null;
         double? threshold = null;
 
@@ -86,6 +94,18 @@ internal sealed record CommandLineOptions(
                     }
 
                     exclude.Add(args[index]);
+
+                    break;
+
+                case "-m" or "--mutators":
+                    index++;
+                    mutators.AddRange(Families(argument, index < args.Count ? args[index] : null));
+
+                    break;
+
+                case "--without":
+                    index++;
+                    withoutMutators.AddRange(Families(argument, index < args.Count ? args[index] : null));
 
                     break;
 
@@ -145,7 +165,40 @@ internal sealed record CommandLineOptions(
             workerCount,
             measureCoverage,
             exclude,
+            mutators,
+            withoutMutators,
             jsonReportPath,
             threshold);
     }
+
+    /// <summary>Parses a comma-separated list of mutator family names.</summary>
+    /// <remarks>
+    /// Names are checked here rather than left to the catalog, so a typo is a command line that was
+    /// not understood - exit 64 - and not a run that quietly went ahead with a smaller catalogue.
+    /// Reporting a score for a set of families the user did not ask for would be worse than
+    /// reporting none.
+    /// </remarks>
+    /// <exception cref="ArgumentException">The list is missing, empty, or names no family.</exception>
+    private static MutatorName[] Families(string option, string? value)
+    {
+        string[] names = value is null
+            ? []
+            : [.. value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
+
+        if (names.Length == 0)
+        {
+            throw new ArgumentException($"'{option}' needs a comma-separated list. {Known()}");
+        }
+
+        MutatorName[] families = [.. names.Select(MutatorName.Create)];
+        MutatorName[] unknown = [.. families.Except(MutationTesting.MutatorFamilies)];
+
+        return unknown.Length == 0
+            ? families
+            : throw new ArgumentException(
+                $"No mutator is called {string.Join(", ", unknown.Select(name => $"'{name}'"))}. {Known()}");
+    }
+
+    private static string Known() =>
+        $"The families are: {string.Join(", ", MutationTesting.MutatorFamilies)}.";
 }

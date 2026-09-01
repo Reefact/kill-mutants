@@ -215,7 +215,9 @@ report for anything that is not a person. M8 makes it usable as a quality gate: 
 grows the operator catalogue to eleven families - selective rather than complete, with the
 omissions listed above decided rather than overlooked. M10 makes it a tool rather than an engine: packaged as
 `dotnet killmutants`, given the `--exclude` a real repository needs, and — the point of the milestone
-— run against KillMutants' own source, which found RB-016 within seconds.
+— run against KillMutants' own source, which found RB-016 within seconds. M11 makes its output
+actionable: what each mutator family cost and caught, the `--mutators` and `--without` that act on
+that, and `[ExcludeFromCodeCoverage]` respected.
 
 **What running it on itself measures.** 384 mutants over `KillMutants.Core`, 6.8 minutes on four
 cores: 106 killed, 111 survived, one killed by timeout, 166 uncovered, none failing to compile — a
@@ -247,6 +249,23 @@ mutants — a suite of a thousand tests would spend seventeen minutes measuring.
 watch, and until a real project reaches it the exact attribution one run per test buys is worth more
 than the time a cleverer scheme would save. See
 [ADR-0007](adr/0007-measure-coverage-with-a-type-preserving-probe-en.md).
+
+**Which families are worth their time, and who decides.** The eleven families do not carry equal
+signal, and running the tool on itself measured the gap: `Comparison`, `LogicalOperator` and
+`Arithmetic` detect 45% to 55% of the mutants they produce, while `StringLiteral` and
+`BooleanLiteral` together account for half of all mutants generated and detect 10% to 15% of them —
+error messages and flags nothing asserts on. Half the run's cost for a third of its survivors.
+
+That is not a reason to delete them: a surviving `StringLiteral` mutant is a true finding, and on a
+project that asserts on its messages it is a useful one. It is a reason to *report the split* and let
+the user act on it, which is what `--mutators` and `--without` are for. The report shows what each
+family cost and caught, so the choice is made against a project's own numbers rather than against
+this one's.
+
+M11 also stops mutating anything marked `[ExcludeFromCodeCoverage]`. The attribute is a statement of
+intent — this code is not part of what the tests are expected to cover — and since uncovered and
+surviving mutants both weigh on the score, ignoring it did not merely clutter the report, it moved
+the number.
 
 **Two output streams, on purpose.** Progress goes to standard error and the report to standard
 output, so `killmutants > report.txt` captures the report without the progress line threaded through

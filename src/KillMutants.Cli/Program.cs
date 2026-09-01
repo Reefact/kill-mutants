@@ -62,7 +62,8 @@ internal static class Program
         MutationTestReport report = await MutationTesting
             .RunAsync(
                 options.Directory, options.Configuration, options.WorkerCount,
-                options.MeasureCoverage, options.Exclude, progress)
+                options.MeasureCoverage, options.Exclude, options.Mutators,
+                options.WithoutMutators, progress)
             .ConfigureAwait(false);
 
         // Progress goes to stderr and the report to stdout, so piping the report somewhere useful
@@ -136,6 +137,8 @@ internal static class Program
                                         against the path relative to the directory above, written
                                         with '/'. Note that '*' also matches '/', so 'tests/*'
                                         covers everything beneath 'tests'.
+              -m, --mutators <list>     Only run these mutator families, comma separated.
+                  --without <list>      Leave these families out. Applied after --mutators.
               -p, --parallel <n>        Mutants to test at once. Defaults to half the processors.
                   --break-at <percent>  Exit with 1 if the mutation score falls below this.
                   --no-coverage         Run every test for every mutant, instead of only the ones

@@ -88,6 +88,47 @@ public class CommandLineTests
     }
 
     /// <summary>
+    /// M11. The families do not carry equal signal, so a run can be narrowed to the ones a project
+    /// finds worth its time - and the report says what each family cost, which is the number that
+    /// makes the choice an informed one rather than a guess.
+    /// </summary>
+    [Fact]
+    public async Task A_run_can_be_narrowed_to_the_families_worth_its_time()
+    {
+        using var fixture = FixtureCopy.Create();
+
+        (int all, string everything, _) = await RunAsync(fixture.Root);
+        (int narrowed, string comparisons, _) = await RunAsync(fixture.Root, "--mutators", "Comparison");
+
+        Assert.Equal(Success, all);
+        Assert.Equal(Success, narrowed);
+
+        // The full run reports the split; the narrowed one has a single family and says nothing.
+        Assert.Contains("By mutator", everything, StringComparison.Ordinal);
+        Assert.Contains("StringLiteral", everything, StringComparison.Ordinal);
+        Assert.DoesNotContain("StringLiteral", comparisons, StringComparison.Ordinal);
+        Assert.DoesNotContain("By mutator", comparisons, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A typo must not silently narrow a run: a score for a catalogue the user did not ask for is
+    /// worse than no score.
+    /// </summary>
+    [Fact]
+    public async Task A_misspelt_family_is_refused_with_the_list_of_real_ones()
+    {
+        using var fixture = FixtureCopy.Create();
+
+        (int exitCode, _, string message) = await RunAsync(fixture.Root, "--without", "StringLiterals");
+
+        // A command line that was not understood, not a run that failed: the distinction is what
+        // stops a typo from producing a score for a catalogue nobody asked for.
+        Assert.Equal(BadUsage, exitCode);
+        Assert.Contains("StringLiterals", message, StringComparison.Ordinal);
+        Assert.Contains("Comparison", message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// The quality gate must react to code that has no tests at all, which is the harshest thing a
     /// mutation run can find. Before uncovered mutants were counted as undetected this returned
     /// success: the untested code was excluded from the denominator, so the score stayed at 100%.
