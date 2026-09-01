@@ -69,7 +69,7 @@ Following the convention every Reefact repository already shares — `Diagnostic
 | Train | `PackageId` | `ToolCommandName` |
 | ----- | ----------- | ----------------- |
 | `lib` | `KillMutants` | — |
-| `cli` | `KillMutants.Cli` | *(to be chosen — the others use a 2–4 letter abbreviation)* |
+| `cli` | `KillMutants.Cli` | `dotnet-killmutants` — typed `dotnet killmutants` |
 
 The repository name is kebab-case and the package ids are PascalCase; sub-packages are
 suffixed with a dot (`KillMutants.Xunit`, ...). No package id carries a hyphen, which is
@@ -85,12 +85,34 @@ prefix there is not decoration and not a leftover: the `dotnet` driver dispatche
 `dotnet <foo>` to a `dotnet-<foo>` command, which is why Stryker is invoked as
 `dotnet stryker` everywhere, this organisation's own mutation workflows included.
 
-That trade-off is worth stating, because it is decided by how the tool is INSTALLED.
-A globally installed tool puts its command on PATH, so a short name is typed bare
-(`fce init`) — which is why the convention above is short. A tool pinned per repository
-through `.config/dotnet-tools.json` is invoked as `dotnet <command>`, where a short name
-reads poorly (`dotnet kmut`) and a `dotnet-` prefix reads well (`dotnet killmutants`).
-Pick the command name for the install mode this tool is actually meant to have.
+### Why this tool takes the prefix and the others do not
+
+`dcat`, `dum` and `fce` are installed GLOBALLY, which puts the command on PATH and lets a
+short name be typed bare — `fce init`. That is what makes short pay there.
+
+A mutation tool is not installed that way. Scores move with the tool's version, so it is
+pinned per repository through `.config/dotnet-tools.json` — exactly how this organisation
+already pins `dotnet-stryker` at 4.16.0 with `rollForward: false`, so CI and a
+maintainer's machine measure the same thing. A pinned tool is invoked as
+`dotnet <command>`, and the two shapes then diverge (all four rows measured, not assumed):
+
+| `ToolCommandName` | pinned locally | installed globally |
+| ----------------- | -------------- | ------------------ |
+| `dotnet-killmutants` | `dotnet killmutants` | `dotnet killmutants` |
+| `kmut` | `dotnet kmut` | `kmut` (and `killmutants` is not found) |
+
+The prefixed name gives ONE invocation that holds in both modes; a short name gives two,
+and the documentation has to branch on how the reader installed it. That is the whole
+reason for the choice — not imitation of Stryker, though Stryker made the same call, and
+`dotnet stryker` followed by `dotnet killmutants` reads as one pipeline.
+
+The prefix is not decoration: the `dotnet` driver dispatches `dotnet <foo>` to a
+`dotnet-<foo>` command, for a manifest-pinned tool as well as one on PATH.
+
+No hyphen, matching the product's own name: the repository slug is `kill-mutants`, but the
+domain is `killmutants.io` and the packages are `KillMutants*`. The hyphen lives only in
+the GitHub slug — the same split this organisation already has between `just-dummies`,
+`justdummies.io` and `JustDummies`.
 
 ## Cutting a release
 
