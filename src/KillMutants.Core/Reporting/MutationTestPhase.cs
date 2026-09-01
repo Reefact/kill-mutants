@@ -20,4 +20,9 @@ public enum MutationTestPhase
 
     /// <summary>Testing the mutants.</summary>
     TestingMutants,
+
+    /// <summary>
+    /// Re-running the mutants that timed out, on their own, before believing the timeout.
+    /// </summary>
+    ConfirmingTimeouts,
 }

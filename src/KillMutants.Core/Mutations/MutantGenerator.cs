@@ -22,7 +22,9 @@ internal sealed class MutantGenerator
 
     /// <summary>
     /// Produces every mutant the catalog proposes across <paramref name="compilation"/>, skipping
-    /// generated sources and sites whose mutation could never be observed.
+    /// generated sources - see <see cref="SourceFile"/> - and sites whose mutation could never be
+    /// observed. Generated files are still <em>compiled</em>: dropping them would change the
+    /// assembly's identity.
     /// </summary>
     /// <remarks>
     /// Identifiers continue across calls, so one generator numbers a whole run. A generator per
@@ -36,7 +38,7 @@ internal sealed class MutantGenerator
 
         foreach (SyntaxTree tree in compilation.SyntaxTrees)
         {
-            if (IsGenerated(tree) || IsExcluded(tree))
+            if (SourceFile.IsGenerated(tree) || IsExcluded(tree))
             {
                 continue;
             }
@@ -74,30 +76,4 @@ internal sealed class MutantGenerator
     /// </summary>
     private bool IsExcluded(SyntaxTree tree) =>
         !string.IsNullOrEmpty(tree.FilePath) && _exclusions.Excludes(tree.FilePath);
-
-    /// <summary>
-    /// Generated sources are compiler inputs, not the developer's code. Mutating
-    /// <c>AssemblyInfo.cs</c> or <c>GlobalUsings.g.cs</c> would report findings against code nobody
-    /// wrote and cannot fix. They must still be <em>compiled</em> - dropping them changes the
-    /// assembly identity - so they are excluded here rather than from the compilation.
-    /// </summary>
-    private static bool IsGenerated(SyntaxTree tree)
-    {
-        string path = tree.FilePath;
-
-        if (string.IsNullOrEmpty(path))
-        {
-            return false;
-        }
-
-        if (path.EndsWith(".g.cs", StringComparison.OrdinalIgnoreCase) ||
-            path.EndsWith(".g.i.cs", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        string separator = Path.DirectorySeparatorChar.ToString();
-
-        return path.Contains(separator + "obj" + separator, StringComparison.OrdinalIgnoreCase);
-    }
 }
