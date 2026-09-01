@@ -277,6 +277,21 @@ project's query then failed trying to copy the reference that had just vanished.
 file its incremental check reads — a file MSBuild regenerates — and the query runs *after* the real
 build, so the intermediate assembly still exists, the copy succeeds and nothing is cleaned.
 
+**Where this knowledge lives, and why inheriting it was not enough.** Stryker contains none of these
+properties; it delegates the whole problem to Buildalyzer, whose `MsBuildProperties.DesignTime` is a
+set of about fifteen global properties meant to be used together — including `SkipCopyBuildProduct`,
+`BuildProjectReferences` and `UseCommonOutputDirectory` alongside the
+`CopyBuildOutputToOutputDirectory` we reached for alone. Taking one property out of a coordinated set
+is what produced the bug.
+
+But applying that set wholesale does **not** fix it, which was measured rather than assumed: with the
+full canonical design-time properties, one fixture project still returned an empty command line and
+the built assemblies were still deleted from `bin`. Buildalyzer's constraint is not ours. It analyses
+projects and never needs their build output to survive; KillMutants analyses a project and then runs
+tests against those very artifacts. The lesson is therefore sharper than "read the dependency you
+replaced": when you drop a dependency you inherit its problem space but not its scar tissue, and its
+scar tissue may not even fit your problem.
+
 **The ordering is now a rule, not an accident.** Build every test project, then read every compiler
 command line, then inject. MSBuild must not run before the build, because the query depends on its
 output; and must not run after injection, because `dotnet build` and `dotnet test` both copy the

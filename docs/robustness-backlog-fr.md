@@ -296,6 +296,22 @@ réexécuter en supprimant le fichier de cache que lit sa vérification d'incré
 MSBuild régénère — et la requête tourne *après* le vrai build, si bien que l'assembly intermédiaire
 existe encore, que la copie réussit et que rien n'est nettoyé.
 
+**Où vit cette connaissance, et pourquoi en hériter ne suffisait pas.** Stryker ne contient aucune de
+ces propriétés ; il délègue tout le problème à Buildalyzer, dont `MsBuildProperties.DesignTime` est un
+jeu d'une quinzaine de propriétés globales conçues pour aller ensemble — dont
+`SkipCopyBuildProduct`, `BuildProjectReferences` et `UseCommonOutputDirectory` aux côtés du
+`CopyBuildOutputToOutputDirectory` que nous avions pris seul. Extraire une propriété d'un ensemble
+coordonné, voilà ce qui a produit le bug.
+
+Mais appliquer ce jeu tel quel ne le corrige **pas**, ce qui a été mesuré et non supposé : avec les
+propriétés design-time canoniques au complet, un des projets de la fixture renvoyait toujours une
+ligne de commande vide et les assemblys construits étaient toujours supprimés de `bin`. La contrainte
+de Buildalyzer n'est pas la nôtre : il analyse des projets et n'a jamais besoin que leur sortie de
+build survive, là où KillMutants analyse un projet puis exécute les tests contre ces artefacts mêmes.
+La leçon est donc plus tranchante que « lire la dépendance qu'on remplace » : en abandonnant une
+dépendance on hérite de son espace de problèmes mais pas de ses cicatrices, et ses cicatrices peuvent
+ne même pas convenir à notre problème.
+
 **L'ordre est désormais une règle, pas un hasard.** Construire chaque projet de test, puis lire chaque
 ligne de commande, puis injecter. MSBuild ne doit pas tourner avant le build, car la requête dépend de
 sa sortie ; ni après l'injection, car `dotnet build` et `dotnet test` recopient tous deux l'assembly
