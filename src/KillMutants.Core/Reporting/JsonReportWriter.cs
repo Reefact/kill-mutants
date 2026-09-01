@@ -56,7 +56,18 @@ public static class JsonReportWriter
             undetected = report.Undetected,
             untestable = report.Untestable,
         },
+        byMutator = report.ByMutator.Select(Describe).ToArray(),
         mutants = report.Results.Select(Describe).ToArray(),
+    };
+
+    private static object Describe(MutatorSummary family) => new
+    {
+        mutator = family.Mutator.ToString(),
+        mutants = family.Total,
+        detected = family.Detected,
+        undetected = family.Undetected,
+        untestable = family.Untestable,
+        score = family.Score.IsUndefined ? null : (double?)Math.Round(family.Score.Value, 4),
     };
 
     private static object Describe(MutantResult result) => new

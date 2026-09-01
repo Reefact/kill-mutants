@@ -232,7 +232,8 @@ porte le catalogue d'opérateurs à onze familles — sélectif et non complet, 
 ci-dessus étant décidées et non oubliées. M10 en fait un outil et non plus un moteur : empaqueté en
 `dotnet killmutants`, doté du `--exclude` qu'exige un vrai dépôt, et — c'est le cœur du milestone —
 exécuté sur le code source de KillMutants lui-même, ce qui a fait apparaître RB-016 en quelques
-secondes.
+secondes. M11 rend sa sortie exploitable : ce que chaque famille de mutateurs a coûté et attrapé, les
+`--mutators` et `--without` qui agissent dessus, et `[ExcludeFromCodeCoverage]` respecté.
 
 **Ce que mesure l'exécution sur lui-même.** 384 mutants sur `KillMutants.Core`, 6,8 minutes sur
 quatre cœurs : 106 tués, 111 survivants, un tué par timeout, 166 non couverts, aucun en échec de
@@ -266,6 +267,24 @@ suite de mille tests passerait dix-sept minutes à mesurer. C'est le chiffre à 
 qu'un vrai projet ne l'atteint pas, l'attribution exacte qu'achète une exécution par test vaut plus
 que le temps qu'un schéma plus malin ferait gagner. Voir
 [ADR-0007](adr/0007-measure-coverage-with-a-type-preserving-probe-fr.md).
+
+**Quelles familles valent leur temps, et qui en décide.** Les onze familles ne portent pas un signal
+équivalent, et exécuter l'outil sur lui-même a mesuré l'écart : `Comparison`, `LogicalOperator` et
+`Arithmetic` détectent 45 % à 55 % des mutants qu'elles produisent, tandis que `StringLiteral` et
+`BooleanLiteral` représentent à elles deux la moitié des mutants engendrés et en détectent 10 % à
+15 % — messages d'erreur et drapeaux que rien n'asserte. La moitié du coût du run pour un tiers de
+ses survivants.
+
+Ce n'est pas une raison de les supprimer : un mutant `StringLiteral` survivant est un constat vrai,
+et utile sur un projet qui asserte sur ses messages. C'est une raison de *rapporter la répartition*
+et de laisser l'utilisateur agir dessus : c'est à cela que servent `--mutators` et `--without`. Le
+rapport indique ce que chaque famille a coûté et attrapé, de sorte que le choix se fait sur les
+chiffres du projet et non sur ceux de celui-ci.
+
+M11 cesse également de muter tout ce qui porte `[ExcludeFromCodeCoverage]`. L'attribut est une
+déclaration d'intention — ce code ne fait pas partie de ce que les tests sont censés couvrir — et
+comme les mutants non couverts comme survivants pèsent tous deux sur le score, l'ignorer n'encombrait
+pas seulement le rapport : cela déplaçait le chiffre.
 
 **Deux flux de sortie, délibérément.** La progression part sur la sortie d'erreur et le rapport sur la
 sortie standard : `killmutants > rapport.txt` capture donc le rapport sans y mêler la ligne de

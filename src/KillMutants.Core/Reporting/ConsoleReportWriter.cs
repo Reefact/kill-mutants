@@ -22,6 +22,7 @@ public static class ConsoleReportWriter
         WriteFindings(writer, report, MutantStatus.NoCoverage, "No coverage");
 
         WriteTotals(writer, report);
+        WriteFamilies(writer, report);
 
         writer.WriteLine();
         writer.WriteLine($"Mutation score: {report.Score}");
@@ -101,6 +102,41 @@ public static class ConsoleReportWriter
             writer.WriteLine($"No coverage: {Format(report.Uncovered)}");
         }
     }
+
+    /// <summary>
+    /// Lists what each mutator family cost and what it caught.
+    /// </summary>
+    /// <remarks>
+    /// The one number a reader can act on directly. A family producing a third of the mutants and
+    /// detecting a tenth of them is either the most valuable finding in the report or the least,
+    /// depending on the project - and either way it is worth seeing before deciding what to pass to
+    /// <c>--without</c>. Shown only when there is more than one family, so a narrowed run stays short.
+    /// </remarks>
+    private static void WriteFamilies(TextWriter writer, MutationTestReport report)
+    {
+        if (report.ByMutator.Count < 2)
+        {
+            return;
+        }
+
+        int nameWidth = report.ByMutator.Max(family => family.Mutator.ToString().Length);
+        int totalWidth = report.ByMutator.Max(family => Format(family.Total).Length);
+        int detectedWidth = report.ByMutator.Max(family => Format(family.Detected).Length);
+
+        writer.WriteLine();
+        writer.WriteLine("By mutator");
+        writer.WriteLine();
+
+        foreach (MutatorSummary family in report.ByMutator)
+        {
+            writer.WriteLine(
+                $"  {family.Mutator.ToString().PadRight(nameWidth)}  " +
+                $"{Format(family.Total).PadLeft(totalWidth)} {Plural(family.Total, "mutant")}, " +
+                $"{Format(family.Detected).PadLeft(detectedWidth)} detected  ({family.Score})");
+        }
+    }
+
+    private static string Plural(int count, string noun) => count == 1 ? noun : noun + "s";
 
     private static string Position(MutantResult result) =>
         $"{Format(result.Mutant.Location.Line)}:{Format(result.Mutant.Location.Character)}";

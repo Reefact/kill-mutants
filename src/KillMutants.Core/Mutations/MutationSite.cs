@@ -90,6 +90,53 @@ internal static class MutationSite
         return node.DescendantNodesAndSelf().Any(inner => inner is SingleVariableDesignationSyntax);
     }
 
+    /// <summary>
+    /// True when the developer has marked this code as not measured, with
+    /// <c>[ExcludeFromCodeCoverage]</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The attribute is a statement about intent: this code is not part of what the tests are
+    /// expected to cover. Generated adapters, plumbing and <c>Main</c> methods carry it precisely so
+    /// that coverage tools stop reporting them. Mutating it produces survivors the developer has
+    /// already said they do not want counted, and now that uncovered and surviving mutants both weigh
+    /// on the score, those findings do not merely clutter the report - they move the number.
+    /// </para>
+    /// <para>
+    /// Resolved through the semantic model rather than by matching the attribute's name, so a
+    /// same-named attribute of the user's own does not silence a whole class by accident. Stryker.NET
+    /// applies the same rule, in <c>ExcludeFromCodeCoverageFilter</c>.
+    /// </para>
+    /// </remarks>
+    public static bool IsExcludedFromCoverage(SyntaxNode node, SemanticModel semanticModel)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(semanticModel);
+
+        foreach (SyntaxNode ancestor in node.AncestorsAndSelf())
+        {
+            SyntaxList<AttributeListSyntax> attributes = ancestor switch
+            {
+                MemberDeclarationSyntax member => member.AttributeLists,
+                AccessorDeclarationSyntax accessor => accessor.AttributeLists,
+                LocalFunctionStatementSyntax local => local.AttributeLists,
+                _ => default,
+            };
+
+            if (attributes.Count > 0 && attributes.Any(list => Excludes(list, semanticModel)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool Excludes(AttributeListSyntax list, SemanticModel semanticModel) =>
+        list.Attributes.Any(attribute =>
+            semanticModel.GetSymbolInfo(attribute).Symbol?.ContainingType?.ToDisplayString() ==
+            "System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute");
+
     private static bool IsConstant(SyntaxTokenList modifiers) =>
         modifiers.Any(SyntaxKind.ConstKeyword);
 }

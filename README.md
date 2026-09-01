@@ -93,6 +93,20 @@ dotnet killmutants --exclude "tests/fixtures/*" --exclude "*.Generated.cs"
 
 Note that `*` matches `/` as well, so `tests/*` covers everything beneath `tests`.
 
+Not every mutator family earns its keep on every project, and the report says which do. Measured
+against this repository: the operator families detect 45% to 55% of what they produce, while
+`StringLiteral` and `BooleanLiteral` together account for half the mutants and detect 10% to 15% —
+error messages and flags nothing asserts on. Those are true findings, and valuable on projects that
+do assert on their messages, so KillMutants reports the split rather than deciding for you:
+
+```bash
+dotnet killmutants --without StringLiteral,BooleanLiteral
+dotnet killmutants --mutators Comparison,LogicalOperator,Arithmetic
+```
+
+Code marked `[ExcludeFromCodeCoverage]` is left alone: the attribute already says this code is not
+part of what the tests are expected to cover.
+
 The score is `detected / (detected + undetected)`. A mutant the tests caught is detected, and so is
 one that hung the suite until the timeout — the tests noticed it. A mutant that survived is
 undetected, and **so is one no test reaches**: the suite would not have noticed the change, and

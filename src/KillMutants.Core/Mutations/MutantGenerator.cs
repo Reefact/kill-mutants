@@ -49,9 +49,12 @@ internal sealed class MutantGenerator
 
             foreach (SyntaxNode node in tree.GetRoot().DescendantNodes())
             {
-                // Two different refusals, for two different reasons: a mutation nothing could
-                // notice, and a mutation that could not compile.
-                if (!MutationSite.IsObservable(node) || MutationSite.DeclaresAVariable(node))
+                // Three different refusals, for three different reasons: a mutation nothing could
+                // notice, a mutation that could not compile, and code the developer has said is not
+                // measured.
+                if (!MutationSite.IsObservable(node) ||
+                    MutationSite.DeclaresAVariable(node) ||
+                    MutationSite.IsExcludedFromCoverage(node, semanticModel))
                 {
                     continue;
                 }
