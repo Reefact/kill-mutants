@@ -81,6 +81,12 @@ whereas the engine here is `KillMutants.Core`. Nothing in the pipeline cares —
 the trains and the workflows are all written against ids they never spell out — so `Core`
 can stay, or a bare `KillMutants` can join or replace it later, with no release change.
 
+The deadline for settling it is the first `lib-v*` tag, not the next merge. A nuget.org
+package id is immutable: renaming in the source tree is a refactor, renaming after a
+publish is not a rename at all — it is a second package plus an unlisted first one, and
+consumers of the old id are left on a dead end. Before anything is published the choice
+is free; after, it is permanent.
+
 Worth doing early either way: reserve the `KillMutants.` prefix on nuget.org (prefix
 reservation, for a verified owner). The package ids match a domain the project owns, and
 an id nobody has claimed is an id anybody can claim.
