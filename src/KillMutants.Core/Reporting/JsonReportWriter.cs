@@ -116,6 +116,7 @@ public static class JsonReportWriter
 
         // Null on every mutant that was never re-tested, and on every one whose verdict held.
         disagreement = result.Disagreement,
+        overturned = result.Overturned,
         detail = result.Detail,
     };
 }
