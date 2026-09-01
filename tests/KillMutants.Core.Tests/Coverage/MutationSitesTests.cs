@@ -59,6 +59,36 @@ public class MutationSitesTests
         Assert.NotEmpty(sites.IdentifierByNode);
     }
 
+    /// <summary>
+    /// A pattern is made of compile-time constants, and a call is not one: instrumenting
+    /// <c>s is "abc"</c> fails with CS9135. Found by reading Stryker.NET, which blocks injection in
+    /// the same place, and then measuring. The mutation itself is fine and must survive the rule.
+    /// </summary>
+    [Theory]
+    [InlineData("class C { bool M(string s) => s is \"abc\"; }")]
+    [InlineData("class C { int M(string s) => s switch { \"abc\" => 1, _ => 0 }; }")]
+    public void A_site_inside_a_pattern_carries_no_recorder(string source)
+    {
+        MutationSites sites = SitesOf(source);
+
+        Assert.NotEmpty(sites.RepresentativeOf);
+        Assert.Empty(sites.IdentifierByNode);
+        Assert.NotEmpty(sites.Unmeasurable);
+    }
+
+    /// <summary>
+    /// A `when` clause is not part of the pattern, so the rule must not swallow it.
+    /// </summary>
+    [Fact]
+    public void A_site_in_a_when_clause_still_carries_one()
+    {
+        MutationSites sites = SitesOf(
+            "class C { int M(object o) => o switch { int i when i >= 3 => i, _ => 0 }; }");
+
+        Assert.NotEmpty(sites.IdentifierByNode);
+        Assert.Empty(sites.Unmeasurable);
+    }
+
     [Fact]
     public void Every_mutant_keeps_a_representative_and_every_site_lands_in_one_bucket()
     {

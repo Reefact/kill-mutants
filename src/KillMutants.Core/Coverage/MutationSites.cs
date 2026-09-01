@@ -102,6 +102,15 @@ internal sealed class MutationSites
     /// be a type argument either.
     /// </para>
     /// <para>
+    /// So is any expression a pattern or a <c>case</c> label is made of. Those must be compile-time
+    /// constants, and a call is not one: instrumenting <c>s is "abc"</c> fails with
+    /// <c>CS9135 - a constant value of type 'string' is expected</c>. Stryker.NET has the same rule
+    /// (<c>ConstantPatternSyntaxOrchestrator</c> blocks injection there), and finding it in their
+    /// source is what prompted the measurement. The <em>mutation</em> is fine and stays: <c>s is ""</c>
+    /// compiles and changes what matches. A <c>when</c> clause is not part of the pattern and is
+    /// instrumented normally.
+    /// </para>
+    /// <para>
     /// So is an expression with no natural type. <c>int? x = flag ? a : null</c> only acquires its
     /// type from what it is assigned to, and handing it to a generic method leaves nothing to infer
     /// <c>T</c> from: <c>CS0411</c>. The mutation itself is perfectly valid - the same expression is
@@ -111,6 +120,11 @@ internal sealed class MutationSites
     /// </remarks>
     private static bool CanCarryARecorder(SyntaxNode node, SemanticModel semanticModel)
     {
+        if (node.Ancestors().Any(ancestor => ancestor is PatternSyntax or SwitchLabelSyntax))
+        {
+            return false;
+        }
+
         TypeInfo info = semanticModel.GetTypeInfo(node);
 
         return info.Type is not null && Accepts(info.Type) && Accepts(info.ConvertedType);

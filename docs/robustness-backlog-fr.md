@@ -603,3 +603,33 @@ n'avons pas encore rencontré.
 **Nos tests.** `MutationTestingEndToEndTests.A_source_generator_with_a_dependency_of_its_own_is_run_and_not_mutated`,
 contre `tests/fixtures/generator`, qui échoue sur chacun des deux défauts pris isolément.
 
+---
+
+## RB-019 — Un motif est fait de constantes, et un enregistreur n'en est pas une · COUVERT
+
+La seule entrée de ce fichier issue de la lecture de Stryker.NET plutôt que de l'exécution de notre
+propre outil — ce à quoi sert précisément la méthode annoncée en tête de document.
+
+**Comment elle a été trouvée.** Leur liste d'orchestrateurs comporte un
+`ConstantPatternSyntaxOrchestrator` dont tout le corps est « bloquer l'injection ici, la rétablir
+ensuite ». Rien n'y dit pourquoi ; la question était donc de savoir si la contrainte qu'il défend
+existe encore pour nous — notre instrumentation est un appel enveloppant et non un interrupteur
+injecté, si bien que la plupart de leurs règles de placement ne s'appliquent pas. Celle-ci si.
+Mesuré sur le SDK .NET 10 : instrumenter le littéral de `s is "abc"` donne
+`CS9135 - a constant value of type 'string' is expected`, et de même pour un bras d'expression
+`switch`. Le build instrumenté échoue, donc le run s'arrête avant d'avoir testé un seul mutant.
+
+**La règle.** Aucun site ayant un ancêtre `PatternSyntax` ou `SwitchLabelSyntax` ne porte
+d'enregistreur. Une clause `when` en est délibérément exclue : elle est sœur du motif et non partie
+de lui, et ses expressions sont du code ordinaire.
+
+**Ce qui demeure.** La *mutation* n'est pas affectée, et ne doit pas l'être : `s is "abc"` réécrit en
+`s is ""` est une constante, compile, et change ce qui correspond. C'est une règle sur les
+enregistreurs, exactement comme RB-017 — les mutants de ces sites sont testés contre la suite
+complète au lieu d'un sous-ensemble mesuré.
+
+**Nos tests.** `MutationSitesTests.A_site_inside_a_pattern_carries_no_recorder`,
+`A_site_in_a_when_clause_still_carries_one`, et les entrées de corpus « a literal in a constant
+pattern » et « a literal in a switch expression arm », qui vérifient les deux moitiés à la fois : les
+mutants compilent et diffèrent, et instrumenter le fichier le laisse compilable.
+
