@@ -76,12 +76,20 @@ internal sealed class ProjectDiscovery
         SortedDictionary<string, List<TestProject>> testsByProject = new(StringComparer.Ordinal);
         Dictionary<string, string> frameworkByProject = new(StringComparer.Ordinal);
 
+        // Filled only when a test project actually reaches an excluded project, so a repository
+        // that excludes directories nothing references pays nothing for it.
+        Dictionary<string, ProjectFacts?> beyondExclusions = new(StringComparer.Ordinal);
+
         foreach (ProjectFacts testProject in testProjects)
         {
             var runnable = new TestProject(
                 testProject.ProjectPath, testProject.AssemblyPath, testProject.OutputDirectory);
 
-            foreach (string mutablePath in ReachableProjects(testProject, byPath))
+            IReadOnlyList<string> reachable = await ReachableProjectsAsync(
+                    testProject, byPath, beyondExclusions, cancellationToken)
+                .ConfigureAwait(false);
+
+            foreach (string mutablePath in reachable)
             {
                 if (!testsByProject.TryGetValue(mutablePath, out List<TestProject>? tests))
                 {
@@ -123,14 +131,25 @@ internal sealed class ProjectDiscovery
     /// Every non-test project a test project reaches, following project references transitively.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A test suite exercises the whole graph beneath it, not only what it names directly, and each
     /// of those assemblies sits in its output directory ready to be replaced. Other test projects
-    /// are excluded: their code is the yardstick, not the thing being measured.
+    /// are left out: their code is the yardstick, not the thing being measured.
+    /// </para>
+    /// <para>
+    /// An excluded project is a hole in the graph, not a wall. Walking no further than one used to
+    /// mean that <c>Tests -&gt; ExcludedFacade -&gt; Core</c> dropped <c>Core</c> along with the
+    /// facade, and said nothing: the run reported on what was left. Excluding a project must stop it
+    /// being mutated, never stop what sits behind it from being found.
+    /// </para>
     /// </remarks>
-    private static IEnumerable<string> ReachableProjects(
+    private async Task<IReadOnlyList<string>> ReachableProjectsAsync(
         ProjectFacts testProject,
-        Dictionary<string, ProjectFacts> byPath)
+        Dictionary<string, ProjectFacts> byPath,
+        Dictionary<string, ProjectFacts?> beyondExclusions,
+        CancellationToken cancellationToken)
     {
+        List<string> reachable = [];
         HashSet<string> seen = new(StringComparer.Ordinal);
         Queue<string> pending = new(testProject.ProjectReferences);
 
@@ -138,18 +157,61 @@ internal sealed class ProjectDiscovery
         {
             string path = pending.Dequeue();
 
-            if (!seen.Add(path) || !byPath.TryGetValue(path, out ProjectFacts? facts) || facts.IsTestProject)
+            if (!seen.Add(path))
             {
                 continue;
             }
 
-            yield return path;
+            bool mutable = byPath.TryGetValue(path, out ProjectFacts? facts);
+
+            facts ??= await FactsOfExcludedAsync(path, beyondExclusions, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (facts is null || facts.IsTestProject)
+            {
+                continue;
+            }
+
+            if (mutable)
+            {
+                reachable.Add(path);
+            }
 
             foreach (string reference in facts.ProjectReferences)
             {
                 pending.Enqueue(reference);
             }
         }
+
+        return reachable;
+    }
+
+    /// <summary>
+    /// Reads an excluded project's references so the traversal can pass through it, or null when the
+    /// path is not an excluded project of this run.
+    /// </summary>
+    /// <remarks>
+    /// No framework is named: only the references and the "is this a test project" answer are
+    /// needed, and neither depends on which framework the project is evaluated for.
+    /// </remarks>
+    private async Task<ProjectFacts?> FactsOfExcludedAsync(
+        string path,
+        Dictionary<string, ProjectFacts?> cache,
+        CancellationToken cancellationToken)
+    {
+        if (cache.TryGetValue(path, out ProjectFacts? known))
+        {
+            return known;
+        }
+
+        ProjectFacts? facts = _exclusions.Excludes(path) && File.Exists(path)
+            ? await _msBuild.GetProjectFactsAsync(path, cancellationToken: cancellationToken)
+                .ConfigureAwait(false)
+            : null;
+
+        cache[path] = facts;
+
+        return facts;
     }
 
     private async Task<IReadOnlyList<ProjectFacts>> ReadProjectsAsync(
