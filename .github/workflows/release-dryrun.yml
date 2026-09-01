@@ -1,0 +1,184 @@
+name: release-dryrun
+
+# Continuously rehearses the SIDE-EFFECT-FREE portion of the release pipeline — build, pack, embed the
+# SBOM, and run the packaging guards — for every train, on every push to main and every pull request.
+# release.yml itself runs only on a tag or a manual dispatch, so its packaging path would otherwise be
+# exercised for the first time in production, on a tag, once. This catches packaging, SBOM and
+# cross-train regressions in ordinary CI instead.
+#
+# It deliberately stops before every step that has a side effect:
+#   * no provenance attestation  — that writes a permanent public record (Sigstore/Rekor + the attestation
+#                                  store); it is kept to the manual release.yml dry run and to real
+#                                  releases, where it runs once and on purpose;
+#   * no NuGet login / push      — nuget.org has no "dry-run push", so the actual publish stays release-only;
+#   * no GitHub Release          — no tag or release is ever created here.
+# Least privilege follows from that: this workflow only reads the repository.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Cancel superseded runs on the same branch / PR.
+concurrency:
+  group: release-dryrun-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read-only: no publishing, no OIDC, no attestation — so none of release.yml's write scopes are needed.
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+  # Any valid SemVer works; this one is unmistakably not a release and can never collide with a real tag.
+  DRYRUN_VERSION: '0.0.0-dryrun'
+
+jobs:
+  pack:
+    name: Rehearse the release pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      # Discovery, not a hardcoded path: the rehearsal must be runnable BEFORE the repository has a
+      # solution — which is the state it is in today — and must never need editing when one is added.
+      - name: Locate the solution
+        id: solution
+        run: |
+          set -euo pipefail
+          # shellcheck source=tools/trains.sh
+          . tools/trains.sh
+
+          # These read the project files, so they hold whether or not a solution exists — and they
+          # have to run FIRST. Gated behind "a solution is present" (or behind the pack loop, which
+          # is the same gate), a repository whose only project misspells its train left every known
+          # train empty, was declared unpackable, and rehearsed green with the check never reached.
+          # A declaration nothing can route is a defect at the moment it is written.
+          ambiguous="$(ambiguous_trains)"
+          if [ -n "$ambiguous" ]; then
+            echo "::error::<ReleaseTrain> is declared more than once in: $(printf '%s' "$ambiguous" | tr '\n' ' '). MSBuild keeps the last value; declare the train exactly once."
+            exit 1
+          fi
+          conditioned="$(conditioned_trains)"
+          if [ -n "$conditioned" ]; then
+            echo "::error::<ReleaseTrain> carries an attribute in: $(printf '%s' "$conditioned" | tr '\n' ' '). Membership is an identity, not a build option; declare it unconditionally."
+            exit 1
+          fi
+          unknown=''
+          for declared in $(declared_trains); do
+            if [ -z "$(prefix_of "$declared")" ]; then unknown="${unknown} ${declared}"; fi
+          done
+          if [ -n "$unknown" ]; then
+            echo "::error::project(s) declare unknown release train(s):${unknown} — known trains: $(train_ids | tr '\n' ' '). Fix the <ReleaseTrain> value, or add the train to tools/trains.sh."
+            exit 1
+          fi
+
+          count="$(find . -maxdepth 1 \( -name '*.sln' -o -name '*.slnx' \) | wc -l)"
+          if [ "$count" -gt 1 ]; then
+            echo "::error::Found $count solutions at the repository root; 'dotnet build' cannot pick one."
+            exit 1
+          fi
+          if [ "$count" -eq 1 ]; then
+            # Keep the PATH, not just the fact. An argumentless `dotnet build` fails MSB1011 when a
+            # project file also sits at the root, which is a valid layout; naming the solution
+            # removes the ambiguity instead of forbidding the layout.
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "path=$(find . -maxdepth 1 \( -name '*.sln' -o -name '*.slnx' \) | head -n1)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # No solution. That is legitimate only while nothing is packable: the moment a project
+          # declares a train, release.yml would refuse the release ("Expected exactly one solution")
+          # — but only once a tag is pushed. Skipping here would let the pull request that
+          # introduces that project go green on a rehearsal that silently exercised nothing, and
+          # move the failure to release day. Fail here instead, where the change is still in review.
+          packable=''
+          for train in $(train_ids); do
+            if [ -n "$(projects_of "$train")" ]; then packable="${packable} ${train}"; fi
+          done
+          if [ -n "$packable" ]; then
+            echo "::error::No solution at the repository root, but these trains already have projects:${packable}. A release of them would fail, so the rehearsal fails now instead of at tag time. Add the root solution."
+            exit 1
+          fi
+          echo "present=false" >> "$GITHUB_OUTPUT"
+          echo "::notice::No solution and no project on any train yet; the release rehearsal is skipped."
+
+
+      - name: Build
+        if: steps.solution.outputs.present == 'true'
+        env:
+          VERSION: ${{ env.DRYRUN_VERSION }}
+          SOLUTION: ${{ steps.solution.outputs.path }}
+        run: |
+          # -p:Configuration=Release so the restore evaluates the same graph the build compiles. A
+          # PackageReference conditioned on Release is otherwise absent from project.assets.json
+          # and the build may not restore again. The real release does the same.
+          dotnet restore "$SOLUTION" -p:Configuration=Release -p:Version="$VERSION"
+          dotnet build "$SOLUTION" -c Release --no-restore -p:Version="$VERSION"
+
+      # One pack per train that actually has projects. A train whose project does not exist yet is
+      # reported and skipped — that is a normal state here, and NOT one release.yml tolerates: a real
+      # release of an empty train is an error, and pack.sh says so. The difference is deliberate.
+      #
+      # Every train is rehearsed on every run, not just the one a change touches: a cross-train
+      # ProjectReference is introduced by editing ONE project and breaks the OTHER train's packages,
+      # so a rehearsal narrowed to the changed train would miss exactly the failure it exists to catch.
+      - name: Pack every train
+        if: steps.solution.outputs.present == 'true'
+        env:
+          VERSION: ${{ env.DRYRUN_VERSION }}
+        run: |
+          set -euo pipefail
+          # shellcheck source=tools/trains.sh
+          . tools/trains.sh
+
+          # Reject an unknown <ReleaseTrain> value HERE, before the loop, and not only inside
+          # pack.sh. pack.sh runs for a train that has projects, so a value matching no train
+          # leaves every known train empty, skips every pack, and takes its own check with it:
+          # a repository whose only project misspells its train rehearsed clean and found out
+          # at tag time. The check has to sit where a typo cannot switch it off.
+          packed=0
+          for train in $(train_ids); do
+            if [ -z "$(projects_of "$train")" ]; then
+              echo "::notice::Train '$train' has no project declaring it yet; nothing to rehearse."
+              continue
+            fi
+            echo "::group::pack $train"
+            tools/packaging/pack.sh "$VERSION" "$train"
+            echo "::endgroup::"
+            # pack.sh empties artifacts/ so that a release only ever publishes what it just
+            # packed. Stage each train's output before the next pack reclaims the directory,
+            # or the upload below would carry the last train alone.
+            mkdir -p "dryrun-artifacts/$train"
+            cp -a artifacts/. "dryrun-artifacts/$train/"
+            packed=$((packed + 1))
+          done
+          if [ "$packed" -eq 0 ]; then
+            echo "::notice::No train publishes anything yet; the rehearsal had nothing to pack."
+          fi
+
+      - name: Upload the rehearsed packages
+        if: steps.solution.outputs.present == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: nupkgs-dryrun
+          # One directory per train: pack.sh clears its output between trains, so the staged
+          # copies are what the whole rehearsal produced.
+          path: |
+            dryrun-artifacts/**/*.nupkg
+            dryrun-artifacts/**/*.snupkg
+          # `warn`, not `error`: before the first packable project exists there is legitimately
+          # nothing to upload, and the pack step above has already reported why.
+          if-no-files-found: warn
