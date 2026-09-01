@@ -620,3 +620,66 @@ the mutants at those sites are tested against the whole suite instead of a measu
 and "a literal in a switch expression arm", which assert both halves at once: the mutants compile and
 differ, and instrumenting the file still leaves it building.
 
+
+---
+
+## RB-020 — A second run in one process reuses the first run's generators · OPEN
+
+**How it was found.** Writing the test for RB-021, by accident. Two end-to-end tests in one process
+run against the same generator fixture: the first adds a generator that throws, the second uses the
+fixture unchanged. The second failed, deterministically, on three runs out of three — and it failed
+because it was running the *first* test's generators.
+
+**The mechanism.** `SourceGenerators.AnalyzerLoader` loads a project's generator assemblies with
+`AssemblyLoadContext.Default.LoadFromAssemblyPath`. That context caches by assembly *identity*, not
+by path, so the second call for a `Sample.Generator.dll` at a different path returns the assembly
+already loaded from the first path — whatever it contains, and even when that path no longer exists.
+The `Directories` list the `Resolving` fallback searches is `static` as well, so one run's analyzer
+directories stay on the list for every run after it.
+
+**What it costs.** Nothing through the CLI, which runs one session per process and exits. Through the
+library API — `MutationTesting.RunAsync` called twice, which is what our own tests do and what a
+watch mode or an IDE integration would do — a second run silently generates with the first run's
+generators. The compilation is then not the project's, and every verdict measured against it
+describes something else. That is the failure this tool exists not to produce, reached by a path the
+shipped tool does not currently take.
+
+**Why it is open rather than fixed.** The fix is the one RB-018 already declined: give the analyzers
+their own `AssemblyLoadContext` and share the Roslyn assemblies across the boundary by hand. That is
+real machinery, and it belongs in a change of its own rather than at the end of an unrelated one.
+Until then, our own generator fixture renames its assembly when it carries a deliberately broken
+generator, so the collision cannot reach another test.
+
+**Our tests.** None yet. That is what OPEN means here.
+
+---
+
+## RB-021 — A generator that fails is a warning, and warnings do not stop a run · COVERED
+
+**How it was found.** An automated review of the pull request that opened this repository pointed at
+`SourceGenerators.Run` discarding the diagnostics `RunGeneratorsAndUpdateCompilation` returns. It was
+right, and the reason it matters is the severity.
+
+**What was measured.** Against Roslyn 5.9, a generator throwing from its initialiser is reported as
+`CS8784`, severity **Warning**; one throwing while generating is `CS8785`, also a warning. In both
+cases the generator contributes nothing and the compilation still emits. That is correct behaviour
+for a compiler — the errors that follow point at the real problem — and it is the wrong behaviour to
+inherit silently: RB-004 already relaxes warnings-as-errors, so nothing downstream would have
+noticed.
+
+**Why it is not merely a compile error.** When the missing code is required, the emit fails and the
+run stops loudly; that case was never in doubt. The dangerous one is a generator whose output the
+selected tests do not exercise: the assembly emits, the baseline passes, mutants are killed, and the
+score describes an assembly the project does not build.
+
+**The rule.** A generator run carries its failures out with it. Reconstructing the baseline, a
+failure is fatal — everything the run measures is compared against that compilation. Emitting a
+mutant, it is not: a mutation can genuinely break what a generator reads, so the mutant is reported
+as one that could not be built, which the score leaves out and the run reports as untestable. An
+error from a generator counts as a failure too: the project built before KillMutants touched it.
+
+**Our tests.** `SourceGeneratorFailureTests`, which pins the two diagnostic ids and their severity
+and proves a generator's own warnings are not treated as failures, and
+`FailedGeneratorTests.A_run_stops_rather_than_reporting_on_a_compilation_a_generator_did_not_finish`,
+which adds a throwing generator whose output nothing needs — so the build still works, and only the
+new rule stops the run.
