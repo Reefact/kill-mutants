@@ -81,8 +81,16 @@ the COMMAND, never to the package.
 
 Stryker.NET does the opposite — `Stryker.Core` publishes as `stryker`, `Stryker.CLI` as
 `dotnet-stryker` — so its package ids match none of its project names. The `dotnet-`
-prefix is a leftover from `DotNetCliToolReference`, where a package named `dotnet-foo`
-was what made `dotnet foo` work. Since `dotnet tool install` it carries no meaning.
+prefix there is not decoration and not a leftover: the `dotnet` driver dispatches
+`dotnet <foo>` to a `dotnet-<foo>` command, which is why Stryker is invoked as
+`dotnet stryker` everywhere, this organisation's own mutation workflows included.
+
+That trade-off is worth stating, because it is decided by how the tool is INSTALLED.
+A globally installed tool puts its command on PATH, so a short name is typed bare
+(`fce init`) — which is why the convention above is short. A tool pinned per repository
+through `.config/dotnet-tools.json` is invoked as `dotnet <command>`, where a short name
+reads poorly (`dotnet kmut`) and a `dotnet-` prefix reads well (`dotnet killmutants`).
+Pick the command name for the install mode this tool is actually meant to have.
 
 ## Cutting a release
 
