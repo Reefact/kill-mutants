@@ -107,6 +107,12 @@ dotnet killmutants --mutators Comparison,LogicalOperator,Arithmetic
 Code marked `[ExcludeFromCodeCoverage]` is left alone: the attribute already says this code is not
 part of what the tests are expected to cover.
 
+**A score is only comparable to another score from the same catalogue.** Dropping those two families
+on this repository takes the run from 413 mutants in 7.1 minutes to 207 in 4.1, and the score from
+28.81% to 43% — not because the tests improved, but because a different question was asked. Pick a
+catalogue for a CI job and keep it: `--break-at` compares against whatever families actually ran, and
+the JSON report lists them under `byMutator` so a consumer can tell which.
+
 The score is `detected / (detected + undetected)`. A mutant the tests caught is detected, and so is
 one that hung the suite until the timeout — the tests noticed it. A mutant that survived is
 undetected, and **so is one no test reaches**: the suite would not have noticed the change, and

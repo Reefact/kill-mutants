@@ -279,7 +279,14 @@ Ce n'est pas une raison de les supprimer : un mutant `StringLiteral` survivant e
 et utile sur un projet qui asserte sur ses messages. C'est une raison de *rapporter la répartition*
 et de laisser l'utilisateur agir dessus : c'est à cela que servent `--mutators` et `--without`. Le
 rapport indique ce que chaque famille a coûté et attrapé, de sorte que le choix se fait sur les
-chiffres du projet et non sur ceux de celui-ci.
+chiffres du projet et non sur ceux de celui-ci. Les retirer ici fait passer le run de 413 mutants en
+7,1 minutes à 207 en 4,1, et les survivants à lire de 129 à 62.
+
+**Ce qui mérite d'être dit franchement :** un score n'est comparable qu'à un score issu du même
+catalogue. Ce même changement fait passer le chiffre de 28,81 % à 43 %, et les tests ne se sont pas
+améliorés — une autre question a été posée. Un job de CI devrait choisir un catalogue et s'y tenir ;
+le rapport JSON liste les familles réellement exécutées, de sorte qu'un consommateur peut savoir à
+quelle question il a été répondu.
 
 M11 cesse également de muter tout ce qui porte `[ExcludeFromCodeCoverage]`. L'attribut est une
 déclaration d'intention — ce code ne fait pas partie de ce que les tests sont censés couvrir — et
