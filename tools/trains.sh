@@ -48,7 +48,7 @@
 trains_rows() {
   cat <<'ROWS'
 lib|lib-v|core,mutators,reporters|the KillMutants engine
-cli|cli-v|cli|the kill-mutants .NET tool
+cli|cli-v|cli|the KillMutants CLI (a .NET tool)
 ROWS
 }
 

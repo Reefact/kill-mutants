@@ -48,7 +48,7 @@ credential, and masking it would only make a failed login harder to read.
 | Workflow File | `release.yml` | The file NAME only — no `.github/workflows/` path. A mistyped name matches nothing and fails the login on a real tag. |
 | Environment | *(empty)* | `release.yml` declares no `environment:`. Filling this in requires the token to carry that claim, and the push fails. |
 | Scopes | Push new packages and package versions | Nothing is published yet; "only new package versions" would refuse the first publish of a new package id. |
-| Glob Patterns | `KillMutants*` and `kill-mutants*`, one per line | Limits what this workflow may push. Not `*`, which would let a compromised repository publish to every package the account owns. The trap is the hyphen, not the case: `KillMutants*` does not match `kill-mutants`. Tighten to exact ids once published. |
+| Glob Patterns | `KillMutants*` | Limits what this workflow may push, and covers every package id this repository will own (see "Package naming" below). Not `*`, which would let a compromised repository publish to every package the account owns. |
 
 No long-lived API key is stored anywhere: the OIDC exchange mints a short-lived,
 single-use key, valid for an hour, which is why `release.yml` logs in immediately
@@ -59,6 +59,30 @@ repository — and goes inactive if nothing publishes in that window (it can be
 restarted at any time). nuget.org needs the GitHub repository and owner ids, which
 only a successful token exchange supplies, to lock the policy against resurrection
 attacks. A dry run is enough to satisfy it: see "Rehearsing" below.
+
+## Package naming
+
+Following the convention every Reefact repository already shares — `DiagnosticCatalog`
+/ `DiagnosticCatalog.Cli` (`dcat`), `JustDummies` / `JustDummies.Cli` (`dum`),
+`FirstClassErrors` / `FirstClassErrors.Cli` (`fce`):
+
+| Train | `PackageId` | `ToolCommandName` |
+| ----- | ----------- | ----------------- |
+| `lib` | `KillMutants` | — |
+| `cli` | `KillMutants.Cli` | *(to be chosen — the others use a 2–4 letter abbreviation)* |
+
+The repository name is kebab-case and the package ids are PascalCase; sub-packages are
+suffixed with a dot (`KillMutants.Xunit`, ...). No package id carries a hyphen, which is
+why one glob covers them all.
+
+`PackageId` and `ToolCommandName` are independent properties, and the convention uses
+that: you install `DiagnosticCatalog.Cli` and you type `dcat`. The short name belongs to
+the COMMAND, never to the package.
+
+Stryker.NET does the opposite — `Stryker.Core` publishes as `stryker`, `Stryker.CLI` as
+`dotnet-stryker` — so its package ids match none of its project names. The `dotnet-`
+prefix is a leftover from `DotNetCliToolReference`, where a package named `dotnet-foo`
+was what made `dotnet foo` work. Since `dotnet tool install` it carries no meaning.
 
 ## Cutting a release
 
