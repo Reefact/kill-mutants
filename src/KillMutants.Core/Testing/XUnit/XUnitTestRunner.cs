@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Xml;
 using System.Xml.Linq;
 using KillMutants.Processes;
 using KillMutants.Projects;
@@ -161,7 +162,12 @@ internal sealed class XUnitTestRunner : ITestRunner
     /// Reads the counts from the structured result file rather than trusting the exit code, which
     /// cannot distinguish "everything passed" from "nothing ran".
     /// </summary>
-    private static TestRunOutcome ReadOutcome(string resultPath, ProcessResult process)
+    /// <remarks>
+    /// Internal rather than private so a half-written file can be handed to it directly. Producing
+    /// one through a real process means killing a test host at the exact moment it is writing, which
+    /// is not something a test can ask for reliably.
+    /// </remarks>
+    internal static TestRunOutcome ReadOutcome(string resultPath, ProcessResult process)
     {
         if (!File.Exists(resultPath))
         {
@@ -175,11 +181,25 @@ internal sealed class XUnitTestRunner : ITestRunner
                 $"{Environment.NewLine}{Truncate(process.CombinedOutput)}");
         }
 
-        XElement? assembly = XDocument.Load(resultPath).Root?.Element("assembly");
+        XElement? assembly;
+
+        try
+        {
+            assembly = XDocument.Load(resultPath).Root?.Element("assembly");
+        }
+        catch (XmlException exception)
+        {
+            // A file that stops mid-element is a host that was killed while writing it, which is the
+            // same event as writing no file at all - and a mutation is one of the things that kills a
+            // host. Throwing here ended the whole session over one mutant.
+            return Unreadable(process, $"stops part way through: {exception.Message}");
+        }
 
         if (assembly is null)
         {
-            throw new TestExecutionException("The test application's result file names no assembly.");
+            // Well-formed and still unusable. Same answer, for the same reason: whatever the host
+            // wrote, it is not a result, and one mutant must not take every other verdict with it.
+            return Unreadable(process, "names no assembly");
         }
 
         return new TestRunOutcome(
@@ -190,6 +210,14 @@ internal sealed class XUnitTestRunner : ITestRunner
             TimedOut: false,
             FailedTests: ReadFailures(assembly));
     }
+
+    /// <summary>Reports a result file that cannot be believed as a host that did not finish.</summary>
+    private static TestRunOutcome Unreadable(ProcessResult process, string why) =>
+        TestRunOutcome.FromCrash(
+            process.Duration,
+            $"The test application exited with code " +
+            $"{process.ExitCode.ToString(CultureInfo.InvariantCulture)} and its result file {why}." +
+            $"{Environment.NewLine}{Truncate(process.CombinedOutput)}");
 
     /// <summary>Names the tests that did not pass, in the form <c>-method</c> accepts.</summary>
     /// <remarks>
