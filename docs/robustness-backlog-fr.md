@@ -347,8 +347,9 @@ d'un hôte de test contre 0,12 s de test réel. Sélectionner moins de tests ne 
 aider ; c'est le lancement qui domine.
 
 Le levier évident suivant serait un hôte de test réutilisé à chaud, et il est **délibérément
-refusé**. C'est la source de la plainte de correction la plus ancienne chez Stryker (issue #3742), où
-de l'état global de processus fuit d'un mutant au suivant et gonfle les scores. Un outil dont le seul
+refusé**. Stryker, qui les réutilise, a besoin de points explicites où ils sont
+réinitialisés (`MicrosoftTestPlatformRunnerPool.cs:96,140`) ; il nous faudrait la même discipline, et
+un assembly déjà chargé par un processus chaud n'est de toute façon pas relu depuis le disque. Un outil dont le seul
 propos est de dire la vérité sur une suite de tests ne peut pas acheter de la vitesse avec un
 mécanisme qui rapporte silencieusement des mutants comme tués alors qu'ils ne l'étaient pas.
 

@@ -173,10 +173,11 @@ Trois points de cette partie de l'étude méritent d'être retenus :
 - **L'arrêt au premier test en échec n'est implémenté que pour le runner VSTest historique de Stryker
   et est explicitement absent de son runner MTP** (issue ouverte #3655). KillMutants l'obtient
   gratuitement via `-stopOnFail` du runner console xUnit, et l'utilise déjà pour les mutants.
-- **La réutilisation à chaud des hôtes de test est le plus gros problème de correction remonté chez
-  Stryker** : réutiliser un processus d'un mutant à l'autre fait fuir de l'état global de processus
-  et gonfle les scores (issue #3742). C'est un argument direct en faveur de notre modèle
-  processus-par-mutant, qui ne peut pas produire ce défaut.
+- **La réutilisation à chaud des hôtes de test exige des points de réinitialisation explicites.**
+  Stryker remet ses runners dans un pool après chaque travail (`VsTestRunnerPool.cs:95-111`) et doit
+  ramener de force ces processus de longue durée à un état propre aux frontières de phase
+  (`MicrosoftTestPlatformRunnerPool.cs:96,140`). Cette discipline est un argument direct en faveur de
+  notre modèle processus-par-mutant, qui n'en a aucun besoin — voir ADR-0008.
 - **Le `--timeout` propre à MTP n'arrête pas de façon fiable un test qui tourne en boucle.** Le délai
   maximal doit être détenu par l'outil, avec `Process.Kill(entireProcessTree: true)` à l'expiration.
   C'est exactement ce que fait KillMutants.

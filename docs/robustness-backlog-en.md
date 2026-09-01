@@ -323,9 +323,9 @@ With coverage-driven selection in place, a mutant's run costs roughly 0.5 s to l
 against 0.12 s of actually testing. Selecting fewer tests can no longer help much; the launch
 dominates.
 
-The obvious next lever is a warm, reused test host, and it is **deliberately refused**. It is the
-source of Stryker's longest-standing correctness complaint (issue #3742), where process-global state
-leaks from one mutant to the next and inflates scores. A tool whose whole purpose is to tell the
+The obvious next lever is a warm, reused test host, and it is **deliberately refused**. Stryker, which does reuse hosts, needs explicit points at which
+they are reset (`MicrosoftTestPlatformRunnerPool.cs:96,140`); we would need the same discipline, and
+an assembly already loaded by a warm process is not re-read from disk at all. A tool whose whole purpose is to tell the
 truth about a test suite cannot buy speed with a mechanism that quietly reports mutants as killed
 when they were not.
 
