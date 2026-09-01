@@ -1,3 +1,4 @@
+using KillMutants.Processes;
 using KillMutants.Projects;
 using KillMutants.Testing;
 using KillMutants.Testing.XUnit;
@@ -26,5 +27,82 @@ public class XUnitTestRunnerTests
         Assert.True(outcome.Crashed);
         Assert.NotNull(outcome.CrashDetail);
         Assert.False(outcome.AllPassed);
+    }
+
+    /// <summary>
+    /// The other half of the same event. A host killed while writing its result leaves a file that
+    /// stops mid-element, and reading that threw an XmlException - which is neither a
+    /// TestExecutionException nor an outcome, so it travelled all the way out and ended the session.
+    /// One mutant took every other mutant's verdict with it.
+    /// </summary>
+    [Fact]
+    public void A_result_file_the_host_did_not_finish_writing_is_reported_rather_than_thrown()
+    {
+        TestRunOutcome outcome = Read(
+            """
+            <?xml version="1.0" encoding="utf-8"?>
+            <assemblies>
+              <assembly total="3" failed="0" errors="0">
+                <collection>
+                  <test name="Sample.Library.Tests.AgesTests.Adult" result="Pa
+            """);
+
+        Assert.True(outcome.Crashed);
+        Assert.Contains("stops part way through", outcome.CrashDetail!, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Well formed and still not a result. Same answer, and for the same reason: this used to throw
+    /// too, from two lines further down.
+    /// </summary>
+    [Fact]
+    public void A_result_file_naming_no_assembly_is_reported_rather_than_thrown()
+    {
+        TestRunOutcome outcome = Read("<?xml version=\"1.0\" encoding=\"utf-8\"?><assemblies />");
+
+        Assert.True(outcome.Crashed);
+        Assert.Contains("names no assembly", outcome.CrashDetail!, StringComparison.Ordinal);
+    }
+
+    /// <summary>And a result file that is one reads normally, or the two above prove nothing.</summary>
+    [Fact]
+    public void A_complete_result_file_is_read()
+    {
+        TestRunOutcome outcome = Read(
+            """
+            <?xml version="1.0" encoding="utf-8"?>
+            <assemblies>
+              <assembly total="2" failed="1" errors="0">
+                <collection>
+                  <test name="Sample.Library.Tests.AgesTests.Adult" result="Pass" />
+                  <test name="Sample.Library.Tests.AgesTests.Minor(age: 17)" result="Fail" />
+                </collection>
+              </assembly>
+            </assemblies>
+            """);
+
+        Assert.False(outcome.Crashed);
+        Assert.Equal(2, outcome.Total);
+        Assert.Equal(1, outcome.Failed);
+        Assert.Equal(
+            ["Sample.Library.Tests.AgesTests.Minor"],
+            outcome.FailedTests.Select(name => name.ToString()));
+    }
+
+    private static TestRunOutcome Read(string content)
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"killmutants-test-{Guid.NewGuid():N}.xml");
+
+        File.WriteAllText(path, content);
+
+        try
+        {
+            return XUnitTestRunner.ReadOutcome(
+                path, new ProcessResult(134, string.Empty, string.Empty, TimeSpan.Zero, TimedOut: false));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 }
