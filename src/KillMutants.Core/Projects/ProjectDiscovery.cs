@@ -150,6 +150,11 @@ internal sealed class ProjectDiscovery
         string searchDirectory,
         CancellationToken cancellationToken)
     {
+        if (!Directory.Exists(searchDirectory))
+        {
+            throw new ProjectAnalysisException($"'{searchDirectory}' is not a directory.");
+        }
+
         string[] paths = [.. Directory
             .EnumerateFiles(searchDirectory, "*.csproj", SearchOption.AllDirectories)
             .Where(path => !IsUnderBuildOutput(path, searchDirectory))

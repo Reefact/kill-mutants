@@ -82,7 +82,7 @@ namespace boundaries are already where the assembly boundaries would go.
 | Test-to-mutant mapping | `KillMutants.Coverage` | A type-preserving probe, one run per test (ADR-0007) |
 | Orchestration | `KillMutants.Execution` | The short, linear phase list |
 | Results | `KillMutants.Reporting` | `MutationTestReport`, console and JSON writers, progress |
-| CLI | `KillMutants.Cli` | `dotnet killmutants` |
+| CLI | `KillMutants.Cli` | `dotnet killmutants`, thresholds and exit codes (ADR-0009) |
 
 **Instrumentation has no code of its own, by design.** Because each mutant gets its own compilation
 ([ADR-0002](adr/0002-one-compilation-per-mutant-en.md)), "instrumenting" a mutant is one call to
@@ -148,7 +148,9 @@ several projects under test, project references followed transitively, and a fra
 project. M6 tests mutants in parallel, each worker in a private copy of the test output directory. M4 and M5
 discover the tests and measure which ones reach which mutants, so uncovered mutants are never run and
 the rest run only what can kill them. M7 reports: live progress, findings grouped by file, and a JSON
-report for anything that is not a person. Still ahead: M8 CI; M9 advanced mutations.
+report for anything that is not a person. M8 makes it usable as a quality gate: an opt-in
+`--break-at` threshold and exit codes that separate a weak test suite from a broken run. Still
+ahead: M9 advanced mutations.
 
 **Two output streams, on purpose.** Progress goes to standard error and the report to standard
 output, so `killmutants > report.txt` captures the report without the progress line threaded through
