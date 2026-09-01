@@ -41,6 +41,9 @@ public static class JsonReportWriter
         score = report.Score.IsUndefined ? null : (double?)Math.Round(report.Score.Value, 4),
         scoreDisplay = report.Score.ToString(),
         durationSeconds = Math.Round(report.Duration.TotalSeconds, 2),
+
+        // Two reports without this are not comparable, and nobody notices.
+        environment = report.Environment is null ? null : Describe(report.Environment),
         totals = new
         {
             mutants = report.Total,
@@ -56,8 +59,22 @@ public static class JsonReportWriter
             undetected = report.Undetected,
             untestable = report.Untestable,
         },
+        // Published so a CI job can act on them rather than only a person reading a terminal.
+        warnings = report.Warnings.Select(warning => warning.Text).ToArray(),
         byMutator = report.ByMutator.Select(Describe).ToArray(),
         mutants = report.Results.Select(Describe).ToArray(),
+    };
+
+    private static object Describe(RunEnvironment environment) => new
+    {
+        runtime = environment.Runtime,
+        operatingSystem = environment.OperatingSystem,
+        processorCount = environment.ProcessorCount,
+        workerCount = environment.WorkerCount,
+        testFramework = environment.TestFramework,
+
+        // Without this a mutant reported as timed out cannot be explained after the fact.
+        timeoutBudgetSeconds = environment.TimeoutBudgetsInSeconds,
     };
 
     private static object Describe(MutatorSummary family) => new
@@ -90,6 +107,9 @@ public static class JsonReportWriter
         // mutation in the file at that position, run these tests, watch them fail. A verdict nobody
         // can reproduce is a verdict nobody can dispute.
         killedBy = result.KilledBy.Select(test => test.ToString()).ToArray(),
+
+        // Null on every mutant that was never re-tested, and on every one whose verdict held.
+        disagreement = result.Disagreement,
         detail = result.Detail,
     };
 }

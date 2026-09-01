@@ -41,6 +41,10 @@ public static class MutationTesting
     /// <see cref="Mutations.Mutators.MutatorCatalog.Names"/>.
     /// </param>
     /// <param name="withoutMutators">Families to leave out, applied after <paramref name="mutators"/>.</param>
+    /// <param name="verifyKills">
+    /// How many of the mutants reported killed to test a second time, on their own, before the run
+    /// ends. Zero, the default, skips the check; each sampled mutant costs one more test run.
+    /// </param>
     /// <param name="progress">Told where the run has got to, so a caller can show it.</param>
     /// <param name="cancellationToken">Cancels the run.</param>
     /// <exception cref="ArgumentException">A named mutator family does not exist.</exception>
@@ -59,12 +63,14 @@ public static class MutationTesting
         IEnumerable<string>? exclude = null,
         IEnumerable<Mutations.MutatorName>? mutators = null,
         IEnumerable<Mutations.MutatorName>? withoutMutators = null,
+        int verifyKills = 0,
         IProgress<Reporting.MutationTestProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         var session = new MutationTestSession(
             new XUnitTestRunner(), configuration, timeoutPolicy: null, workerCount, measureCoverage,
-            exclude, Mutations.Mutators.MutatorCatalog.Of(mutators, withoutMutators), progress);
+            exclude, Mutations.Mutators.MutatorCatalog.Of(mutators, withoutMutators), verifyKills,
+            progress);
 
         return session.RunAsync(searchDirectory, cancellationToken);
     }

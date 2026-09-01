@@ -8,12 +8,17 @@ public sealed class MutationTestReport
     /// <summary>Creates a report from the results of every mutant tested.</summary>
     /// <param name="results">Every mutant, with its outcome.</param>
     /// <param name="duration">How long the whole run took.</param>
-    public MutationTestReport(IReadOnlyList<MutantResult> results, TimeSpan duration = default)
+    /// <param name="environment">What the run ran on, and under what limits.</param>
+    public MutationTestReport(
+        IReadOnlyList<MutantResult> results,
+        TimeSpan duration = default,
+        RunEnvironment? environment = null)
     {
         ArgumentNullException.ThrowIfNull(results);
 
         Results = results;
         Duration = duration;
+        Environment = environment;
         Killed = Count(MutantStatus.Killed);
         Survived = Count(MutantStatus.Survived);
         TimedOut = Count(MutantStatus.Timeout);
@@ -40,6 +45,8 @@ public sealed class MutationTestReport
                 .ThenBy(family => family.Mutator.ToString(), StringComparer.Ordinal),
         ];
 
+        Warnings = RunWarning.For(this);
+
         int Count(MutantStatus status) => results.Count(result => result.Status == status);
         int CountOutcome(MutantOutcome outcome) => results.Count(result => result.Outcome == outcome);
     }
@@ -49,6 +56,15 @@ public sealed class MutationTestReport
 
     /// <summary>How long the whole run took.</summary>
     public TimeSpan Duration { get; }
+
+    /// <summary>
+    /// What the run ran on and under what limits, or null when it was not recorded.
+    /// </summary>
+    /// <remarks>
+    /// Two reports without this are not comparable, and a mutant reported as timed out cannot be
+    /// explained after the fact without the budget it exceeded. See <see cref="RunEnvironment"/>.
+    /// </remarks>
+    public RunEnvironment? Environment { get; }
 
     /// <summary>How many mutants were generated.</summary>
     public int Total => Results.Count;
@@ -86,4 +102,7 @@ public sealed class MutationTestReport
 
     /// <summary>What each mutator family cost and bought, most mutants first.</summary>
     public IReadOnlyList<MutatorSummary> ByMutator { get; }
+
+    /// <summary>What a reader must know before trusting the score - see <see cref="RunWarning"/>.</summary>
+    public IReadOnlyList<RunWarning> Warnings { get; }
 }

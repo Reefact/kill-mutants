@@ -75,6 +75,7 @@ internal sealed class ConsoleProgressReporter : IProgress<MutationTestProgress>,
             MutationTestPhase.MeasuringCoverage => "Measuring coverage",
             MutationTestPhase.TestingMutants => "Testing mutants",
             MutationTestPhase.ConfirmingTimeouts => "Confirming timeouts",
+            MutationTestPhase.ReVerifyingKills => "Re-verifying kills",
             _ => progress.Phase.ToString(),
         };
 

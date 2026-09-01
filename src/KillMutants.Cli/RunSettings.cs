@@ -11,6 +11,7 @@ namespace KillMutants.Cli;
 /// <param name="Exclude">Patterns for projects and source files to leave alone.</param>
 /// <param name="Mutators">The only mutator families to run, or empty for all of them.</param>
 /// <param name="WithoutMutators">Families to leave out, applied after <paramref name="Mutators"/>.</param>
+/// <param name="VerifyKills">How many of the mutants reported killed to test a second time.</param>
 /// <param name="JsonReportPath">Where to write the machine-readable report, or null for none.</param>
 /// <param name="Threshold">The score the run must reach, or null when the run only reports.</param>
 internal sealed record RunSettings(
@@ -21,6 +22,7 @@ internal sealed record RunSettings(
     IReadOnlyList<string> Exclude,
     IReadOnlyList<MutatorName> Mutators,
     IReadOnlyList<MutatorName> WithoutMutators,
+    int VerifyKills,
     string? JsonReportPath,
     double? Threshold)
 {
@@ -58,6 +60,7 @@ internal sealed record RunSettings(
             options.Exclude.Count > 0 ? options.Exclude : file?.Exclude ?? [],
             mutators,
             without,
+            options.VerifyKills ?? file?.VerifyKills ?? 0,
             options.JsonReportPath ?? Resolve(file?.ReportJson, file?.Directory),
             options.Threshold ?? file?.BreakAt);
     }

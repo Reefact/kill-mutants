@@ -79,7 +79,7 @@ internal static class Program
             .RunAsync(
                 settings.Directory, settings.Configuration, settings.WorkerCount,
                 settings.MeasureCoverage, settings.Exclude, settings.Mutators,
-                settings.WithoutMutators, progress)
+                settings.WithoutMutators, settings.VerifyKills, progress)
             .ConfigureAwait(false);
 
         // Progress goes to stderr and the report to stdout, so piping the report somewhere useful
@@ -150,7 +150,8 @@ internal static class Program
             Settings:
               A project may keep its habits in killmutants.json, in the directory above. Every
               option below has a key there - configuration, exclude, mutators, without, parallel,
-              coverage, breakAt, reportJson - and anything given on the command line wins.
+              coverage, breakAt, verifyKills, reportJson - and anything given on the command
+              line wins.
 
             Options:
               -c, --configuration <cfg> Build configuration to analyse and run. Defaults to Release.
@@ -165,6 +166,9 @@ internal static class Program
                   --no-coverage         Run every test for every mutant, instead of only the ones
                                         that reach it.
                   --report-json <path>  Also write the report as JSON, for CI and tooling.
+                  --verify-kills <n>    Test n of the mutants reported killed a second time, on
+                                        their own, and report any verdict that does not repeat.
+                                        Costs one test run each. Defaults to 0.
               -h, --help                Show this help.
 
             Exit codes:

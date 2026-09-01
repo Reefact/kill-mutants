@@ -11,6 +11,7 @@ namespace KillMutants.Cli;
 /// <param name="Parallel">How many mutants to test at once.</param>
 /// <param name="Coverage">Whether to run only the tests that reach each mutant.</param>
 /// <param name="BreakAt">The mutation score the run must reach, as a percentage.</param>
+/// <param name="VerifyKills">How many of the mutants reported killed to test a second time.</param>
 /// <param name="ReportJson">Where to write the machine-readable report, relative to this file.</param>
 /// <remarks>
 /// <para>
@@ -33,6 +34,7 @@ internal sealed record ConfigurationFile(
     int? Parallel = null,
     bool? Coverage = null,
     double? BreakAt = null,
+    int? VerifyKills = null,
     string? ReportJson = null)
 {
     /// <summary>The file KillMutants looks for in the directory it was pointed at.</summary>
