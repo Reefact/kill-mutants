@@ -281,6 +281,36 @@ public class MutationTestingEndToEndTests
     }
 
     /// <summary>
+    /// A generator is rarely one file: Mapperly, Refit and protobuf all ship helper assemblies
+    /// beside themselves, and this fixture reproduces that shape with a generator whose output is
+    /// computed by a second assembly. Two separate defects made this project fail before M11.
+    /// </summary>
+    [Fact]
+    public async Task A_source_generator_with_a_dependency_of_its_own_is_run_and_not_mutated()
+    {
+        using var fixture = FixtureCopy.CreateGeneratorProject();
+
+        MutationTestReport report = await MutationTesting.RunAsync(
+            fixture.Root, cancellationToken: TestContext.Current.CancellationToken);
+
+        // The generator ran: the library's only source refers to a type the generator contributes,
+        // so without it the baseline would not compile at all. AssemblyLoadContext.Default does not
+        // probe an analyzer's own directory, so the dependency used to fail to load - and Roslyn
+        // reports that as a warning, leaving the failure to surface as our compile error.
+        Assert.NotEmpty(report.Results);
+        Assert.All(report.Results, result => Assert.Equal(MutantStatus.Killed, result.Status));
+
+        // And only the developer's code is mutated. The generator is referenced with
+        // OutputItemType="Analyzer", so it runs inside the compiler and its assembly never reaches
+        // the test project's output directory: every mutant from it would be uncoverable, and now
+        // that uncovered mutants count against the score, they dragged this project to 16.67%.
+        Assert.All(
+            report.Results,
+            result => Assert.Equal("Ages.cs", Path.GetFileName(result.Mutant.Location.FilePath)));
+        Assert.Equal("100%", report.Score.ToString());
+    }
+
+    /// <summary>
     /// Closes RB-010. The deadline and the process kill were both in place, but nothing had ever
     /// watched them catch a mutant that genuinely never finishes - so Timeout was a status produced
     /// by code we had not seen work.

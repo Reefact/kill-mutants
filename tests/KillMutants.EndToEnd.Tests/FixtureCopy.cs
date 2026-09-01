@@ -223,6 +223,12 @@ internal sealed class FixtureCopy : IDisposable
     /// </summary>
     public static FixtureCopy CreateMultiProject() => CopyOf(FixtureDirectory("multi"));
 
+    /// <summary>
+    /// Copies the source-generator fixture: a generator with a dependency of its own, referenced the
+    /// way a packaged generator is, and a library that cannot compile without what it contributes.
+    /// </summary>
+    public static FixtureCopy CreateGeneratorProject() => CopyOf(FixtureDirectory("generator"));
+
     private static FixtureCopy CopyOf(string source)
     {
         string destination = Path.Combine(Path.GetTempPath(), $"killmutants-e2e-{Guid.NewGuid():N}");
