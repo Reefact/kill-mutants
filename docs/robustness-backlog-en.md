@@ -40,13 +40,38 @@ Reproduced independently during this project's design, at IL level: the token-sw
 tests pass, and it is recorded **Survived** — an invented gap in the user's test suite. Baseline
 verification (ADR-0005) cannot catch it, because that guards against false *kills*.
 
+**What the guarantee actually says.** Not "the mutated syntax differs" — that is the very thing a
+token-only rewrite gets right — but *the emitted program differs*. The check compares the whole
+emitted assembly rather than method bodies alone, because a changed string literal can leave the IL
+byte-identical (`ldstr` keeps its heap index) while the program plainly differs; comparing the file
+covers the metadata heaps too.
+
+**What that comparison depends on, and how it once failed.** `CSharpCompilationOptions` defaults
+`Deterministic` to `false`, and the corpus built its snippets without setting it. Measured against
+Roslyn 5.9: two emits of an *identical* program then differ, because the module version id and the
+header timestamp are generated afresh each time. So the comparison reported every mutant as
+different — including one that changed nothing — and the guarantee passed while proving nothing. The
+real pipeline was never affected: the compiler command line MSBuild reports carries
+`/deterministic+`. With determinism the file is a function of the program alone; measured, the same
+program emits byte-identical assemblies through reformatting, an added comment and a changed file
+path, and no debug stream is emitted, so nothing carries source positions either.
+
 **Our tests.** Every family in the catalogue carries an
 `Every_replacement_carries_the_kind_it_prints` test — `ComparisonOperatorMutatorTests`,
 `LogicalOperatorMutatorTests`, `BooleanLiteralMutatorTests` — and the behavioural guard sits in
-`ProjectCompilationTests.A_mutant_emits_an_assembly_that_actually_differs_from_the_baseline`. The
-rule is stated in the `IMutator` contract so every new mutator inherits it, and enforced structurally
-by `BinaryOperatorMutator`, which builds replacements by kind on behalf of the whole family.
+`ProjectCompilationTests.A_mutant_emits_an_assembly_that_actually_differs_from_the_baseline` and in
+`CatalogueCorpusTests.Every_proposed_mutant_changes_the_emitted_program` across the corpus. The rule
+is stated in the `IMutator` contract so every new mutator inherits it, and enforced structurally by
+`BinaryOperatorMutator`, which builds replacements by kind on behalf of the whole family.
 **Every mutator added to the catalogue must be covered by an equivalent assertion.**
+
+**And the guard on the guard.** A check that only ever sees real mutants pass is not evidence, so two
+tests hold it up. `The_same_compilation_emits_the_same_bytes_twice` asserts the precondition rather
+than assuming it. `A_token_only_rewrite_is_rejected_although_the_syntax_shows_a_mutation` builds this
+entry's exact mistake on purpose — a swapped operator token on a node that keeps its original kind —
+asserts that the syntax plainly shows `>` where `>=` was, and requires the check to answer that
+nothing changed. Removing `WithDeterministic(true)` fails both of them, and only them: the corpus
+guarantee itself still passes, which is precisely how the hole stayed invisible.
 
 ---
 

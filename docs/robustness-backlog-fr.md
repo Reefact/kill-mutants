@@ -44,14 +44,42 @@ tests passent, et il est consigné **Survived** — une lacune inventée dans la
 l'utilisateur. La vérification du baseline (ADR-0005) ne peut pas l'attraper, puisqu'elle protège
 contre les faux *positifs*.
 
+**Ce que la garantie dit réellement.** Non pas « la syntaxe mutée diffère » — c'est précisément ce
+qu'une réécriture du seul jeton réussit — mais *le programme émis diffère*. La vérification compare
+l'assembly émis dans son entier plutôt que les seuls corps de méthode : changer un littéral de chaîne
+peut laisser l'IL identique octet pour octet (`ldstr` garde son index de tas) alors que le programme
+diffère manifestement ; comparer le fichier couvre aussi les tas de métadonnées.
+
+**Ce dont cette comparaison dépend, et comment elle a un temps échoué.**
+`CSharpCompilationOptions` met `Deterministic` à `false` par défaut, et le corpus construisait ses
+extraits sans le régler. Mesuré sur Roslyn 5.9 : deux émissions d'un programme *identique* diffèrent
+alors, car l'identifiant de version de module et l'horodatage de l'en-tête sont générés à neuf à
+chaque fois. La comparaison signalait donc tout mutant comme différent — y compris un qui ne changeait
+rien — et la garantie passait sans rien démontrer. Le vrai pipeline n'a jamais été concerné : la ligne
+de commande du compilateur que rapporte MSBuild porte `/deterministic+`. Avec le déterminisme, le
+fichier est fonction du seul programme ; mesuré : un même programme émet des assemblies identiques
+octet pour octet à travers un reformatage, un commentaire ajouté et un chemin de fichier différent, et
+aucun flux de débogage n'est émis, donc rien ne transporte de positions source.
+
 **Nos tests.** Chaque famille du catalogue porte un test
 `Every_replacement_carries_the_kind_it_prints` — `ComparisonOperatorMutatorTests`,
 `LogicalOperatorMutatorTests`, `BooleanLiteralMutatorTests` — et le garde-fou comportemental se
 trouve dans
-`ProjectCompilationTests.A_mutant_emits_an_assembly_that_actually_differs_from_the_baseline`. La
-règle est énoncée dans le contrat `IMutator` pour que chaque nouveau mutateur en hérite, et imposée
+`ProjectCompilationTests.A_mutant_emits_an_assembly_that_actually_differs_from_the_baseline` et dans
+`CatalogueCorpusTests.Every_proposed_mutant_changes_the_emitted_program` sur tout le corpus. La règle
+est énoncée dans le contrat `IMutator` pour que chaque nouveau mutateur en hérite, et imposée
 structurellement par `BinaryOperatorMutator`, qui construit les remplacements par kind pour toute la
 famille. **Tout mutateur ajouté au catalogue doit être couvert par une assertion équivalente.**
+
+**Et le garde-fou du garde-fou.** Une vérification qui ne voit jamais passer que de vrais mutants
+n'est pas une preuve : deux tests la soutiennent donc.
+`The_same_compilation_emits_the_same_bytes_twice` vérifie la précondition au lieu de la supposer.
+`A_token_only_rewrite_is_rejected_although_the_syntax_shows_a_mutation` construit délibérément
+l'erreur exacte de cette entrée — un jeton d'opérateur échangé sur un nœud qui garde son kind
+d'origine —, vérifie que la syntaxe affiche bien `>` là où il y avait `>=`, et exige de la
+vérification qu'elle réponde que rien n'a changé. Retirer `WithDeterministic(true)` fait échouer ces
+deux tests, et seulement eux : la garantie du corpus, elle, passe toujours — c'est exactement ainsi
+que le trou est resté invisible.
 
 ---
 
