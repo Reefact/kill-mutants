@@ -130,7 +130,7 @@ internal sealed class XUnitTestRunner : ITestRunner
         }
         finally
         {
-            DeleteQuietly(resultPath);
+            Scratch.DeleteFile(resultPath);
         }
     }
 
@@ -200,17 +200,5 @@ internal sealed class XUnitTestRunner : ITestRunner
         return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int count)
             ? count
             : 0;
-    }
-
-    private static void DeleteQuietly(string path)
-    {
-        try
-        {
-            File.Delete(path);
-        }
-        catch (IOException)
-        {
-            // A leftover temp file is not worth failing a run over.
-        }
     }
 }

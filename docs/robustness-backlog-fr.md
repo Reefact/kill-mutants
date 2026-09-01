@@ -234,11 +234,42 @@ commentaire plus bas est un commentaire.
 
 ---
 
-## RB-009 — Conserver les artefacts de chaque mutant ne passera pas à l'échelle · OUVERT
+## RB-009 — Conserver les artefacts de tous les mutants ne passera pas à l'échelle · ASSUMÉ
 
-Les arbres syntaxiques mutés, les tableaux d'octets émis et les diagnostics par mutant sont tous
-conservés pendant tout le run. De vraies solutions atteignent des dizaines de milliers de mutants.
-Sans conséquence à l'échelle actuelle ; cela en devient une à M3.
+Consigné comme une inquiétude, puis mesuré. L'inquiétude se trompait sur ce qui est réellement
+conservé, et la mesure le dit sans détour.
+
+**Ce qui était supposé.** « Les arbres syntaxiques mutés, les tableaux d'octets émis et les
+diagnostics par mutant sont tous conservés pendant tout le run. » Les assemblys émis ne le sont pas :
+`EmitWith` les retourne dans une variable locale, le sandbox les écrit sur disque, et rien n'en garde
+la référence. Ce qu'un mutant terminé conserve réellement, ce sont ses deux nœuds syntaxiques — dont
+les nœuds verts sont partagés avec l'arbre que la compilation détient déjà —, un statut, et une chaîne
+de diagnostics uniquement s'il n'a pas compilé.
+
+**La mesure.** Empreinte mémoire résidente échantillonnée toutes les deux secondes sur un run complet
+de `KillMutants.Core`, 384 mutants sur quatre cœurs :
+
+| Moment du run | RSS |
+|---|---|
+| Démarrage | 39 Mo |
+| Après le build des projets de test | 41 Mo |
+| Après lecture des lignes de commande du compilateur | 47 Mo |
+| Après construction de la compilation Roslyn et exécution des générateurs | 210 Mo |
+| Début de la phase des mutants | 321 Mo |
+| Fin de la phase des mutants | 399 Mo (pic 402 Mo) |
+
+C'est la forme de la courbe qui tranche. Dans la phase des mutants, la RSS atteint 399 Mo au bout
+d'une centaine de secondes puis reste entre 396 et 402 Mo pendant les 255 secondes restantes — environ
+trois cents mutants de plus sans coût additionnel. Une rétention linéaire en nombre de mutants aurait
+grimpé tout du long ; ce n'est pas le cas. La hausse qui se produit est le tas atteignant sa taille de
+travail face aux tampons d'émission transitoires, dont l'essentiel atterrit sur le tas des grands
+objets et est ensuite réutilisé.
+
+**Pourquoi c'est assumé plutôt que corrigé.** Le coût fixe, c'est Roslyn : 280 Mo sur les 402 sont la
+compilation, ses modèles sémantiques et sept générateurs de source, et ils sont là avant le premier
+mutant. Réduire l'état par mutant ne déplacerait pas un chiffre déjà plat. Si une solution bien plus
+grande montre un jour un profil croissant plutôt que plat, la mesure à refaire est celle-ci, et la
+première chose à regarder est la compilation, pas les mutants.
 
 ---
 

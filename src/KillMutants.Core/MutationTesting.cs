@@ -31,6 +31,10 @@ public static class MutationTesting
     /// <exception cref="Projects.ProjectAnalysisException">The projects could not be analysed.</exception>
     /// <exception cref="BaselineVerificationException">The unmutated code does not pass its tests.</exception>
     /// <exception cref="Testing.TestExecutionException">The test application could not be run.</exception>
+    /// <exception cref="Coverage.CoverageException">
+    /// Coverage could not be measured, so no run was attempted rather than one measured from a build
+    /// that could not be trusted. <paramref name="measureCoverage"/> turns the measurement off.
+    /// </exception>
     public static Task<MutationTestReport> RunAsync(
         string searchDirectory,
         string configuration = "Release",

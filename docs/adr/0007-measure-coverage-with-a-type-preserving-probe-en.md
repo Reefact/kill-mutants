@@ -67,7 +67,14 @@ of magnitude larger.
   between mutants and inflates scores.
 - **A failed instrumented build stops the run** with a diagnostic, rather than silently degrading to
   running everything. `--no-coverage` is the escape hatch, and also what makes the two paths
-  comparable in a test.
+  comparable in a test. The instrumented build is also required to *pass the suite* before anything
+  is measured from it: wrapping cannot change what an expression evaluates to, but a coverage map
+  built from a program that no longer behaves as it did would look perfectly valid.
+- **Not every site can carry a recorder, and that is a third answer rather than a missing one.** A
+  site whose value is a ref struct, a pointer, `void`, or has no natural type at all cannot be a
+  `Hit<T>` argument (RB-017). Nor can a measurement that timed out, crashed or was cut short be read
+  as "this test reaches nothing". Both cases resolve to *run every test*, which is slower and never
+  wrong; only a site that was measured and found unreached is reported `NoCoverage`.
 
 ## Revisiting
 

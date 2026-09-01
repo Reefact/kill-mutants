@@ -77,20 +77,7 @@ internal sealed class TestSandbox : IDisposable
     }
 
     /// <summary>Deletes the copies.</summary>
-    public void Dispose()
-    {
-        try
-        {
-            if (Directory.Exists(_root))
-            {
-                Directory.Delete(_root, recursive: true);
-            }
-        }
-        catch (IOException)
-        {
-            // A leftover temporary directory is not worth failing a run over.
-        }
-    }
+    public void Dispose() => Scratch.DeleteDirectory(_root);
 
     private static void CopyDirectory(string source, string destination)
     {

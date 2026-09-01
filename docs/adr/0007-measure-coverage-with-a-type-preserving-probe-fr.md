@@ -73,7 +73,16 @@ normalement d'un ordre de grandeur supérieur.
   chez Stryker, où de l'état global de processus fuit entre mutants et gonfle les scores.
 - **Un build instrumenté qui échoue interrompt le run** avec un diagnostic, plutôt que de dégrader
   silencieusement vers « tout exécuter ». `--no-coverage` est la porte de sortie, et c'est aussi ce
-  qui rend les deux chemins comparables dans un test.
+  qui rend les deux chemins comparables dans un test. Le build instrumenté doit également *passer la
+  suite* avant que quoi que ce soit n'en soit mesuré : l'enveloppement ne peut pas changer ce qu'une
+  expression vaut, mais une carte de couverture bâtie sur un programme qui ne se comporte plus comme
+  avant aurait l'air parfaitement valide.
+- **Tous les sites ne peuvent pas porter d'enregistreur, et c'est une troisième réponse, pas une
+  réponse manquante.** Un site dont la valeur est un ref struct, un pointeur, `void`, ou n'a aucun
+  type naturel, ne peut pas être argument de `Hit<T>` (RB-017). Une mesure qui a expiré, planté ou
+  été interrompue ne peut pas non plus se lire « ce test n'atteint rien ». Les deux cas se résolvent
+  en *exécuter tous les tests* : plus lent, jamais faux ; seul un site mesuré et trouvé non atteint
+  est signalé `NoCoverage`.
 
 ## À réexaminer si
 
