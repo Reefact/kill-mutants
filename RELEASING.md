@@ -11,7 +11,7 @@ authoritative mapping is [`tools/trains.sh`](tools/trains.sh).
 | Train | Tag           | Publishes                   |
 | ----- | ------------- | --------------------------- |
 | `lib` | `lib-v1.2.3`  | the KillMutants engine      |
-| `cli` | `cli-v1.2.3`  | the kill-mutants .NET tool  |
+| `cli` | `cli-v1.2.3`  | the KillMutants CLI (a .NET tool) |
 
 A project joins a train by declaring it in its own `.csproj` — nothing else:
 
@@ -113,7 +113,7 @@ pushes to NuGet, and publishes a GitHub Release with train-scoped notes.
 The provenance attestation covers the bytes attached to the **GitHub Release**:
 
 ```sh
-gh attestation verify kill-mutants.1.2.3.nupkg --repo Reefact/kill-mutants
+gh attestation verify KillMutants.Cli.1.2.3.nupkg --repo Reefact/kill-mutants
 ```
 
 The nuget.org copy deliberately does not match that checksum — nuget.org repository-signs
