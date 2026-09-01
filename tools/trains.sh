@@ -183,6 +183,23 @@ projects_of() {
   done
 }
 
+# ambiguous_trains — echo the .csproj paths declaring <ReleaseTrain> more than once.
+#
+# MSBuild keeps the LAST value; a textual predicate answers yes for every one of them, so a
+# project writing lib and then cli is reported as being on both trains at once. Two independently
+# versioned releases would then pack and publish the same package identity, each believing it
+# owns it. Refused for the reason a conditional declaration is: membership has to have exactly
+# one answer, and guessing which of two the author meant is not one.
+ambiguous_trains() {
+  grep -rl "<ReleaseTrain" \
+    --include='*.csproj' --exclude-dir=bin --exclude-dir=obj . 2>/dev/null \
+    | sed 's|^\./||' | sort | while read -r _at_proj; do
+    if [ "$(_flattened "$_at_proj" | grep -o -E "<ReleaseTrain[^>]*>" | grep -c .)" -gt 1 ]; then
+      printf '%s\n' "$_at_proj"
+    fi
+  done
+}
+
 # declared_trains — echo every train id declared by a .csproj anywhere in the
 # tree, one per line, deduplicated. Used to catch a value that matches no train:
 # such a project would simply never be packed, silently, and a typo in a property

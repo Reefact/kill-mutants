@@ -61,13 +61,42 @@ jobs:
           set -euo pipefail
           # shellcheck source=tools/trains.sh
           . tools/trains.sh
+
+          # These read the project files, so they hold whether or not a solution exists — and they
+          # have to run FIRST. Gated behind "a solution is present" (or behind the pack loop, which
+          # is the same gate), a repository whose only project misspells its train left every known
+          # train empty, was declared unpackable, and rehearsed green with the check never reached.
+          # A declaration nothing can route is a defect at the moment it is written.
+          ambiguous="$(ambiguous_trains)"
+          if [ -n "$ambiguous" ]; then
+            echo "::error::<ReleaseTrain> is declared more than once in: $(printf '%s' "$ambiguous" | tr '\n' ' '). MSBuild keeps the last value; declare the train exactly once."
+            exit 1
+          fi
+          conditioned="$(conditioned_trains)"
+          if [ -n "$conditioned" ]; then
+            echo "::error::<ReleaseTrain> carries an attribute in: $(printf '%s' "$conditioned" | tr '\n' ' '). Membership is an identity, not a build option; declare it unconditionally."
+            exit 1
+          fi
+          unknown=''
+          for declared in $(declared_trains); do
+            if [ -z "$(prefix_of "$declared")" ]; then unknown="${unknown} ${declared}"; fi
+          done
+          if [ -n "$unknown" ]; then
+            echo "::error::project(s) declare unknown release train(s):${unknown} — known trains: $(train_ids | tr '\n' ' '). Fix the <ReleaseTrain> value, or add the train to tools/trains.sh."
+            exit 1
+          fi
+
           count="$(find . -maxdepth 1 \( -name '*.sln' -o -name '*.slnx' \) | wc -l)"
           if [ "$count" -gt 1 ]; then
             echo "::error::Found $count solutions at the repository root; 'dotnet build' cannot pick one."
             exit 1
           fi
           if [ "$count" -eq 1 ]; then
+            # Keep the PATH, not just the fact. An argumentless `dotnet build` fails MSB1011 when a
+            # project file also sits at the root, which is a valid layout; naming the solution
+            # removes the ambiguity instead of forbidding the layout.
             echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "path=$(find . -maxdepth 1 \( -name '*.sln' -o -name '*.slnx' \) | head -n1)" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           # No solution. That is legitimate only while nothing is packable: the moment a project
@@ -91,9 +120,13 @@ jobs:
         if: steps.solution.outputs.present == 'true'
         env:
           VERSION: ${{ env.DRYRUN_VERSION }}
+          SOLUTION: ${{ steps.solution.outputs.path }}
         run: |
-          dotnet restore
-          dotnet build -c Release --no-restore -p:Version="$VERSION"
+          # -p:Configuration=Release so the restore evaluates the same graph the build compiles. A
+          # PackageReference conditioned on Release is otherwise absent from project.assets.json
+          # and the build may not restore again. The real release does the same.
+          dotnet restore "$SOLUTION" -p:Configuration=Release
+          dotnet build "$SOLUTION" -c Release --no-restore -p:Version="$VERSION"
 
       # One pack per train that actually has projects. A train whose project does not exist yet is
       # reported and skipped — that is a normal state here, and NOT one release.yml tolerates: a real
@@ -116,21 +149,6 @@ jobs:
           # leaves every known train empty, skips every pack, and takes its own check with it:
           # a repository whose only project misspells its train rehearsed clean and found out
           # at tag time. The check has to sit where a typo cannot switch it off.
-          conditioned="$(conditioned_trains)"
-          if [ -n "$conditioned" ]; then
-            echo "::error::<ReleaseTrain> carries an attribute in: $(printf '%s' "$conditioned" | tr '\n' ' '). Membership is an identity, not a build option; declare it unconditionally."
-            exit 1
-          fi
-
-          unknown=''
-          for declared in $(declared_trains); do
-            if [ -z "$(prefix_of "$declared")" ]; then unknown="${unknown} ${declared}"; fi
-          done
-          if [ -n "$unknown" ]; then
-            echo "::error::project(s) declare unknown release train(s):${unknown} — known trains: $(train_ids | tr '\n' ' '). Fix the <ReleaseTrain> value, or add the train to tools/trains.sh."
-            exit 1
-          fi
-
           packed=0
           for train in $(train_ids); do
             if [ -z "$(projects_of "$train")" ]; then

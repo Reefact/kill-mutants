@@ -53,6 +53,15 @@ fi
 
 # An attribute on <ReleaseTrain> — a Condition, above all — is refused rather than guessed at.
 # See conditioned_trains in trains.sh for why neither reading is safe.
+ambiguous="$(ambiguous_trains)"
+if [ -n "$ambiguous" ]; then
+  echo "error: <ReleaseTrain> is declared more than once in:" >&2
+  printf '%s\n' "$ambiguous" | sed 's|^|  - |' >&2
+  echo "       MSBuild keeps the last value, but a project reported on two trains would be packed" >&2
+  echo "       and published by both. Declare the train exactly once." >&2
+  exit 1
+fi
+
 conditioned="$(conditioned_trains)"
 if [ -n "$conditioned" ]; then
   echo "error: <ReleaseTrain> carries an attribute in:" >&2
@@ -70,9 +79,13 @@ fi
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 
+# Every loop over the project list reads it LINE BY LINE. `for project in $projects` word-splits,
+# so a project under a path containing a space — src/Kill Mutants/Core.csproj — would reach
+# dotnet as two nonexistent paths and fail the whole train. The list is newline-delimited by
+# construction (projects_of prints one per line), which is the only separator a path cannot hold.
 echo "Packing the '${train}' train at ${version}:"
-for project in $projects; do
-  echo "  ${project}"
+printf '%s\n' "$projects" | while IFS= read -r project; do
+  [ -n "$project" ] && echo "  ${project}"
 done
 
 # --- guard: no cross-train project reference ----------------------------------
@@ -93,8 +106,8 @@ done
 # version. A reference to a project declaring NO train is left alone: that is the
 # ordinary way an analyzer or a private helper is bundled into a package.
 violations=''
-# Intentionally unquoted: the project list is newline-separated with no spaces in paths.
-for project in $projects; do
+while IFS= read -r project; do
+  [ -n "$project" ] || continue
   project_dir="$(dirname "$project")"
   # Every shape MSBuild accepts, because the guard is worthless on the ones it cannot see:
   # both quoting forms (Include='...' as readily as Include="..."), and an element split
@@ -125,7 +138,9 @@ for project in $projects; do
     violations="${violations}  - ${project} -> ${resolved#"$root"/} (train '${referenced_train}')
 "
   done
-done
+done <<PROJECTS
+${projects}
+PROJECTS
 if [ -n "$violations" ]; then
   echo "error: cross-train ProjectReference(s) found while packing the '${train}' train:" >&2
   printf '%s' "$violations" >&2
@@ -161,7 +176,8 @@ echo "ok: no cross-train ProjectReference on the '${train}' train"
 rm -rf artifacts
 mkdir -p artifacts
 
-for project in $projects; do
+printf '%s\n' "$projects" | while IFS= read -r project; do
+  [ -n "$project" ] || continue
   dotnet pack "$project" -c Release -p:Version="$version" -p:GenerateSBOM=true -o artifacts
 done
 
@@ -170,7 +186,7 @@ done
 # <id>.<version>.nupkg path, so the second overwrites the first and every later guard still
 # sees a valid artifact. The release then succeeds having silently dropped a declared
 # project. Counting is enough to catch it, and says so before anything is attested.
-expected="$(printf '%s\n' $projects | grep -c .)"
+expected="$(printf '%s\n' "$projects" | grep -c .)"
 produced="$(ls artifacts/*.nupkg 2>/dev/null | wc -l)"
 if [ "$produced" -ne "$expected" ]; then
   echo "error: the '${train}' train has ${expected} project(s) but packing produced ${produced} package(s)." >&2
@@ -179,52 +195,80 @@ if [ "$produced" -ne "$expected" ]; then
 fi
 echo "ok: ${produced} package(s) for ${expected} project(s) on the '${train}' train"
 
-# --- guard: no dependency on a package this repository never publishes -----------
+# --- guard: no dependency on a package that will never exist ---------------------
 # Read from the PRODUCED nuspec, not from the project files, because that is the only place
 # the answer is exact — and because it is immune to how the reference was written. A
 # ProjectReference contributed by an imported .props/.targets, spelled with a Condition, or
-# formatted across lines never appears in the text this script used to scan; all three reach
-# the nuspec.
+# formatted across lines never appears in the text a scan could see; all three reach the nuspec.
 #
-# The failure it closes: `dotnet pack` represents a ProjectReference as a package DEPENDENCY
-# at the version being packed — it does not embed the referenced assembly. A train project
-# referencing an ordinary helper project therefore ships
-# <dependency id="Helper" version="1.2.3" /> for a package that is never published, and every
-# consumer's restore fails (NU1101) against an immutable artifact. Measured: that nuspec is
-# exactly what a plain helper reference produces.
+# The failure it closes: `dotnet pack` represents a ProjectReference as a package DEPENDENCY at
+# the version being packed — it does not embed the referenced assembly. A train project
+# referencing an ordinary helper therefore ships <dependency id="Helper" version="1.2.3" /> for
+# a package nothing publishes, and every consumer restore fails (NU1101) against an immutable
+# artifact. Measured: that nuspec is exactly what a plain helper reference produces.
 #
-# A dependency is refused when its id belongs to a project in THIS repository that this pack
-# did not produce. Anything else — Newtonsoft.Json, another train's already-published package
-# at a fixed version — is a normal dependency and is left alone.
-local_ids="$(find . -name '*.csproj' -not -path '*/bin/*' -not -path '*/obj/*' 2>/dev/null \
-  | while read -r _proj; do
-      _id="$(_flattened "$_proj" | grep -oE '<PackageId>[^<]*</PackageId>' \
-             | sed -E 's|<PackageId>[[:space:]]*([^<[:space:]]*)[[:space:]]*</PackageId>|\1|' | head -n1)"
-      [ -n "$_id" ] || _id="$(basename "$_proj" .csproj)"
-      printf '%s\n' "$_id"
-    done | sort -u)"
-produced_ids="$(ls artifacts/*.nupkg 2>/dev/null \
-  | sed -E "s|.*/||; s|\.$(printf '%s' "$version" | sed 's/[].[^$*\/\\]/\\&/g')\.nupkg$||" | sort -u)"
+# Which dependencies are refused depends on what the referenced project IS, so the verdict is
+# taken per train, not per id:
+#
+#   on no train        refuse always — nothing will ever publish it;
+#   on THIS train      allowed, since it is co-published at this very version (and the count
+#                      guard above already proved every project on the train produced a package);
+#   on ANOTHER train   refuse ONLY at the version being packed. That number is the signature of
+#                      a ProjectReference, which stamps the dependency at the pack version — a
+#                      version of the other train that no release ever produced. A DIFFERENT,
+#                      fixed version is the prescribed cross-train mechanism: a PackageReference
+#                      on something already published. Refusing that was a real regression here,
+#                      caught in review: it aborted every release of a train that depends on
+#                      another, which is the shape this repository is built around.
+#
+# Identities come from MSBuild, not from the project text: PackageId may be defaulted by the SDK
+# to the project name, set in an imported .props, or written as a property expression, and each
+# spelling reaches the nuspec while a text scan reads something else. -getProperty evaluates.
+_project_property() { dotnet msbuild "$1" -getProperty:"$2" -nologo 2>/dev/null | tr -d '\r\n'; }
+
+local_map=''   # one "<PackageId>|<train>" line per project in the repository
+find . -name '*.csproj' -not -path '*/bin/*' -not -path '*/obj/*' -print > /tmp/km-projects.$$
+while IFS= read -r _proj; do
+  _id="$(_project_property "$_proj" PackageId)"
+  [ -n "$_id" ] || continue
+  local_map="${local_map}${_id}|$(_project_property "$_proj" ReleaseTrain)
+"
+done < /tmp/km-projects.$$
+rm -f /tmp/km-projects.$$
+
+produced_ids=''
+for package in artifacts/*.nupkg; do
+  produced_ids="${produced_ids}$(unzip -p "$package" '*.nuspec' | tr '\n' ' ' \
+    | grep -oE '<id>[^<]*</id>' | head -n1 | sed 's|</\?id>||g')
+"
+done
 
 phantom=''
 for package in artifacts/*.nupkg; do
   nuspec="$(unzip -p "$package" '*.nuspec' 2>/dev/null | tr '\n' ' ')"
-  for dep in $(printf '%s' "$nuspec" | grep -oE '<dependency id="[^"]*"' | sed 's|.*id="||; s|"$||'); do
-    printf '%s\n' "$local_ids" | grep -Fxq "$dep" || continue   # not one of ours: ordinary dependency
-    printf '%s\n' "$produced_ids" | grep -Fxq "$dep" && continue # co-published by this very pack
-    phantom="${phantom}  - $(basename "$package") depends on '${dep}', which this repository does not publish
+  for dep in $(printf '%s' "$nuspec" | grep -oE '<dependency id="[^"]*" version="[^"]*"' \
+                 | sed 's|<dependency id="||; s|" version="|@|; s|"$||'); do
+    dep_id="${dep%@*}"; dep_version="${dep#*@}"
+    dep_train="$(printf '%s' "$local_map" | grep -m1 "^${dep_id}|" | cut -d'|' -f2)"
+    printf '%s' "$local_map" | grep -q "^${dep_id}|" || continue     # not ours: ordinary dependency
+    printf '%s\n' "$produced_ids" | grep -Fxq "$dep_id" && continue  # co-published by this pack
+    if [ -z "$dep_train" ]; then
+      phantom="${phantom}  - $(basename "$package") -> ${dep_id} ${dep_version} (on no release train: nothing publishes it)
 "
+    elif [ "$dep_version" = "$version" ]; then
+      phantom="${phantom}  - $(basename "$package") -> ${dep_id} ${dep_version} (train '${dep_train}' at THIS version: a ProjectReference stamped it; that version was never released)
+"
+    fi
   done
 done
 if [ -n "$phantom" ]; then
   echo "error: package(s) would ship a dependency on a package that will never exist:" >&2
   printf '%s' "$phantom" >&2
-  echo "       dotnet pack turns a ProjectReference into a dependency at the packed version; it does not" >&2
-  echo "       embed the assembly. Put the referenced project on this train, publish it on its own, or" >&2
-  echo "       keep its output inside the package (PrivateAssets=\"all\" plus an explicit Pack target)." >&2
+  echo "       Across trains, depend through a PackageReference on an ALREADY PUBLISHED version." >&2
+  echo "       For a helper on no train: put it on this train, or keep its output inside the package." >&2
   exit 1
 fi
-echo "ok: no dependency on an unpublished local package"
+echo "ok: every dependency is external, co-published, or a published cross-train version"
 
 # --- guard: the SBOM is actually in there --------------------------------------
 # Positive proof, not just a green pack: a pack that silently stopped embedding the
