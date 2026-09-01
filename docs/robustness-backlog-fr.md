@@ -732,3 +732,38 @@ sévérité et prouve que les avertissements propres à un générateur ne sont 
 `FailedGeneratorTests.A_run_stops_rather_than_reporting_on_a_compilation_a_generator_did_not_finish`,
 qui ajoute un générateur qui lève et dont la sortie n'est nécessaire à personne — la compilation
 fonctionne donc toujours, et seule la nouvelle règle arrête l'exécution.
+
+---
+
+## RB-022 — Chaque émission construit un nouveau pilote de générateurs · ACCEPTÉ
+
+**Comment elle a été trouvée.** La même revue automatique que RB-021 a relevé que
+`SourceGenerators.Run` jette le pilote renvoyé par `RunGeneratorsAndUpdateCompilation` — celui qui
+porte l'état incrémental de Roslyn — si bien qu'un projet à plusieurs centaines de mutants exécute
+ses générateurs à froid autant de fois, au lieu de bénéficier des exécutions ultérieures mises en
+cache que la conception annonce.
+
+**Ce qui a été mesuré.** L'observation est juste sur le mécanisme et fausse sur ce qu'il coûte.
+Contre le SDK .NET 10 sur `tests/fixtures/single`, qui embarque huit générateurs sans en demander
+aucun — `Microsoft.Interop.LibraryImportGenerator` et ses semblables sont livrés avec le
+framework :
+
+| | Coût |
+| --- | --- |
+| Première exécution des générateurs dans le processus | 1 139 ms |
+| Chacune des suivantes | 4,5 ms |
+| L'émission entière qui l'entoure | 9 ms |
+
+La première exécution, c'est le chargement des assemblages et la compilation JIT. Elle est payée une
+fois par processus quelle que soit la façon dont le pilote est conservé : ce n'est donc pas ce que la
+réutilisation ferait gagner ; les 4,5 ms le sont. Rapporté à notre dernière exécution sur nous-mêmes
+— 499 mutants en 7,4 minutes — conserver l'état du pilote récupérerait environ deux secondes, moins
+d'un pour cent de l'exécution, et la phase des mutants est dominée par le lancement des hôtes de test
+bien plus que par quoi que ce soit que fasse Roslyn.
+
+**Pourquoi c'est accepté plutôt que corrigé.** Un pilote est un état, et les mutants sont testés sur
+plusieurs travailleurs à la fois. Acheter moins d'un pour cent d'une exécution au prix d'un état
+partagé entre ces travailleurs est un mauvais marché pour un outil dont la pire défaillance est un
+verdict discrètement faux — et RB-020, sur la même page, montre ce que le partage d'état de
+chargement entre exécutions nous a déjà coûté. C'est consigné plutôt que fait, pour que la prochaine
+personne qui remarquera le pilote jeté trouve la mesure au lieu de la refaire.
