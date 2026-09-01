@@ -67,6 +67,16 @@ internal static class ProcessRunner
             return new ProcessResult(-1, await ReadOrEmptyAsync(standardOutput).ConfigureAwait(false),
                 await ReadOrEmptyAsync(standardError).ConfigureAwait(false), stopwatch.Elapsed, TimedOut: true);
         }
+        catch (OperationCanceledException)
+        {
+            // The caller cancelled, and the process is still ours to end. Disposing a Process does
+            // not stop the program it started, so letting this through untouched left a test host
+            // running - and a mutant that turned a loop endless is exactly the host most likely to
+            // still be running, holding its sandbox, after the session has returned.
+            KillQuietly(process);
+
+            throw;
+        }
 
         stopwatch.Stop();
 
