@@ -93,6 +93,13 @@ dotnet killmutants --exclude "tests/fixtures/*" --exclude "*.Generated.cs"
 
 Note that `*` matches `/` as well, so `tests/*` covers everything beneath `tests`.
 
+The score is `detected / (detected + undetected)`. A mutant the tests caught is detected, and so is
+one that hung the suite until the timeout — the tests noticed it. A mutant that survived is
+undetected, and **so is one no test reaches**: the suite would not have noticed the change, and
+skipping its test run is an optimisation rather than a pardon. Only a mutant KillMutants could not
+build is left out, because there the suite was never asked. Uncovered code therefore lowers the
+score, which is the point.
+
 | exit code | meaning |
 |---|---|
 | 0 | Ran, and met the threshold if one was given |
