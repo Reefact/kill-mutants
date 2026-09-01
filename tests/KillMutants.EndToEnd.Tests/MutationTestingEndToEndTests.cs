@@ -102,8 +102,9 @@ public class MutationTestingEndToEndTests
 
     /// <summary>
     /// Milestone 5. Code no test reaches produces mutants that could only ever be reported as
-    /// survived - which would read as a gap in the tests rather than as their absence. They are
-    /// recorded as NoCoverage instead, never run, and excluded from the score.
+    /// survived. They are recorded as NoCoverage and never run - the saving that coverage
+    /// measurement exists for - but they are <em>not</em> excused: an undetected mutant is an
+    /// undetected mutant, and skipping its test run is an optimisation rather than a pardon.
     /// </summary>
     [Fact]
     public async Task Mutants_in_code_no_test_reaches_are_reported_as_uncovered()
@@ -121,12 +122,18 @@ public class MutationTestingEndToEndTests
             uncovered,
             result => Assert.Equal("Untested.cs", Path.GetFileName(result.Mutant.Location.FilePath)));
 
-        // Everything the tests do reach is still killed, and the untestable mutants do not drag the
-        // score down: a mutant that cannot be tested says nothing about the quality of the tests.
+        // Everything the tests do reach is still killed...
         Assert.All(
             report.Results.Where(r => r.Status != MutantStatus.NoCoverage),
             result => Assert.Equal(MutantStatus.Killed, result.Status));
-        Assert.Equal("100%", report.Score.ToString());
+
+        // ...and yet the run does not score 100%. This is the regression test for the score's
+        // definition: uncovered mutants are undetected, so they are in the denominator. Before this
+        // was fixed, adding code with no tests at all left the score untouched at 100%.
+        Assert.Equal(report.Killed, report.Detected);
+        Assert.Equal(uncovered.Length, report.Undetected);
+        Assert.NotEqual("100%", report.Score.ToString());
+        Assert.True(report.Score.Value < 1d);
     }
 
     /// <summary>

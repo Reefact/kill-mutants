@@ -49,6 +49,12 @@ public static class JsonReportWriter
             timedOut = report.TimedOut,
             compileErrors = report.CompileErrors,
             noCoverage = report.Uncovered,
+
+            // The three that define the score, so a consumer never has to re-derive which status
+            // counts as what: score = detected / (detected + undetected).
+            detected = report.Detected,
+            undetected = report.Undetected,
+            untestable = report.Untestable,
         },
         mutants = report.Results.Select(Describe).ToArray(),
     };
@@ -58,6 +64,7 @@ public static class JsonReportWriter
         id = result.Mutant.Id.ToString(),
         mutator = result.Mutant.Mutator.ToString(),
         status = result.Status.ToString(),
+        outcome = result.Outcome.ToString(),
         file = result.Mutant.Location.FilePath,
         line = result.Mutant.Location.Line,
         character = result.Mutant.Location.Character,

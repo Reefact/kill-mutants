@@ -1,15 +1,12 @@
 namespace KillMutants.Mutations;
 
-/// <summary>The outcome of testing one mutant.</summary>
+/// <summary>What became of one mutant.</summary>
 /// <remarks>
-/// Milestone 1 only ever produces <see cref="Killed"/> and <see cref="Survived"/>. The rest of the
-/// vocabulary is fixed now so that later milestones add behaviour rather than reshape the model.
+/// What each of these is <em>worth</em> is not decided here but in <see cref="MutantOutcome"/>, so
+/// that no reporter or threshold has to make that judgement for itself.
 /// </remarks>
 public enum MutantStatus
 {
-    /// <summary>Not tested yet.</summary>
-    Pending,
-
     /// <summary>At least one test failed: the test suite noticed the change.</summary>
     Killed,
 

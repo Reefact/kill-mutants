@@ -250,6 +250,32 @@ internal sealed class ProjectDiscovery
 
             await BuildAsync(projectPaths[index], cancellationToken).ConfigureAwait(false);
         }
+
+        VerifyTestFramework(targets);
+    }
+
+    /// <summary>
+    /// Requires every test project to actually run on the xUnit version this tool supports.
+    /// </summary>
+    /// <remarks>
+    /// Discovery recognises a test project by its dependency on the <c>xunit.v3</c> package family,
+    /// which says nothing about the version. KillMutants states xUnit 4 only, so it has to check
+    /// rather than announce it - the runner's command line, its result file and its exit codes are
+    /// all version-specific, and reading an older runner's output with these assumptions is how a
+    /// tool comes to report verdicts it never measured.
+    /// </remarks>
+    private static void VerifyTestFramework(IEnumerable<MutationTestTarget> targets)
+    {
+        foreach (TestProject testProject in targets
+                     .SelectMany(target => target.TestProjects)
+                     .DistinctBy(test => test.ProjectPath, StringComparer.Ordinal)
+                     .OrderBy(test => test.ProjectPath, StringComparer.Ordinal))
+        {
+            if (XUnitVersion.WhyUnsupported(Path.GetDirectoryName(testProject.AssemblyPath)!) is { } reason)
+            {
+                throw new ProjectAnalysisException($"'{testProject.Name}' cannot be used: {reason}");
+            }
+        }
     }
 
     private async Task BuildAsync(string projectPath, CancellationToken cancellationToken)

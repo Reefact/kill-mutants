@@ -61,4 +61,42 @@ public class TestRunOutcomeTests
         Assert.False(outcome.AllPassed);
         Assert.False(outcome.NoTestsRan);
     }
+
+    /// <summary>
+    /// Two places require a green suite - the baseline, and the instrumented build the coverage pass
+    /// measures against - and both ask this one question, so it is the single place where "green"
+    /// is defined. The case worth pinning is the empty run: the runner reports exit code zero for a
+    /// filter that matched nothing, so silence here would let both checks pass on nothing at all.
+    /// </summary>
+    [Fact]
+    public void A_clean_pass_has_no_reason_to_report()
+    {
+        Assert.Null(new TestRunOutcome(3, 0, 0, TimeSpan.Zero, TimedOut: false).WhyNotGreen());
+    }
+
+    [Fact]
+    public void A_run_that_executed_nothing_says_so_rather_than_passing()
+    {
+        Assert.Equal(
+            "it ran no tests at all",
+            new TestRunOutcome(0, 0, 0, TimeSpan.Zero, TimedOut: false).WhyNotGreen());
+    }
+
+    [Fact]
+    public void A_failure_is_reported_with_its_counts()
+    {
+        Assert.Equal(
+            "2 of its 5 tests did not pass",
+            new TestRunOutcome(5, 1, 1, TimeSpan.Zero, TimedOut: false).WhyNotGreen());
+    }
+
+    [Fact]
+    public void A_timeout_and_a_crash_each_have_their_own_reason()
+    {
+        Assert.Equal("it exceeded its time budget", TestRunOutcome.FromTimeout(TimeSpan.Zero).WhyNotGreen());
+        Assert.Contains(
+            "could not be run",
+            TestRunOutcome.FromCrash(TimeSpan.Zero, "exit 134")!.WhyNotGreen()!,
+            StringComparison.Ordinal);
+    }
 }
