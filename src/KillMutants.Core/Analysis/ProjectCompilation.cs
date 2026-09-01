@@ -1,6 +1,7 @@
 using KillMutants.Projects;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Emit;
 using Microsoft.CodeAnalysis.Text;
 
@@ -101,6 +102,47 @@ internal sealed class ProjectCompilation
 
     /// <summary>Emits the compilation exactly as it stands, with no mutation applied.</summary>
     public EmitOutcome EmitBaseline() => Emit(_sourceCompilation);
+
+    /// <summary>
+    /// Emits the compilation with every mutation site wrapped in a call that records having been
+    /// reached, for the coverage pass.
+    /// </summary>
+    /// <remarks>
+    /// The recorder returns its argument, so wrapping cannot change what an expression evaluates to
+    /// or when. That is why this instrumentation needs none of the machinery a mutation switch
+    /// would: there is no branch to place, so no context in which the placement is illegal, and
+    /// therefore no compile-and-roll-back loop.
+    /// </remarks>
+    public EmitOutcome EmitInstrumented(Coverage.MutationSites sites)
+    {
+        ArgumentNullException.ThrowIfNull(sites);
+
+        CSharpCompilation instrumented = _sourceCompilation;
+
+        foreach (IGrouping<SyntaxTree, KeyValuePair<SyntaxNode, int>> inTree in
+                 sites.IdentifierByNode.GroupBy(site => site.Key.SyntaxTree))
+        {
+            Dictionary<SyntaxNode, int> identifiers = inTree.ToDictionary(site => site.Key, site => site.Value);
+
+            // The callback receives the rewritten node as well as the original, so nested mutation
+            // sites - a comparison inside a logical operator, say - each keep their own recorder.
+            SyntaxNode root = inTree.Key.GetRoot().ReplaceNodes(
+                identifiers.Keys,
+                (original, rewritten) => Record(rewritten, identifiers[original]));
+
+            instrumented = instrumented.ReplaceSyntaxTree(
+                inTree.Key, inTree.Key.WithRootAndOptions(root, _parseOptions));
+        }
+
+        return Emit(instrumented.AddSyntaxTrees(
+            CSharpSyntaxTree.ParseText(Coverage.CoverageProbe.Source, _parseOptions, "KillMutantsCoverageProbe.g.cs")));
+    }
+
+    private static ExpressionSyntax Record(SyntaxNode expression, int identifier) =>
+        SyntaxFactory.ParseExpression(
+                $"{Coverage.CoverageProbe.HitMethod}({identifier.ToString(System.Globalization.CultureInfo.InvariantCulture)}, " +
+                $"{expression.ToFullString()})")
+            .WithTriviaFrom(expression);
 
     /// <summary>Emits the compilation with one mutant's change applied.</summary>
     public EmitOutcome EmitWith(Mutations.Mutant mutant)

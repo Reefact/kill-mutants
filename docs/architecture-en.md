@@ -35,6 +35,8 @@ Every number below was measured on this platform (SDK 10.0.111, runtime 10.0.11)
 | `dotnet build` of the same project | ~1400 ms |
 | Test executable run (2 tests) | ~600 ms |
 | Mutant phase, 60 mutants, 4 cores — 1 / 2 / 4 workers | 1.0x / ~2.1x / ~3.2x |
+| 60 mutants, slow suite — whole suite vs coverage-selected | 29.3 s vs 22.6 s |
+| Test host launch vs the testing it does | ~0.5 s vs ~0.12 s |
 | `dotnet test --no-build` | ~1500 ms |
 | Test exe exit code — pass / fail | 0 / **1** |
 | `dotnet test` exit code — pass / fail / no tests | 0 / 2 / 8 |
@@ -74,10 +76,10 @@ namespace boundaries are already where the assembly boundaries would go.
 | Mutant representation | `KillMutants.Mutations` | `Mutant`, `MutantId`, `MutantStatus`, `SourceLocation` |
 | Instrumentation | *(collapsed)* | See below |
 | Compilation | `KillMutants.Compilation` | Emits a mutated assembly |
-| Test discovery | *(deferred to M4)* | Seam identified: `-list tests /json` |
+| Test discovery | `KillMutants.Testing` | `-list tests /json`, by name (ADR-0006) |
 | Test execution | `KillMutants.Testing` | `ITestRunner`, `TestRunOutcome` |
 | xUnit 4 / MTP 2 specifics | `KillMutants.Testing.XUnit` | The only place that knows the runner's CLI |
-| Test-to-mutant mapping | *(deferred to M5)* | Seam identified: `-id <uid>` |
+| Test-to-mutant mapping | `KillMutants.Coverage` | A type-preserving probe, one run per test (ADR-0007) |
 | Orchestration | `KillMutants.Execution` | The short, linear phase list |
 | Results | `KillMutants.Reporting` | `MutationTestReport`, console writer |
 | CLI | `KillMutants.Cli` | `dotnet killmutants` |
@@ -143,9 +145,9 @@ duration already recorded for the budget.*
 Milestone 1 was one project pair, one mutator (`>=` becomes `>`), one mutant, executed for real.
 M2 grew the catalogue to six families. M3 handles real solution structure: several test projects,
 several projects under test, project references followed transitively, and a framework pinned per
-project. M6 tests mutants in parallel, each worker in a private copy of the test output directory. Still
-ahead: M4 test discovery; M5 coverage and test-to-mutant mapping; M7 reporting; M8 CI; M9 advanced
-mutations.
+project. M6 tests mutants in parallel, each worker in a private copy of the test output directory. M4 and M5
+discover the tests and measure which ones reach which mutants, so uncovered mutants are never run and
+the rest run only what can kill them. Still ahead: M7 reporting; M8 CI; M9 advanced mutations.
 
 **Why sandboxes rather than a shared, warmed-up test host.** Reusing one host across mutants is the
 most tempting optimisation available and the one we refuse: it is the source of Stryker's

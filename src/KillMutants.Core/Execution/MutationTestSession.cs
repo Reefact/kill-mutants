@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Globalization;
 using KillMutants.Analysis;
+using KillMutants.Coverage;
 using KillMutants.Mutations;
 using KillMutants.Mutations.Mutators;
 using KillMutants.Projects;
@@ -20,12 +21,14 @@ internal sealed class MutationTestSession
     private readonly string _configuration;
     private readonly TimeoutPolicy _timeoutPolicy;
     private readonly int _workerCount;
+    private readonly bool _measureCoverage;
 
     public MutationTestSession(
         ITestRunner testRunner,
         string configuration,
         TimeoutPolicy? timeoutPolicy = null,
-        int? workerCount = null)
+        int? workerCount = null,
+        bool measureCoverage = true)
     {
         ArgumentNullException.ThrowIfNull(testRunner);
         ArgumentException.ThrowIfNullOrWhiteSpace(configuration);
@@ -34,6 +37,7 @@ internal sealed class MutationTestSession
         _configuration = configuration;
         _timeoutPolicy = timeoutPolicy ?? TimeoutPolicy.Default;
         _workerCount = workerCount ?? DefaultWorkerCount;
+        _measureCoverage = measureCoverage;
     }
 
     /// <summary>
@@ -112,7 +116,14 @@ internal sealed class MutationTestSession
             TimeSpan budget = await VerifyBaselineAsync(target, compilation, sandboxes[0], cancellationToken)
                 .ConfigureAwait(false);
 
-            return await TestMutantsAsync(target, compilation, sandboxes, mutants, budget, cancellationToken)
+            CoverageMap? coverage = _measureCoverage
+                ? await new CoverageCollector(_testRunner)
+                    .CollectAsync(sandboxes, compilation, mutants, budget, cancellationToken)
+                    .ConfigureAwait(false)
+                : null;
+
+            return await TestMutantsAsync(
+                    compilation, sandboxes, mutants, coverage, budget, cancellationToken)
                 .ConfigureAwait(false);
         }
         finally
@@ -136,10 +147,10 @@ internal sealed class MutationTestSession
     /// happened to finish first.
     /// </remarks>
     private async Task<IReadOnlyList<MutantResult>> TestMutantsAsync(
-        MutationTestTarget target,
         ProjectCompilation compilation,
         IReadOnlyList<TestSandbox> sandboxes,
         IReadOnlyList<Mutant> mutants,
+        CoverageMap? coverage,
         TimeSpan budget,
         CancellationToken cancellationToken)
     {
@@ -151,7 +162,7 @@ internal sealed class MutationTestSession
             while (pending.TryDequeue(out int index))
             {
                 results[index] = await TestMutantAsync(
-                        target, compilation, sandbox, mutants[index], budget, cancellationToken)
+                        compilation, sandbox, mutants[index], coverage, budget, cancellationToken)
                     .ConfigureAwait(false);
             }
         }
@@ -207,7 +218,7 @@ internal sealed class MutationTestSession
         foreach (TestProject testProject in sandbox.TestProjects)
         {
             TestRunOutcome outcome = await _testRunner
-                .RunAsync(testProject, TimeSpan.FromMinutes(10), stopOnFirstFailure: false, cancellationToken)
+                .RunAsync(new TestRunRequest(testProject, TimeSpan.FromMinutes(10)), cancellationToken)
                 .ConfigureAwait(false);
 
             total += outcome.Duration;
@@ -239,13 +250,24 @@ internal sealed class MutationTestSession
     }
 
     private async Task<MutantResult> TestMutantAsync(
-        MutationTestTarget target,
         ProjectCompilation compilation,
         TestSandbox sandbox,
         Mutant mutant,
+        CoverageMap? coverage,
         TimeSpan budget,
         CancellationToken cancellationToken)
     {
+        // A null map means coverage was not measured, so every test is a candidate.
+        IReadOnlyList<TestName>? covering = coverage?.TestsReaching(mutant.Id);
+
+        if (covering is { Count: 0 })
+        {
+            // No test executes this code, so running the suite could only ever report the mutant as
+            // survived - which would read as a gap in the tests rather than as their absence. Saying
+            // NoCoverage is both true and cheaper: the suite is never run at all.
+            return new MutantResult(mutant, MutantStatus.NoCoverage);
+        }
+
         EmitOutcome emitted = compilation.EmitWith(mutant);
 
         if (!emitted.Success)
@@ -259,7 +281,10 @@ internal sealed class MutationTestSession
         foreach (TestProject testProject in sandbox.TestProjects)
         {
             TestRunOutcome outcome = await _testRunner
-                .RunAsync(testProject, budget, stopOnFirstFailure: true, cancellationToken)
+                .RunAsync(
+                    new TestRunRequest(
+                        testProject, budget, StopOnFirstFailure: true, TestNames: covering),
+                    cancellationToken)
                 .ConfigureAwait(false);
 
             if (outcome.TimedOut)
@@ -276,9 +301,8 @@ internal sealed class MutationTestSession
 
             if (outcome.NoTestsRan)
             {
-                throw new TestExecutionException(
-                    $"'{testProject.Name}' ran no tests against mutant {mutant.Id}, " +
-                    "so its outcome cannot be trusted.");
+                // The covering tests all belong to some test project, but not necessarily this one.
+                continue;
             }
 
             if (outcome.AnyFailed)

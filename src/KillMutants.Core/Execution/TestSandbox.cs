@@ -33,6 +33,9 @@ internal sealed class TestSandbox : IDisposable
     /// <summary>The target's test projects, rebased onto this sandbox's copies.</summary>
     public IReadOnlyList<TestProject> TestProjects { get; }
 
+    /// <summary>This sandbox's private directory, for files that must not be shared with a sibling.</summary>
+    public string Root => _root;
+
     /// <summary>Copies every output directory the target needs into a private location.</summary>
     public static TestSandbox CreateFor(MutationTestTarget target, string root)
     {

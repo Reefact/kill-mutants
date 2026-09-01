@@ -13,6 +13,15 @@ public readonly record struct MutantId
     /// <summary>The identifier following this one.</summary>
     public MutantId Next() => new(_value + 1);
 
+    /// <summary>
+    /// The bare number, for the few places that must carry an identifier across a process boundary -
+    /// the coverage probe compiled into the assembly under test writes these to a file.
+    /// </summary>
+    internal int Value => _value;
+
+    /// <summary>Rebuilds an identifier from a number written by the coverage probe.</summary>
+    internal static MutantId FromValue(int value) => new(value);
+
     /// <inheritdoc />
     public override string ToString() => $"M{_value.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
 }

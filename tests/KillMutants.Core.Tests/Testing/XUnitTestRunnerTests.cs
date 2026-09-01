@@ -20,9 +20,7 @@ public class XUnitTestRunnerTests
         var project = new TestProject(library, library, Path.GetDirectoryName(library)!);
 
         TestRunOutcome outcome = await new XUnitTestRunner().RunAsync(
-            project,
-            TimeSpan.FromMinutes(1),
-            stopOnFirstFailure: false,
+            new TestRunRequest(project, TimeSpan.FromMinutes(1)),
             TestContext.Current.CancellationToken);
 
         Assert.True(outcome.Crashed);

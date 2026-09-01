@@ -156,6 +156,25 @@ internal sealed class FixtureCopy : IDisposable
             """);
     }
 
+    /// <summary>Adds a method to the library that no test exercises.</summary>
+    public void AddCodeNoTestReaches()
+    {
+        File.WriteAllText(
+            Path.Combine(Root, "Sample.Library", "Untested.cs"),
+            """
+            namespace Sample.Library;
+
+            public static class Untested
+            {
+                public static bool NobodyCallsThis(int value)
+                {
+                    return value >= 100;
+                }
+            }
+
+            """);
+    }
+
     /// <summary>Copies the single-project sample fixture into a fresh temporary directory.</summary>
     public static FixtureCopy Create() => CopyOf(SourceFixtureDirectory);
 
