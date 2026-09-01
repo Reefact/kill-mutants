@@ -19,7 +19,7 @@ public class ProjectCompilationTests
         var msBuild = new MsBuildQuery("Release");
         string project = FixtureRepository.SampleLibraryProject;
 
-        IReadOnlyList<string> arguments = await msBuild.GetCscCommandLineAsync(project, TestContext.Current.CancellationToken);
+        IReadOnlyList<string> arguments = await msBuild.GetCscCommandLineAsync(project, cancellationToken: TestContext.Current.CancellationToken);
         CSharpCommandLineArguments parsed = CscCommandLine.Parse(arguments, Path.GetDirectoryName(project)!);
 
         return ProjectCompilation.Create(parsed, Path.GetDirectoryName(project)!);
@@ -31,7 +31,7 @@ public class ProjectCompilationTests
         var msBuild = new MsBuildQuery("Release");
         string project = FixtureRepository.SampleLibraryProject;
 
-        IReadOnlyList<string> arguments = await msBuild.GetCscCommandLineAsync(project, TestContext.Current.CancellationToken);
+        IReadOnlyList<string> arguments = await msBuild.GetCscCommandLineAsync(project, cancellationToken: TestContext.Current.CancellationToken);
         CSharpCommandLineArguments parsed = CscCommandLine.Parse(arguments, Path.GetDirectoryName(project)!);
 
         Assert.Empty(parsed.Errors);

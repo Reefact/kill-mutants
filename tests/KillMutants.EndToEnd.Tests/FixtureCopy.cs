@@ -292,6 +292,12 @@ internal sealed class FixtureCopy : IDisposable
     /// </summary>
     public static FixtureCopy CreateGeneratorProject() => CopyOf(FixtureDirectory("generator"));
 
+    /// <summary>
+    /// Copies the multi-targeted fixture: a library built for two frameworks, exercised by a test
+    /// project that loads one of them.
+    /// </summary>
+    public static FixtureCopy CreateMultiTargetedProject() => CopyOf(FixtureDirectory("multitarget"));
+
     private static FixtureCopy CopyOf(string source)
     {
         string destination = Path.Combine(Path.GetTempPath(), $"killmutants-e2e-{Guid.NewGuid():N}");
