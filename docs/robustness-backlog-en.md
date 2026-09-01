@@ -781,3 +781,45 @@ not give the same answer at two concurrencies. None of them is free, and picking
 decision rather than a fix.
 
 **Our tests.** None. The reproduction is two full sweeps of this repository, which is not a test.
+
+---
+
+## RB-024 — The compiler server caches an analyzer assembly past the life of its directory · COVERED
+
+**How it was found.** By refusing to accept "flaky". The generator fixture failed to build from
+inside the test host perhaps one run in three, all session, with a message blaming a generator
+dependency that was plainly on disk. It passed every time it was run by hand.
+
+**Reproduced with no part of this tool involved.** Plain `dotnet build`, three commands:
+
+1. Build a copy of `tests/fixtures/generator`, whose analyzer assembly is `Sample.Generator.Support`.
+2. Delete that copy.
+3. Build a *fresh* copy of the same fixture.
+
+The third step fails, every time:
+
+```
+CSC : warning CS8784: Generator 'LimitsGenerator' failed to initialize ...
+      Could not load file or assembly 'Sample.Generator.Support, Version=1.0.0.0' ...
+      The system cannot find the path specified.
+Ages.cs(8,23): error CS0103: The name 'Limits' does not exist in the current context
+```
+
+The shared compiler server outlives the build that started it and caches analyzer assemblies by
+identity. The second build gets the first build's copy, loaded from a directory that no longer
+exists. `-p:UseSharedCompilation=false` makes it succeed.
+
+**Why it is ours to know about.** It is the same defect as RB-020 in a different process: an assembly
+identity resolved from a stale path, reported as a warning, leaving generated code missing and the
+compilation to fail somewhere else entirely. Ours is in `AssemblyLoadContext.Default`; this one is in
+the SDK's build server. Neither says what actually happened.
+
+**What was done.** `UseSharedCompilation` is off for the generator fixture, which is the only fixture
+that builds an analyzer and the only one copied per test. It is deliberately *not* set in the
+product: a user builds their project in place, so the stale path never arises, and disabling the
+compiler server would cost them build time for a problem they do not have.
+
+**What it explains.** Every intermittent failure of the generator end-to-end tests recorded during
+this work, including the one that first sent us looking at RB-020. RB-020 is still real and still
+open - it was measured separately, in our own process - but it was not the cause of the build
+failures.

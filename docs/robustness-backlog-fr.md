@@ -844,3 +844,49 @@ correction.
 
 **Nos tests.** Aucun. La reproduction, ce sont deux balayages complets de ce dépôt, ce qui n'est pas
 un test.
+
+---
+
+## RB-024 — Le serveur de compilation garde un assemblage d'analyseur au-delà de la vie de son répertoire · COUVERT
+
+**Comment elle a été trouvée.** En refusant de dire « instable ». Le projet de test à générateur
+échouait à la compilation depuis l'hôte de test environ une fois sur trois, toute la session durant,
+avec un message accusant une dépendance de générateur pourtant bien présente sur le disque. Lancé à
+la main, il passait à chaque fois.
+
+**Reproduit sans aucune partie de cet outil.** `dotnet build` nu, trois commandes :
+
+1. Compiler une copie de `tests/fixtures/generator`, dont l'assemblage d'analyseur est
+   `Sample.Generator.Support`.
+2. Supprimer cette copie.
+3. Compiler une copie *fraîche* du même projet.
+
+La troisième étape échoue, à tous les coups :
+
+```
+CSC : warning CS8784: Generator 'LimitsGenerator' failed to initialize ...
+      Could not load file or assembly 'Sample.Generator.Support, Version=1.0.0.0' ...
+      The system cannot find the path specified.
+Ages.cs(8,23): error CS0103: The name 'Limits' does not exist in the current context
+```
+
+Le serveur de compilation partagé survit à la compilation qui l'a démarré et met en cache les
+assemblages d'analyseurs par identité. La deuxième compilation récupère la copie de la première,
+chargée depuis un répertoire qui n'existe plus. `-p:UseSharedCompilation=false` la fait réussir.
+
+**Pourquoi cela nous concerne.** C'est le même défaut que RB-020 dans un autre processus : une
+identité d'assemblage résolue depuis un chemin périmé, signalée comme un avertissement, laissant du
+code généré manquant et la compilation échouer ailleurs. Le nôtre est dans
+`AssemblyLoadContext.Default` ; celui-ci est dans le serveur de compilation du SDK. Ni l'un ni
+l'autre ne dit ce qui s'est réellement passé.
+
+**Ce qui a été fait.** `UseSharedCompilation` est désactivé pour le projet de test à générateur, le
+seul qui construise un analyseur et le seul copié à chaque test. Ce n'est délibérément *pas* activé
+dans le produit : un utilisateur compile son projet sur place, donc le chemin périmé ne se présente
+pas, et couper le serveur de compilation lui coûterait du temps de compilation pour un problème
+qu'il n'a pas.
+
+**Ce que cela explique.** Chacun des échecs intermittents des tests de bout en bout à générateur
+relevés pendant ce travail, y compris celui qui nous avait d'abord orientés vers RB-020. RB-020 reste
+réelle et reste ouverte — elle a été mesurée séparément, dans notre propre processus — mais elle
+n'était pas la cause des échecs de compilation.
