@@ -33,14 +33,30 @@ internal static class Program
             return ExitCode.BadUsage;
         }
 
+        RunSettings settings;
+
         try
         {
-            MutationTestReport report = await RunAsync(options).ConfigureAwait(false);
+            // Read from the directory the run was pointed at, so a project's habits travel with its
+            // code. Usage is not printed here: the message names a file and a line in it, and
+            // twenty-five lines of options after that would bury it.
+            settings = RunSettings.From(options, ConfigurationFile.LoadFrom(options.Directory));
+        }
+        catch (ArgumentException exception)
+        {
+            Console.Error.WriteLine(exception.Message);
+
+            return ExitCode.BadUsage;
+        }
+
+        try
+        {
+            MutationTestReport report = await RunAsync(settings).ConfigureAwait(false);
 
             ConsoleReportWriter.Write(Console.Out, report);
-            WriteJsonReport(options, report);
+            WriteJsonReport(settings, report);
 
-            return Verdict(options, report);
+            return Verdict(settings, report);
         }
         catch (Exception exception) when (
             exception is ProjectAnalysisException or BaselineVerificationException
@@ -54,16 +70,16 @@ internal static class Program
         }
     }
 
-    private static async Task<MutationTestReport> RunAsync(CommandLineOptions options)
+    private static async Task<MutationTestReport> RunAsync(RunSettings settings)
     {
         using var progress = new ConsoleProgressReporter(
             Console.Error, rewritesInPlace: !Console.IsErrorRedirected);
 
         MutationTestReport report = await MutationTesting
             .RunAsync(
-                options.Directory, options.Configuration, options.WorkerCount,
-                options.MeasureCoverage, options.Exclude, options.Mutators,
-                options.WithoutMutators, progress)
+                settings.Directory, settings.Configuration, settings.WorkerCount,
+                settings.MeasureCoverage, settings.Exclude, settings.Mutators,
+                settings.WithoutMutators, progress)
             .ConfigureAwait(false);
 
         // Progress goes to stderr and the report to stdout, so piping the report somewhere useful
@@ -74,14 +90,14 @@ internal static class Program
     }
 
     /// <summary>Decides what to tell the shell, and says why on the way out.</summary>
-    private static int Verdict(CommandLineOptions options, MutationTestReport report)
+    private static int Verdict(RunSettings settings, MutationTestReport report)
     {
-        if (options.Threshold is not { } threshold)
+        if (settings.Threshold is not { } threshold)
         {
             return ExitCode.Success;
         }
 
-        string wanted = threshold.ToString("0.##", CultureInfo.InvariantCulture);
+        string wanted = settings.ThresholdText;
 
         // A run that could test nothing has not demonstrated anything, so it cannot satisfy a
         // threshold. Reporting success here would let a misconfigured job go green forever.
@@ -106,9 +122,9 @@ internal static class Program
         return ExitCode.Success;
     }
 
-    private static void WriteJsonReport(CommandLineOptions options, MutationTestReport report)
+    private static void WriteJsonReport(RunSettings settings, MutationTestReport report)
     {
-        if (options.JsonReportPath is not { } jsonPath)
+        if (settings.JsonReportPath is not { } jsonPath)
         {
             return;
         }
@@ -130,6 +146,11 @@ internal static class Program
 
             Arguments:
               directory                 Where to look for projects. Defaults to the current directory.
+
+            Settings:
+              A project may keep its habits in killmutants.json, in the directory above. Every
+              option below has a key there - configuration, exclude, mutators, without, parallel,
+              coverage, breakAt, reportJson - and anything given on the command line wins.
 
             Options:
               -c, --configuration <cfg> Build configuration to analyse and run. Defaults to Release.

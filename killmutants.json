@@ -1,0 +1,16 @@
+{
+  // Fixture projects stand in for a user's code: they are built and mutated by the end-to-end
+  // tests themselves, so a run over this repository has no business sweeping them up.
+  "exclude": [
+    "tests/fixtures/*",
+
+    // The end-to-end suite takes minutes per test. Leaving it out keeps a run to a few minutes,
+    // at the cost of reporting most of the discovery, analysis and execution code as uncovered:
+    // that suite is what exercises it. The score below is about the unit tests, not the tests.
+    "tests/KillMutants.EndToEnd.Tests/*"
+  ]
+
+  // No "without" on purpose. StringLiteral and BooleanLiteral carry the least signal here - error
+  // messages nothing asserts on - but they are true findings, and hiding them from ourselves is
+  // exactly the habit this tool exists to break.
+}

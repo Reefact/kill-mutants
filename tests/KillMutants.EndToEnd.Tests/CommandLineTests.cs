@@ -111,6 +111,78 @@ public class CommandLineTests
     }
 
     /// <summary>
+    /// M12. The whole point of the file is that a CI job stops retyping flags, so the proof is a
+    /// real run finding the file on its own and behaving as it says.
+    /// </summary>
+    [Fact]
+    public async Task A_project_keeps_its_settings_in_a_file_beside_its_code()
+    {
+        using var fixture = FixtureCopy.Create();
+
+        await File.WriteAllTextAsync(
+            Path.Combine(fixture.Root, "killmutants.json"),
+            """
+            {
+              // Only this family, so the run is short and the report unambiguous.
+              "mutators": ["Comparison"],
+              "breakAt": 100
+            }
+            """,
+            TestContext.Current.CancellationToken);
+
+        (int exitCode, string output, _) = await RunAsync(fixture.Root);
+
+        Assert.Equal(Success, exitCode);
+        Assert.Contains("Mutation score: 100%", output, StringComparison.Ordinal);
+
+        // The catalogue came from the file: nothing else would have kept StringLiteral out.
+        Assert.DoesNotContain("StringLiteral", output, StringComparison.Ordinal);
+    }
+
+    /// <summary>And the command line is how a job says "not this time".</summary>
+    [Fact]
+    public async Task The_command_line_overrides_the_file()
+    {
+        using var fixture = FixtureCopy.Create();
+
+        await File.WriteAllTextAsync(
+            Path.Combine(fixture.Root, "killmutants.json"),
+            """{ "mutators": ["Comparison"] }""",
+            TestContext.Current.CancellationToken);
+
+        // Asking for two families makes the override visible in the report: the per-family table
+        // appears only when more than one ran, and the file alone would have kept it to Comparison.
+        (int exitCode, string output, _) = await RunAsync(
+            fixture.Root, "--mutators", "Comparison,StringLiteral");
+
+        Assert.Equal(Success, exitCode);
+        Assert.Contains("By mutator", output, StringComparison.Ordinal);
+        Assert.Contains("StringLiteral", output, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A misspelt key must stop the run rather than be ignored, and say so without burying the
+    /// message under the full usage text.
+    /// </summary>
+    [Fact]
+    public async Task A_file_that_cannot_be_understood_stops_the_run()
+    {
+        using var fixture = FixtureCopy.Create();
+
+        await File.WriteAllTextAsync(
+            Path.Combine(fixture.Root, "killmutants.json"),
+            """{ "mutater": ["Comparison"] }""",
+            TestContext.Current.CancellationToken);
+
+        (int exitCode, _, string message) = await RunAsync(fixture.Root);
+
+        Assert.Equal(BadUsage, exitCode);
+        Assert.Contains("killmutants.json", message, StringComparison.Ordinal);
+        Assert.Contains("mutater", message, StringComparison.Ordinal);
+        Assert.DoesNotContain("Exit codes:", message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// A typo must not silently narrow a run: a score for a catalogue the user did not ask for is
     /// worse than no score.
     /// </summary>

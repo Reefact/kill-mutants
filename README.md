@@ -107,6 +107,25 @@ dotnet killmutants --mutators Comparison,LogicalOperator,Arithmetic
 Code marked `[ExcludeFromCodeCoverage]` is left alone: the attribute already says this code is not
 part of what the tests are expected to cover.
 
+A project keeps its habits in `killmutants.json`, beside its code, so a CI job stops retyping flags —
+and so the catalogue that produced a score is versioned with the code that was scored:
+
+```jsonc
+{
+  // Error messages here are not asserted on, so this family only adds noise.
+  "without": ["StringLiteral", "BooleanLiteral"],
+  "exclude": ["tests/fixtures/*"],
+  "breakAt": 80,
+  "reportJson": "artifacts/mutation.json"
+}
+```
+
+Every option has a key — `configuration`, `exclude`, `mutators`, `without`, `parallel`, `coverage`,
+`breakAt`, `reportJson` — and anything given on the command line wins, so the file states the habit
+and the command line states the exception. A list on the command line replaces the file's rather than
+adding to it. Paths in the file are relative to the file. A misspelt key stops the run rather than
+being ignored.
+
 **A score is only comparable to another score from the same catalogue.** Dropping those two families
 on this repository takes the run from 413 mutants in 7.1 minutes to 207 in 4.1, and the score from
 28.81% to 43% — not because the tests improved, but because a different question was asked. Pick a

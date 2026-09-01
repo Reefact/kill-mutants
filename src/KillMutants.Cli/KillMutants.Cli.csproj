@@ -29,6 +29,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="KillMutants.EndToEnd.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../KillMutants.Core/KillMutants.Core.csproj" />
   </ItemGroup>
 
