@@ -62,7 +62,7 @@ internal static class Program
         MutationTestReport report = await MutationTesting
             .RunAsync(
                 options.Directory, options.Configuration, options.WorkerCount,
-                options.MeasureCoverage, progress)
+                options.MeasureCoverage, options.Exclude, progress)
             .ConfigureAwait(false);
 
         // Progress goes to stderr and the report to stdout, so piping the report somewhere useful
@@ -132,6 +132,10 @@ internal static class Program
 
             Options:
               -c, --configuration <cfg> Build configuration to analyse and run. Defaults to Release.
+              -e, --exclude <pattern>   Leave a project or source file alone. Repeatable. Matched
+                                        against the path relative to the directory above, written
+                                        with '/'. Note that '*' also matches '/', so 'tests/*'
+                                        covers everything beneath 'tests'.
               -p, --parallel <n>        Mutants to test at once. Defaults to half the processors.
                   --break-at <percent>  Exit with 1 if the mutation score falls below this.
                   --no-coverage         Run every test for every mutant, instead of only the ones

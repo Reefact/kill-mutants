@@ -130,6 +130,33 @@ public class MutationTestingEndToEndTests
     }
 
     /// <summary>
+    /// Milestone 10. A real repository holds code a run has no business mutating - fixtures,
+    /// samples, generated files - and sweeping a directory finds all of it. An excluded file is
+    /// still compiled, so the assembly under test is unchanged; it simply yields no mutants.
+    /// </summary>
+    [Fact]
+    public async Task An_excluded_source_file_yields_no_mutants()
+    {
+        using var fixture = FixtureCopy.Create();
+        fixture.AddCodeNoTestReaches();
+
+        MutationTestReport report = await MutationTesting.RunAsync(
+            fixture.Root,
+            exclude: ["Sample.Library/Untested.cs"],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.NotEmpty(report.Results);
+        Assert.All(
+            report.Results,
+            result => Assert.Equal("Ages.cs", Path.GetFileName(result.Mutant.Location.FilePath)));
+
+        // Without the exclusion this run reports the untested method as NoCoverage; with it, the
+        // code is simply not part of the measurement.
+        Assert.DoesNotContain(report.Results, result => result.Status == MutantStatus.NoCoverage);
+        Assert.Equal("100%", report.Score.ToString());
+    }
+
+    /// <summary>
     /// The property that makes test selection safe: running only the tests that reach a mutant must
     /// reach the same verdict as running all of them.
     /// </summary>

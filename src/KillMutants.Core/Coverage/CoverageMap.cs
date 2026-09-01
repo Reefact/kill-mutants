@@ -43,6 +43,14 @@ internal sealed class CoverageMap
 
         foreach ((MutantId mutant, MutantId representative) in sites.RepresentativeOf)
         {
+            // A site that could carry no recorder has no answer here, and must not be given the
+            // empty one: that would read as "no test reaches this" and report NoCoverage against
+            // code the tests may well exercise.
+            if (sites.Unmeasurable.Contains(representative))
+            {
+                continue;
+            }
+
             testsByMutant[mutant] = testsBySite.TryGetValue(representative, out List<TestName>? tests)
                 ? tests
                 : [];
@@ -52,14 +60,16 @@ internal sealed class CoverageMap
     }
 
     /// <summary>
-    /// The tests that reach <paramref name="mutant"/>, or an empty list when nothing does.
+    /// The tests that reach <paramref name="mutant"/>: an empty list when none does, and
+    /// <see langword="null"/> when its site could not be measured at all.
     /// </summary>
     /// <remarks>
-    /// An empty list is a real answer, not a missing one: no test executes that code, so running the
-    /// suite against the mutant could only ever report it as survived. It is recorded as
-    /// <see cref="MutantStatus.NoCoverage"/> instead, which says something true about the tests
-    /// rather than something misleading about the mutant.
+    /// The three answers are deliberately distinct. An empty list is a real answer, not a missing
+    /// one: no test executes that code, so running the suite could only ever report the mutant as
+    /// survived, and <see cref="MutantStatus.NoCoverage"/> says something true about the tests
+    /// instead. <see langword="null"/> is the missing answer - the site carries no recorder, see
+    /// <see cref="MutationSites"/> - and the only safe reading of it is to run every test.
     /// </remarks>
-    public IReadOnlyList<TestName> TestsReaching(MutantId mutant) =>
-        _testsByMutant.TryGetValue(mutant, out List<TestName>? tests) ? tests : [];
+    public IReadOnlyList<TestName>? TestsReaching(MutantId mutant) =>
+        _testsByMutant.TryGetValue(mutant, out List<TestName>? tests) ? tests : null;
 }

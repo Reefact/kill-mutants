@@ -1,3 +1,4 @@
+using KillMutants.Filtering;
 using KillMutants.Mutations.Mutators;
 using Microsoft.CodeAnalysis;
 
@@ -7,14 +8,16 @@ namespace KillMutants.Mutations;
 internal sealed class MutantGenerator
 {
     private readonly MutatorCatalog _catalog;
+    private readonly PathFilter _exclusions;
 
     private MutantId _nextId = MutantId.First;
 
-    public MutantGenerator(MutatorCatalog catalog)
+    public MutantGenerator(MutatorCatalog catalog, PathFilter? exclusions = null)
     {
         ArgumentNullException.ThrowIfNull(catalog);
 
         _catalog = catalog;
+        _exclusions = exclusions ?? PathFilter.None;
     }
 
     /// <summary>
@@ -33,7 +36,7 @@ internal sealed class MutantGenerator
 
         foreach (SyntaxTree tree in compilation.SyntaxTrees)
         {
-            if (IsGenerated(tree))
+            if (IsGenerated(tree) || IsExcluded(tree))
             {
                 continue;
             }
@@ -44,7 +47,9 @@ internal sealed class MutantGenerator
 
             foreach (SyntaxNode node in tree.GetRoot().DescendantNodes())
             {
-                if (!MutationSite.IsObservable(node))
+                // Two different refusals, for two different reasons: a mutation nothing could
+                // notice, and a mutation that could not compile.
+                if (!MutationSite.IsObservable(node) || MutationSite.DeclaresAVariable(node))
                 {
                     continue;
                 }
@@ -62,6 +67,13 @@ internal sealed class MutantGenerator
 
         return mutants;
     }
+
+    /// <summary>
+    /// True for a file the user asked to be left alone. It is still compiled - dropping it would
+    /// change the assembly - but nothing in it is mutated.
+    /// </summary>
+    private bool IsExcluded(SyntaxTree tree) =>
+        !string.IsNullOrEmpty(tree.FilePath) && _exclusions.Excludes(tree.FilePath);
 
     /// <summary>
     /// Generated sources are compiler inputs, not the developer's code. Mutating

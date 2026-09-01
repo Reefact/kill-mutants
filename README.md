@@ -13,8 +13,9 @@ Early, but working end to end. Milestone 1 was a deliberately tiny vertical slic
 pair, one mutator, one mutant, executed for real — and every milestone since has widened it on that
 same foundation: multi-project solutions, coverage-driven test selection, mutants tested in
 parallel, console and JSON reports, a `--break-at` quality gate, and a catalogue of eleven mutator
-families. The intent throughout is a foundation that has been shown to work, rather than a large
-catalog resting on an engine that has never run.
+families. It is now packaged as a `dotnet` tool and has been run against its own source. The intent
+throughout is a foundation that has been shown to work, rather than a large catalog resting on an
+engine that has never run.
 
 ## Scope
 
@@ -57,11 +58,40 @@ The few choices that are expensive to reverse. Each is recorded in [docs/adr](do
 | ADR-0008 — Never reuse a test host between mutants | [en](docs/adr/0008-never-reuse-a-test-host-between-mutants-en.md) | [fr](docs/adr/0008-never-reuse-a-test-host-between-mutants-fr.md) |
 | ADR-0009 — Exit codes are a public contract | [en](docs/adr/0009-exit-codes-are-a-public-contract-en.md) | [fr](docs/adr/0009-exit-codes-are-a-public-contract-fr.md) |
 
+## Installing
+
+Not published to NuGet yet. Pack it and install from the folder you packed into:
+
+```bash
+dotnet pack src/KillMutants.Cli -c Release -o ./artifacts
+
+# repository-local, recorded in .config/dotnet-tools.json
+dotnet new tool-manifest
+dotnet tool install KillMutants --add-source ./artifacts --prerelease
+dotnet killmutants
+
+# or machine-wide
+dotnet tool install --global KillMutants --add-source ./artifacts --prerelease
+killmutants
+```
+
 ## Using it in CI
 
 ```bash
 dotnet killmutants --break-at 80 --report-json artifacts/mutation.json
 ```
+
+Point it at a directory and it finds the xUnit 4 test projects beneath, then everything they
+reference. A real repository usually holds some code a run has no business mutating — fixtures,
+samples, generated files — so `--exclude` takes it back out. It is repeatable, matched against the
+path relative to the directory being scanned, and an excluded project is left out of the run
+entirely while an excluded file is still compiled but never mutated:
+
+```bash
+dotnet killmutants --exclude "tests/fixtures/*" --exclude "*.Generated.cs"
+```
+
+Note that `*` matches `/` as well, so `tests/*` covers everything beneath `tests`.
 
 | exit code | meaning |
 |---|---|
