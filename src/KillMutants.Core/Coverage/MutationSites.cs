@@ -101,12 +101,19 @@ internal sealed class MutationSites
     /// Pointers and <c>void</c> are refused for the same reason and by the same rule: neither can
     /// be a type argument either.
     /// </para>
+    /// <para>
+    /// So is an expression with no natural type. <c>int? x = flag ? a : null</c> only acquires its
+    /// type from what it is assigned to, and handing it to a generic method leaves nothing to infer
+    /// <c>T</c> from: <c>CS0411</c>. The mutation itself is perfectly valid - the same expression is
+    /// mutable and the <c>Conditional</c> family relies on exactly this property - which is why the
+    /// two rules are separate. Found by instrumenting the mutator corpus.
+    /// </para>
     /// </remarks>
     private static bool CanCarryARecorder(SyntaxNode node, SemanticModel semanticModel)
     {
         TypeInfo info = semanticModel.GetTypeInfo(node);
 
-        return Accepts(info.Type) && Accepts(info.ConvertedType);
+        return info.Type is not null && Accepts(info.Type) && Accepts(info.ConvertedType);
 
         static bool Accepts(ITypeSymbol? type) =>
             type is null ||

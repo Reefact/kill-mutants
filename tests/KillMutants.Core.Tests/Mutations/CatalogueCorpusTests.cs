@@ -1,3 +1,4 @@
+using KillMutants.Coverage;
 using KillMutants.Mutations;
 using KillMutants.Mutations.Mutators;
 using Microsoft.CodeAnalysis;
@@ -43,6 +44,8 @@ public class CatalogueCorpusTests
             { "checked arithmetic", "int a, int b", "int M({0}) { checked { return a + b; } }" },
             { "enum flags", "System.IO.FileAccess a, System.IO.FileAccess b", "bool M({0}) => (a & b) != 0;" },
             { "interpolation and a raw string", "string a", "string M({0}) => $\"x{a}y\" + \"\"\"z\"\"\";" },
+            { "an operator inside an interpolation hole", "int a, int b", "string M({0}) => $\"{a + b} of {a} did not pass\";" },
+            { "a conditional inside an interpolation hole", "bool f, int a", "string M({0}) => $\"{(f ? a : 0)} left\";" },
             { "compound assignment on a string", "string a", "string M({0}) { a += \"x\"; return a; }" },
             { "compound assignment and increment", "int a", "int M({0}) { a += 1; a *= 2; a++; --a; return a; }" },
             { "switch expression with patterns", "object o", "int M({0}) => o switch { int i when i >= 3 => i, string s => s.Length, _ => 0 };" },
@@ -130,6 +133,49 @@ public class CatalogueCorpusTests
         Assert.True(
             Generate(parameters, member).Count == 0,
             $"{description}: the catalogue proposed a mutation it is supposed to decline.");
+    }
+
+    /// <summary>
+    /// The instrumentation's own corpus. The recorder returns its argument, so it cannot change what
+    /// an expression evaluates to - but it can change how the surrounding source <em>parses</em>, and
+    /// when it does the whole run stops before a single mutant is tested.
+    /// </summary>
+    /// <remarks>
+    /// Found the hard way: a mutation site inside an interpolation hole became
+    /// <c>$"{global::…Hit(1, a + b)}"</c>, where the colon reads as the start of a format specifier.
+    /// The build failed with CS0103 and no coverage could be measured at all.
+    /// </remarks>
+    [Theory]
+    [MemberData(nameof(Corpus))]
+    public void Instrumenting_every_site_leaves_the_project_compiling(
+        string description, string parameters, string member)
+    {
+        (Compilation compilation, IReadOnlyList<Mutant> mutants) = Analyse(parameters, member);
+        MutationSites sites = MutationSites.From(mutants, compilation);
+
+        if (sites.IdentifierByNode.Count == 0)
+        {
+            return;
+        }
+
+        SyntaxTree tree = compilation.SyntaxTrees.Single();
+        SyntaxNode instrumented = CoverageRewriter.Instrument(
+            tree.GetRoot(TestContext.Current.CancellationToken), sites.IdentifierByNode);
+
+        Compilation probed = compilation
+            .ReplaceSyntaxTree(tree, tree.WithRootAndOptions(instrumented, tree.Options))
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(
+                CoverageProbe.Source, cancellationToken: TestContext.Current.CancellationToken));
+
+        Diagnostic[] errors = [.. probed
+            .Emit(new MemoryStream(), cancellationToken: TestContext.Current.CancellationToken)
+            .Diagnostics
+            .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)];
+
+        Assert.True(
+            errors.Length == 0,
+            $"{description}: instrumenting the sites broke the build: " +
+            string.Join("; ", errors.Select(diagnostic => diagnostic.ToString())));
     }
 
     private static (Compilation Compilation, IReadOnlyList<Mutant> Mutants) Analyse(
