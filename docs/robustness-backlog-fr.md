@@ -661,3 +661,74 @@ complète au lieu d'un sous-ensemble mesuré.
 pattern » et « a literal in a switch expression arm », qui vérifient les deux moitiés à la fois : les
 mutants compilent et diffèrent, et instrumenter le fichier le laisse compilable.
 
+
+---
+
+## RB-020 — Une deuxième exécution dans le même processus réutilise les générateurs de la première · OUVERT
+
+**Comment elle a été trouvée.** En écrivant le test de RB-021, par accident. Deux tests de bout en
+bout dans le même processus s'exécutent sur le même projet de test à générateur : le premier y ajoute
+un générateur qui lève, le second utilise le projet tel quel. Le second a échoué, de manière
+déterministe, trois fois sur trois — et il a échoué parce qu'il exécutait les générateurs du
+*premier*.
+
+**Le mécanisme.** `SourceGenerators.AnalyzerLoader` charge les assemblages de générateurs d'un projet
+avec `AssemblyLoadContext.Default.LoadFromAssemblyPath`. Ce contexte met en cache par *identité*
+d'assemblage et non par chemin : le deuxième appel pour un `Sample.Generator.dll` situé ailleurs
+renvoie l'assemblage déjà chargé depuis le premier chemin — quel que soit son contenu, et même si ce
+chemin n'existe plus. La liste `Directories` que parcourt le repli `Resolving` est `static` elle
+aussi, si bien que les répertoires d'analyseurs d'une exécution restent sur la liste de toutes les
+suivantes.
+
+**Ce que cela coûte.** Rien via la ligne de commande, qui exécute une session par processus puis
+s'arrête. Via l'API — `MutationTesting.RunAsync` appelé deux fois, ce que font nos propres tests et
+ce que ferait un mode surveillance ou une intégration dans un IDE — une deuxième exécution génère
+silencieusement avec les générateurs de la première. La compilation n'est alors plus celle du projet,
+et chaque verdict mesuré contre elle décrit autre chose. C'est exactement la défaillance que cet
+outil existe pour ne pas produire, atteinte par un chemin que l'outil livré n'emprunte pas
+aujourd'hui.
+
+**Pourquoi elle est ouverte plutôt que corrigée.** Le correctif est celui que RB-018 a déjà écarté :
+donner aux analyseurs leur propre `AssemblyLoadContext` et partager les assemblages Roslyn à la main
+par-dessus la frontière. C'est une vraie mécanique, et elle relève d'un changement à elle seule
+plutôt que de la fin d'un autre. En attendant, notre propre projet de test à générateur renomme son
+assemblage lorsqu'il porte un générateur délibérément cassé, pour que la collision ne puisse pas
+atteindre un autre test.
+
+**Nos tests.** Aucun pour l'instant. C'est ce que veut dire OUVERT ici.
+
+---
+
+## RB-021 — Un générateur qui échoue produit un avertissement, et un avertissement n'arrête rien · COUVERT
+
+**Comment elle a été trouvée.** Une revue automatique de la pull request d'ouverture de ce dépôt a
+pointé `SourceGenerators.Run`, qui jetait les diagnostics renvoyés par
+`RunGeneratorsAndUpdateCompilation`. Elle avait raison, et ce qui rend cela important, c'est la
+sévérité.
+
+**Ce qui a été mesuré.** Contre Roslyn 5.9, un générateur qui lève depuis son initialiseur est
+signalé par `CS8784`, de sévérité **Avertissement** ; un générateur qui lève pendant la génération
+donne `CS8785`, avertissement lui aussi. Dans les deux cas le générateur ne contribue rien et la
+compilation émet quand même. C'est le bon comportement pour un compilateur — les erreurs qui suivent
+désignent le vrai problème — et c'est le mauvais comportement à hériter en silence : RB-004 relâche
+déjà les avertissements-en-erreurs, si bien que rien en aval ne l'aurait remarqué.
+
+**Pourquoi ce n'est pas simplement une erreur de compilation.** Quand le code manquant est
+nécessaire, l'émission échoue et l'exécution s'arrête bruyamment ; ce cas-là n'a jamais fait de
+doute. Le cas dangereux est celui d'un générateur dont la sortie n'est pas ce que les tests
+sélectionnés exercent : l'assemblage émet, la ligne de base passe, les mutants sont tués, et le score
+décrit un assemblage que le projet ne construit pas.
+
+**La règle.** Une exécution de générateurs emporte ses échecs avec elle. À la reconstruction de la
+ligne de base, un échec est fatal — tout ce que l'exécution mesure est comparé à cette compilation.
+À l'émission d'un mutant, il ne l'est pas : une mutation peut réellement casser ce qu'un générateur
+lit, donc le mutant est rapporté comme n'ayant pas pu être construit, ce que le score laisse de côté
+et que l'exécution rapporte comme intestable. Une erreur émise par un générateur compte aussi comme
+un échec : le projet compilait avant que KillMutants n'y touche.
+
+**Nos tests.** `SourceGeneratorFailureTests`, qui épingle les deux identifiants de diagnostic et leur
+sévérité et prouve que les avertissements propres à un générateur ne sont pas traités comme des
+échecs, et
+`FailedGeneratorTests.A_run_stops_rather_than_reporting_on_a_compilation_a_generator_did_not_finish`,
+qui ajoute un générateur qui lève et dont la sortie n'est nécessaire à personne — la compilation
+fonctionne donc toujours, et seule la nouvelle règle arrête l'exécution.

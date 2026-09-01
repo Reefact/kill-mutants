@@ -89,9 +89,20 @@ internal sealed class ProjectCompilation
         AdditionalText[] additionalTexts =
             [.. arguments.AdditionalFiles.Select(file => new CompilerAdditionalText(file.Path))];
 
+        GeneratedCompilation generated = generators.Run(
+            compilation, parseOptions, analyzerConfig, additionalTexts);
+
+        // Fatal here, and only here. Everything the run goes on to measure is compared against this
+        // compilation, so reconstructing it from generators that did not all run would make the
+        // whole report a description of something the project never builds.
+        if (generated.Failure is not null)
+        {
+            throw new ProjectAnalysisException(generated.Failure);
+        }
+
         return new ProjectCompilation(
             compilation,
-            generators.Run(compilation, parseOptions, analyzerConfig, additionalTexts),
+            generated.Compilation,
             parseOptions,
             arguments.EmitOptions,
             arguments.ManifestResources,
@@ -156,12 +167,20 @@ internal sealed class ProjectCompilation
     /// </remarks>
     private EmitOutcome Emit(CSharpCompilation compilation)
     {
-        Compilation generated = _generators.Run(
+        GeneratedCompilation generated = _generators.Run(
             compilation, _parseOptions, _analyzerConfig, _additionalTexts);
+
+        // Not fatal for a mutant: a mutation can genuinely break what a generator reads - a changed
+        // string literal an attribute depends on, say. What must not happen is judging it anyway, so
+        // it is reported as a mutant that could not be built, which the score leaves out.
+        if (generated.Failure is not null)
+        {
+            return EmitOutcome.Failed(generated.Failure);
+        }
 
         using var assembly = new MemoryStream();
 
-        EmitResult result = generated.Emit(
+        EmitResult result = generated.Compilation.Emit(
             assembly,
             manifestResources: _manifestResources,
             options: _emitOptions);

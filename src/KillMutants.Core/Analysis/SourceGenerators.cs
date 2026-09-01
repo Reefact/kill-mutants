@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Reflection;
 using System.Runtime.Loader;
 using Microsoft.CodeAnalysis;
@@ -40,6 +41,10 @@ internal sealed class SourceGenerators
     /// <summary>True when there is nothing to run.</summary>
     public bool IsEmpty => Generators.Count == 0;
 
+    /// <summary>Wraps generators supplied directly, for tests that need one that misbehaves.</summary>
+    internal static SourceGenerators Of(IReadOnlyList<ISourceGenerator> generators) =>
+        new(generators, []);
+
     /// <summary>Loads the generators named by the compiler command line.</summary>
     public static SourceGenerators LoadFrom(CSharpCommandLineArguments arguments)
     {
@@ -69,9 +74,27 @@ internal sealed class SourceGenerators
     }
 
     /// <summary>
-    /// Returns <paramref name="compilation"/> with every generator's output added.
+    /// Returns <paramref name="compilation"/> with every generator's output added, and says whether
+    /// every generator actually ran.
     /// </summary>
-    public Compilation Run(
+    /// <remarks>
+    /// <para>
+    /// The second half of that sentence is the point. Roslyn does not fail a build when a generator
+    /// throws: it reports <c>CS8784</c> or <c>CS8785</c> as a <em>warning</em>, drops that
+    /// generator's contribution, and carries on. Measured against Roslyn 5.9 with a generator that
+    /// throws from its initialiser: <c>CS8784/Warning</c>, and a compilation that still emits.
+    /// </para>
+    /// <para>
+    /// For a build that is what you want - the compiler errors that follow point at the real
+    /// problem. Here it is the difference between measuring the project and measuring something
+    /// else: if the code the generator should have produced is not what the selected tests exercise,
+    /// the assembly emits, the tests pass, and every verdict that follows describes an assembly that
+    /// is not the one the build produces. The failure has to be carried out of here, because only
+    /// the caller knows whether it is fatal - reconstructing the baseline - or a mutant that cannot
+    /// be judged.
+    /// </para>
+    /// </remarks>
+    public GeneratedCompilation Run(
         Compilation compilation,
         CSharpParseOptions parseOptions,
         AnalyzerConfigOptionsProvider optionsProvider,
@@ -79,7 +102,7 @@ internal sealed class SourceGenerators
     {
         if (IsEmpty)
         {
-            return compilation;
+            return new GeneratedCompilation(compilation, Failure: null);
         }
 
         GeneratorDriver driver = CSharpGeneratorDriver.Create(
@@ -88,10 +111,44 @@ internal sealed class SourceGenerators
             parseOptions,
             optionsProvider);
 
-        driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation updated, out _);
+        driver.RunGeneratorsAndUpdateCompilation(
+            compilation, out Compilation updated, out ImmutableArray<Diagnostic> diagnostics);
 
-        return updated;
+        return new GeneratedCompilation(updated, Describe(diagnostics));
     }
+
+    /// <summary>
+    /// The generators that did not run, or null when they all did.
+    /// </summary>
+    /// <remarks>
+    /// An error from a generator counts too. The project built before KillMutants touched it, so a
+    /// generator reporting an error against this compilation means the compilation is not the one
+    /// the build compiled.
+    /// </remarks>
+    private static string? Describe(ImmutableArray<Diagnostic> diagnostics)
+    {
+        Diagnostic[] failures = [.. diagnostics.Where(IsFailure)];
+
+        if (failures.Length == 0)
+        {
+            return null;
+        }
+
+        return
+            "A source generator did not run, so the compilation is missing code the build has:" +
+            Environment.NewLine + "  " +
+            string.Join(
+                Environment.NewLine + "  ",
+                failures.Take(10).Select(diagnostic => diagnostic.ToString()));
+    }
+
+    /// <summary>
+    /// <c>CS8784</c> is a generator that failed to initialise, <c>CS8785</c> one that failed while
+    /// generating. Both are warnings, and both mean output is missing.
+    /// </summary>
+    private static bool IsFailure(Diagnostic diagnostic) =>
+        diagnostic.Severity == DiagnosticSeverity.Error ||
+        diagnostic.Id is "CS8784" or "CS8785";
 
     /// <summary>Loads analyzer assemblies, and whatever they bring with them.</summary>
     /// <remarks>

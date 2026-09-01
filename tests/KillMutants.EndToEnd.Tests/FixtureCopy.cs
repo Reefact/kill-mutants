@@ -277,6 +277,61 @@ internal sealed class FixtureCopy : IDisposable
             """);
     }
 
+    /// <summary>
+    /// Adds a second generator to the copied generator fixture, one that throws, and whose output
+    /// nothing in the library needs.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Both halves matter. A broken generator whose code the library requires fails the compilation,
+    /// and a failed compilation is loud. This one leaves the build working: the assembly emits, the
+    /// tests pass, and nothing about the run looks wrong - which is precisely the case where a
+    /// report would describe an assembly the project does not build.
+    /// </para>
+    /// <para>
+    /// The assembly is renamed, and that is not cosmetic. Generators are loaded into
+    /// <see cref="System.Runtime.Loader.AssemblyLoadContext"/>.Default, which caches by assembly
+    /// identity and not by path, so a second run in the same process gets the first run's copy of a
+    /// same-named assembly - here, one carrying a generator that throws. Renaming keeps this fixture
+    /// out of the way of every other test in the process. The defect itself is RB-020.
+    /// </para>
+    /// </remarks>
+    public void AddAGeneratorThatFailsWithoutBreakingTheBuild()
+    {
+        string project = Path.Combine(Root, "Sample.Generator", "Sample.Generator.csproj");
+
+        File.WriteAllText(
+            project,
+            File.ReadAllText(project).Replace(
+                "<IsPackable>false</IsPackable>",
+                "<IsPackable>false</IsPackable>" +
+                Environment.NewLine +
+                "    <AssemblyName>Sample.Generator.Broken</AssemblyName>",
+                StringComparison.Ordinal));
+
+        File.WriteAllText(
+            Path.Combine(Root, "Sample.Generator", "BrokenGenerator.cs"),
+            """
+            using Microsoft.CodeAnalysis;
+
+            namespace Sample.Generator
+            {
+                [Generator]
+                public class BrokenGenerator : IIncrementalGenerator
+                {
+                    public void Initialize(IncrementalGeneratorInitializationContext context)
+                    {
+                        context.RegisterPostInitializationOutput(ctx =>
+                        {
+                            throw new System.InvalidOperationException("this generator is broken");
+                        });
+                    }
+                }
+            }
+
+            """);
+    }
+
     /// <summary>Copies the single-project sample fixture into a fresh temporary directory.</summary>
     public static FixtureCopy Create() => CopyOf(SourceFixtureDirectory);
 
