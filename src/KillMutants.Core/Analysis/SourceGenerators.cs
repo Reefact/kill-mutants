@@ -93,16 +93,80 @@ internal sealed class SourceGenerators
         return updated;
     }
 
-    /// <summary>Loads analyzer assemblies into the running process.</summary>
+    /// <summary>Loads analyzer assemblies, and whatever they bring with them.</summary>
+    /// <remarks>
+    /// <para>
+    /// A generator is rarely a single file. Mapperly, Refit, protobuf and most hand-written
+    /// generators ship helper assemblies beside themselves, and MSBuild lists only the generator on
+    /// the compiler command line - the rest are expected to be found next to it.
+    /// </para>
+    /// <para>
+    /// <see cref="AssemblyLoadContext.Default"/> does not look there. Measured against the .NET 10
+    /// SDK with a generator whose dependency sat in the same directory: the generator loaded, then
+    /// failed during initialisation with <c>FileNotFoundException</c>, and Roslyn reported that as
+    /// <c>CS8784</c> - a <em>warning</em>. The generator contributed nothing, the project then failed
+    /// to compile for want of the code it should have produced, and the error blamed KillMutants for
+    /// a reconstruction that was in fact correct.
+    /// </para>
+    /// <para>
+    /// So the directories of everything Roslyn registers are remembered, and anything the default
+    /// context cannot find is looked for there. Hooking <c>Resolving</c> rather than loading eagerly
+    /// is what keeps this safe: the event fires only after the normal search has failed, so an
+    /// analyzer directory can never win over the host's own copy of <c>Microsoft.CodeAnalysis</c> or
+    /// of a framework assembly, and type identity across the boundary is preserved.
+    /// </para>
+    /// </remarks>
     private sealed class AnalyzerLoader : IAnalyzerAssemblyLoader
     {
+        private static readonly HashSet<string> Directories = new(StringComparer.Ordinal);
+
+        static AnalyzerLoader() => AssemblyLoadContext.Default.Resolving += ResolveFromAnalyzerDirectories;
+
         public void AddDependencyLocation(string fullPath)
         {
-            // Dependencies resolve from the analyzer's own directory, which the default context
-            // already probes. Nothing to record.
+            if (Path.GetDirectoryName(fullPath) is { Length: > 0 } directory)
+            {
+                lock (Directories)
+                {
+                    Directories.Add(directory);
+                }
+            }
         }
 
-        public Assembly LoadFromPath(string fullPath) =>
-            AssemblyLoadContext.Default.LoadFromAssemblyPath(fullPath);
+        public Assembly LoadFromPath(string fullPath)
+        {
+            // Roslyn registers the analyzer itself, but a generator loaded directly still needs its
+            // own directory on the list for its dependencies to be found.
+            AddDependencyLocation(fullPath);
+
+            return AssemblyLoadContext.Default.LoadFromAssemblyPath(fullPath);
+        }
+
+        private static Assembly? ResolveFromAnalyzerDirectories(AssemblyLoadContext context, AssemblyName name)
+        {
+            if (name.Name is not { Length: > 0 } simpleName)
+            {
+                return null;
+            }
+
+            string[] candidates;
+
+            lock (Directories)
+            {
+                candidates = [.. Directories];
+            }
+
+            foreach (string directory in candidates)
+            {
+                string path = Path.Combine(directory, simpleName + ".dll");
+
+                if (File.Exists(path))
+                {
+                    return context.LoadFromAssemblyPath(path);
+                }
+            }
+
+            return null;
+        }
     }
 }

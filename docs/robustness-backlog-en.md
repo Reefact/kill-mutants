@@ -491,3 +491,50 @@ the last two would report `NoCoverage` against code the tests do exercise.
 `An_ordinary_expression_still_carries_one`,
 `Every_mutant_keeps_a_representative_and_every_site_lands_in_one_bucket`.
 
+---
+
+## RB-018 — A generator is rarely one file, and is not the developer's code · COVERED
+
+Found by building the fixture this entry now rests on: a source generator with a helper assembly of
+its own, referenced the way a packaged generator is. Two independent defects, either of which was
+enough to make a perfectly ordinary project unusable.
+
+**The generator's dependency did not load.** `AnalyzerLoader.AddDependencyLocation` did nothing, on
+the stated grounds that "dependencies resolve from the analyzer's own directory, which the default
+context already probes". Measured against the .NET 10 SDK: it does not.
+`AssemblyLoadContext.Default` resolves a loaded assembly's dependencies through the *host's* probing
+paths, not the loaded file's directory, so the generator threw `FileNotFoundException` during
+initialisation. Roslyn reports that as `CS8784` — a **warning** — so the generator silently
+contributed nothing and the project then failed to compile for want of the code it should have
+produced, with an error that blamed KillMutants for a reconstruction that was in fact correct.
+Mapperly, Refit and protobuf all ship helper assemblies, so this is the common shape rather than an
+exotic one.
+
+The fix records the directory of everything Roslyn registers and serves misses from there, through
+`AssemblyLoadContext.Default.Resolving`. Hooking the fallback rather than loading eagerly is what
+makes it safe: the event fires only after the normal search has failed, so an analyzer directory can
+never win over the host's own `Microsoft.CodeAnalysis` and type identity across the boundary holds.
+
+**The generator was being mutated.** A generator is referenced with `OutputItemType="Analyzer"` and
+`ReferenceOutputAssembly="false"` — it runs inside the compiler at build time, and its assembly never
+reaches the test project's output directory. Discovery followed the reference anyway, so the run
+mutated the generator's own source. Every one of those mutants is uncoverable by construction: the
+tests do not execute that code, and there is no assembly in the output directory to swap. Measured on
+the fixture: ten of twelve mutants came from the generator, and now that uncovered mutants count
+against the score (RB-012's sibling, and the reason this was worth finding), they dragged a project
+with perfectly good tests from 100% to 16.67%. Project references are now followed only when they
+contribute an assembly the tests will load.
+
+**What this establishes about generator support, and what it does not.** A generator whose helper
+assemblies sit beside it on the compiler's analyzer list now works. A generator built against a newer
+Roslyn than the one KillMutants runs on still cannot be inspected — that is recorded in
+`SourceGenerators.Unloadable` and reported by name rather than surfacing as an unexplained compile
+error. A generator needing a *different version* of an assembly the host has already loaded will get
+the host's: the `Resolving` fallback never fires for an assembly that resolved. That last one is
+**accepted** rather than fixed. Loading analyzers into their own context would address it and would
+require sharing the Roslyn assemblies across the boundary by hand, which is a great deal of machinery
+for a case we have not yet seen.
+
+**Our tests.** `MutationTestingEndToEndTests.A_source_generator_with_a_dependency_of_its_own_is_run_and_not_mutated`,
+against `tests/fixtures/generator`, which fails on either defect alone.
+

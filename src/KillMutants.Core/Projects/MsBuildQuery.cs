@@ -83,7 +83,10 @@ internal sealed class MsBuildQuery
             TargetFrameworks: Split(Property("TargetFrameworks")),
             PackageReferences: ReadItems(root, "PackageReference", identity => identity),
             ProjectReferences: ReadItems(
-                root, "ProjectReference", identity => Path.GetFullPath(Path.Combine(directory, identity))));
+                root,
+                "ProjectReference",
+                identity => Path.GetFullPath(Path.Combine(directory, identity)),
+                RunsAtRunTime));
     }
 
     /// <summary>
@@ -132,7 +135,8 @@ internal sealed class MsBuildQuery
     private static IReadOnlyList<string> ReadItems(
         JsonElement root,
         string itemName,
-        Func<string, string> project)
+        Func<string, string> project,
+        Func<JsonElement, bool>? keep = null)
     {
         if (!root.TryGetProperty("Items", out JsonElement items) ||
             !items.TryGetProperty(itemName, out JsonElement values))
@@ -141,10 +145,35 @@ internal sealed class MsBuildQuery
         }
 
         return [.. values.EnumerateArray()
+            .Where(item => keep is null || keep(item))
             .Select(item => item.GetProperty("Identity").GetString())
             .Where(identity => !string.IsNullOrEmpty(identity))
             .Select(identity => project(identity!))];
     }
+
+    /// <summary>
+    /// True when a project reference contributes an assembly the tests will actually load.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A source generator or analyzer is referenced with <c>OutputItemType="Analyzer"</c> and
+    /// <c>ReferenceOutputAssembly="false"</c>: it runs inside the compiler at build time and its
+    /// assembly never reaches the test project's output directory. Following such a reference makes
+    /// KillMutants mutate the generator itself, and every one of those mutants is uncoverable - the
+    /// tests do not execute that code, and there is no assembly in the output directory to swap.
+    /// </para>
+    /// <para>
+    /// Measured on the generator fixture: ten of its twelve mutants came from the generator's own
+    /// source and dragged the score from 100% to 16.67%, against a project whose tests are perfectly
+    /// good.
+    /// </para>
+    /// </remarks>
+    private static bool RunsAtRunTime(JsonElement reference) =>
+        !Metadata(reference, "OutputItemType").Equals("Analyzer", StringComparison.OrdinalIgnoreCase) &&
+        !Metadata(reference, "ReferenceOutputAssembly").Equals("false", StringComparison.OrdinalIgnoreCase);
+
+    private static string Metadata(JsonElement item, string name) =>
+        item.TryGetProperty(name, out JsonElement value) ? value.GetString() ?? string.Empty : string.Empty;
 
     /// <summary>Reads MSBuild properties from a project without building it.</summary>
     public async Task<IReadOnlyDictionary<string, string>> GetPropertiesAsync(

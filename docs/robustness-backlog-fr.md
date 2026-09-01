@@ -523,3 +523,52 @@ exercent réellement.
 `An_ordinary_expression_still_carries_one`,
 `Every_mutant_keeps_a_representative_and_every_site_lands_in_one_bucket`.
 
+---
+
+## RB-018 — Un générateur est rarement un seul fichier, et n'est pas le code du développeur · COUVERT
+
+Découvert en construisant la fixture sur laquelle repose désormais cette entrée : un générateur de
+source ayant son propre assembly d'appoint, référencé comme l'est un générateur empaqueté. Deux
+défauts indépendants, dont chacun suffisait à rendre inutilisable un projet parfaitement ordinaire.
+
+**La dépendance du générateur ne se chargeait pas.** `AnalyzerLoader.AddDependencyLocation` ne faisait
+rien, au motif déclaré que « les dépendances se résolvent depuis le répertoire de l'analyseur, que le
+contexte par défaut sonde déjà ». Mesuré sur le SDK .NET 10 : il ne le fait pas.
+`AssemblyLoadContext.Default` résout les dépendances d'un assembly chargé via les chemins de sondage
+de l'*hôte*, pas via le répertoire du fichier chargé ; le générateur levait donc
+`FileNotFoundException` à l'initialisation. Roslyn le signale en `CS8784` — un **avertissement** — si
+bien que le générateur ne contribuait silencieusement rien et que le projet échouait ensuite à
+compiler faute du code qu'il aurait dû produire, avec une erreur accusant KillMutants d'une
+reconstruction pourtant correcte. Mapperly, Refit et protobuf embarquent tous des assemblys
+d'appoint : c'est la forme courante, pas un cas exotique.
+
+Le correctif mémorise le répertoire de tout ce que Roslyn enregistre et sert les échecs depuis là,
+via `AssemblyLoadContext.Default.Resolving`. Brancher le repli plutôt que charger avidement est ce
+qui le rend sûr : l'événement ne se déclenche qu'après l'échec de la recherche normale, donc un
+répertoire d'analyseur ne peut jamais l'emporter sur le `Microsoft.CodeAnalysis` de l'hôte, et
+l'identité des types au travers de la frontière est préservée.
+
+**Le générateur était muté.** Un générateur est référencé avec `OutputItemType="Analyzer"` et
+`ReferenceOutputAssembly="false"` : il tourne dans le compilateur au moment du build, et son assembly
+n'atteint jamais le répertoire de sortie du projet de test. La découverte suivait quand même la
+référence, et le run mutait donc le code source du générateur. Chacun de ces mutants est
+non-couvrable par construction : les tests n'exécutent pas ce code, et il n'y a aucun assembly à
+remplacer dans le répertoire de sortie. Mesuré sur la fixture : dix mutants sur douze venaient du
+générateur et, maintenant que les mutants non couverts comptent dans le score, ils faisaient tomber
+un projet aux tests parfaitement bons de 100 % à 16,67 %. Les références de projet ne sont désormais
+suivies que lorsqu'elles apportent un assembly que les tests chargeront.
+
+**Ce que cela établit du support des générateurs, et ce que cela n'établit pas.** Un générateur dont
+les assemblys d'appoint se trouvent à côté de lui sur la liste d'analyseurs du compilateur fonctionne
+désormais. Un générateur compilé contre un Roslyn plus récent que celui sur lequel tourne KillMutants
+reste inspectable — c'est enregistré dans `SourceGenerators.Unloadable` et signalé par son nom plutôt
+que de ressortir en erreur de compilation inexpliquée. Un générateur ayant besoin d'une *version
+différente* d'un assembly déjà chargé par l'hôte obtiendra celui de l'hôte : le repli `Resolving` ne
+se déclenche jamais pour un assembly qui s'est résolu. Ce dernier point est **assumé** plutôt que
+corrigé. Charger les analyseurs dans leur propre contexte le règlerait et exigerait de partager à la
+main les assemblys Roslyn au travers de la frontière : beaucoup d'appareillage pour un cas que nous
+n'avons pas encore rencontré.
+
+**Nos tests.** `MutationTestingEndToEndTests.A_source_generator_with_a_dependency_of_its_own_is_run_and_not_mutated`,
+contre `tests/fixtures/generator`, qui échoue sur chacun des deux défauts pris isolément.
+
