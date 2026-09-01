@@ -91,7 +91,7 @@ namespace sont déjà placées là où passeraient les frontières d'assembly.
 | Spécificités xUnit 4 / MTP 2 | `KillMutants.Testing.XUnit` | Le seul endroit qui connaît la CLI du runner |
 | Association tests ↔ mutants | `KillMutants.Coverage` | Sonde préservant le type, une exécution par test (ADR-0007) |
 | Orchestration | `KillMutants.Execution` | La liste de phases, courte et linéaire |
-| Résultats | `KillMutants.Reporting` | `MutationTestReport`, écriture console |
+| Résultats | `KillMutants.Reporting` | `MutationTestReport`, écritures console et JSON, progression |
 | CLI | `KillMutants.Cli` | `dotnet killmutants` |
 
 **L'instrumentation n'a aucun code propre, et c'est voulu.** Parce que chaque mutant reçoit sa propre
@@ -162,7 +162,14 @@ plusieurs projets de test, plusieurs projets à muter, les références de proje
 transitivement, et un framework épinglé par projet. M6 teste les mutants en parallèle, chaque worker dans une copie privée du
 répertoire de sortie des tests. M4 et M5 découvrent les tests et mesurent lesquels atteignent quels
 mutants : les mutants non couverts ne sont jamais exécutés, et les autres n'exécutent que ce qui peut
-les tuer. Restent devant : M7 le reporting ; M8 la CI ; M9 les mutations avancées.
+les tuer. M7 rapporte : progression en direct, constats groupés par fichier, et un rapport JSON pour
+tout ce qui n'est pas un humain. Restent devant : M8 la CI ; M9 les mutations avancées.
+
+**Deux flux de sortie, délibérément.** La progression part sur la sortie d'erreur et le rapport sur la
+sortie standard : `killmutants > rapport.txt` capture donc le rapport sans y mêler la ligne de
+progression. Sur un terminal cette ligne est réécrite sur place ; quand le flux est redirigé, chaque
+phase est annoncée une fois, parce que des milliers de retours chariot dans un journal de CI
+n'aident personne.
 
 **Pourquoi des bacs à sable plutôt qu'un hôte de test réutilisé à chaud.** Réutiliser un hôte d'un
 mutant à l'autre est l'optimisation la plus tentante et celle que nous refusons : c'est la source de

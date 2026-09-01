@@ -1,4 +1,5 @@
 using KillMutants.Processes;
+using KillMutants.Reporting;
 
 namespace KillMutants.Projects;
 
@@ -11,12 +12,14 @@ internal sealed class ProjectDiscovery
 
     private readonly MsBuildQuery _msBuild;
     private readonly string _configuration;
+    private readonly IProgress<MutationTestProgress>? _progress;
 
-    public ProjectDiscovery(string configuration)
+    public ProjectDiscovery(string configuration, IProgress<MutationTestProgress>? progress = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(configuration);
 
         _configuration = configuration;
+        _progress = progress;
         _msBuild = new MsBuildQuery(configuration);
     }
 
@@ -162,6 +165,10 @@ internal sealed class ProjectDiscovery
 
         foreach (string path in paths)
         {
+            _progress?.Report(new MutationTestProgress(
+                MutationTestPhase.Discovering, projects.Count, paths.Length,
+                Path.GetFileNameWithoutExtension(path)));
+
             projects.Add(await _msBuild.GetProjectFactsAsync(path, cancellationToken: cancellationToken)
                 .ConfigureAwait(false));
         }
@@ -208,13 +215,19 @@ internal sealed class ProjectDiscovery
     {
         ArgumentNullException.ThrowIfNull(targets);
 
-        foreach (string projectPath in targets
-                     .SelectMany(target => target.TestProjects)
-                     .Select(test => test.ProjectPath)
-                     .Distinct(StringComparer.Ordinal)
-                     .Order(StringComparer.Ordinal))
+        string[] projectPaths = [.. targets
+            .SelectMany(target => target.TestProjects)
+            .Select(test => test.ProjectPath)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)];
+
+        for (int index = 0; index < projectPaths.Length; index++)
         {
-            await BuildAsync(projectPath, cancellationToken).ConfigureAwait(false);
+            _progress?.Report(new MutationTestProgress(
+                MutationTestPhase.Building, index, projectPaths.Length,
+                Path.GetFileNameWithoutExtension(projectPaths[index])));
+
+            await BuildAsync(projectPaths[index], cancellationToken).ConfigureAwait(false);
         }
     }
 

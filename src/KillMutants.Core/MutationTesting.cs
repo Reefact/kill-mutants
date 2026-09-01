@@ -21,6 +21,7 @@ public static class MutationTesting
     /// Measure which tests reach which mutants, and run only those. Turning this off runs the whole
     /// suite for every mutant, which is slower but needs no instrumented build.
     /// </param>
+    /// <param name="progress">Told where the run has got to, so a caller can show it.</param>
     /// <param name="cancellationToken">Cancels the run.</param>
     /// <exception cref="Projects.ProjectAnalysisException">The projects could not be analysed.</exception>
     /// <exception cref="BaselineVerificationException">The unmutated code does not pass its tests.</exception>
@@ -30,10 +31,11 @@ public static class MutationTesting
         string configuration = "Release",
         int? workerCount = null,
         bool measureCoverage = true,
+        IProgress<Reporting.MutationTestProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         var session = new MutationTestSession(
-            new XUnitTestRunner(), configuration, timeoutPolicy: null, workerCount, measureCoverage);
+            new XUnitTestRunner(), configuration, timeoutPolicy: null, workerCount, measureCoverage, progress);
 
         return session.RunAsync(searchDirectory, cancellationToken);
     }

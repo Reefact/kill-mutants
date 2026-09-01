@@ -15,12 +15,75 @@ public static class ConsoleReportWriter
         writer.WriteLine("KillMutants");
         writer.WriteLine();
 
-        WriteSurvivors(writer, report);
+        // The findings come before the totals because they are the point of the run: a survivor
+        // names code the tests do not really check, and an uncovered mutant names code they do not
+        // reach at all. The numbers only summarise them.
+        WriteFindings(writer, report, MutantStatus.Survived, "Survived");
+        WriteFindings(writer, report, MutantStatus.NoCoverage, "No coverage");
 
+        WriteTotals(writer, report);
+
+        writer.WriteLine();
+        writer.WriteLine($"Mutation score: {report.Score}");
+
+        if (report.Duration > TimeSpan.Zero)
+        {
+            writer.WriteLine($"Elapsed: {Format(report.Duration)}");
+        }
+    }
+
+    /// <summary>Lists the mutants of one status, grouped by the file they sit in.</summary>
+    private static void WriteFindings(
+        TextWriter writer,
+        MutationTestReport report,
+        MutantStatus status,
+        string heading)
+    {
+        MutantResult[] findings = [.. report.Results.Where(result => result.Status == status)];
+
+        if (findings.Length == 0)
+        {
+            return;
+        }
+
+        writer.WriteLine($"{heading} ({Format(findings.Length)})");
+
+        foreach (IGrouping<string, MutantResult> inFile in findings
+                     .GroupBy(result => result.Mutant.Location.FilePath)
+                     .OrderBy(group => group.Key, StringComparer.Ordinal))
+        {
+            writer.WriteLine();
+            writer.WriteLine($"  {Path.GetFileName(inFile.Key)}");
+
+            MutantResult[] ordered = [.. inFile
+                .OrderBy(result => result.Mutant.Location.Line)
+                .ThenBy(result => result.Mutant.Location.Character)];
+
+            // Widths are computed per file so each block lines up without a fixed guess that a long
+            // expression would blow out.
+            int positionWidth = ordered.Max(result => Position(result).Length);
+            int originalWidth = ordered.Max(result => result.Mutant.OriginalText.Length);
+            int mutatedWidth = ordered.Max(result => result.Mutant.MutatedText.Length);
+
+            foreach (MutantResult finding in ordered)
+            {
+                writer.WriteLine(
+                    $"    {Position(finding).PadLeft(positionWidth)}  " +
+                    $"{finding.Mutant.OriginalText.PadRight(originalWidth)} -> " +
+                    $"{finding.Mutant.MutatedText.PadRight(mutatedWidth)}  [{finding.Mutant.Mutator}]");
+            }
+        }
+
+        writer.WriteLine();
+    }
+
+    private static void WriteTotals(TextWriter writer, MutationTestReport report)
+    {
         writer.WriteLine($"Mutants: {Format(report.Total)}");
         writer.WriteLine($"Killed: {Format(report.Killed)}");
         writer.WriteLine($"Survived: {Format(report.Survived)}");
 
+        // The remaining statuses are shown only when they happened, so a clean run stays short.
         if (report.TimedOut > 0)
         {
             writer.WriteLine($"Timed out: {Format(report.TimedOut)}");
@@ -37,35 +100,15 @@ public static class ConsoleReportWriter
             // different and often more urgent finding than a surviving mutant.
             writer.WriteLine($"No coverage: {Format(report.Uncovered)}");
         }
-
-        writer.WriteLine();
-        writer.WriteLine($"Mutation score: {report.Score}");
     }
 
-    /// <summary>
-    /// Survivors are the whole point of the run: they name the code the tests do not really check.
-    /// They are listed before the totals so they are the first thing read.
-    /// </summary>
-    private static void WriteSurvivors(TextWriter writer, MutationTestReport report)
-    {
-        MutantResult[] survivors = [.. report.Results.Where(result => result.Status == MutantStatus.Survived)];
-
-        if (survivors.Length == 0)
-        {
-            return;
-        }
-
-        writer.WriteLine("Survived:");
-
-        foreach (MutantResult survivor in survivors)
-        {
-            writer.WriteLine(
-                $"  {survivor.Mutant.Location}  {survivor.Mutant.OriginalText} -> {survivor.Mutant.MutatedText}" +
-                $"  [{survivor.Mutant.Mutator}]");
-        }
-
-        writer.WriteLine();
-    }
+    private static string Position(MutantResult result) =>
+        $"{Format(result.Mutant.Location.Line)}:{Format(result.Mutant.Location.Character)}";
 
     private static string Format(int value) => value.ToString(CultureInfo.InvariantCulture);
+
+    private static string Format(TimeSpan duration) =>
+        duration.TotalMinutes >= 1
+            ? $"{duration.TotalMinutes.ToString("0.0", CultureInfo.InvariantCulture)} min"
+            : $"{duration.TotalSeconds.ToString("0.0", CultureInfo.InvariantCulture)} s";
 }

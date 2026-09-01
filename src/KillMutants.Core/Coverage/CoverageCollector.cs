@@ -4,6 +4,7 @@ using KillMutants.Analysis;
 using KillMutants.Execution;
 using KillMutants.Mutations;
 using KillMutants.Projects;
+using KillMutants.Reporting;
 using KillMutants.Testing;
 
 namespace KillMutants.Coverage;
@@ -27,12 +28,14 @@ namespace KillMutants.Coverage;
 internal sealed class CoverageCollector
 {
     private readonly ITestRunner _testRunner;
+    private readonly IProgress<MutationTestProgress>? _progress;
 
-    public CoverageCollector(ITestRunner testRunner)
+    public CoverageCollector(ITestRunner testRunner, IProgress<MutationTestProgress>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(testRunner);
 
         _testRunner = testRunner;
+        _progress = progress;
     }
 
     /// <summary>Measures what each test reaches.</summary>
@@ -68,6 +71,7 @@ internal sealed class CoverageCollector
 
         var pending = new ConcurrentQueue<(TestProject Project, TestName Test)>(tests);
         var observed = new ConcurrentBag<(TestName, IReadOnlyList<MutantId>)>();
+        int measured = 0;
 
         async Task WorkAsync(TestSandbox sandbox)
         {
@@ -77,6 +81,9 @@ internal sealed class CoverageCollector
                     work.Test,
                     await MeasureAsync(sandbox, work.Project, work.Test, budget, cancellationToken)
                         .ConfigureAwait(false)));
+
+                _progress?.Report(new MutationTestProgress(
+                    MutationTestPhase.MeasuringCoverage, Interlocked.Increment(ref measured), tests.Count));
             }
         }
 

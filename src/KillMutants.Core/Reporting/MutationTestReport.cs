@@ -6,11 +6,14 @@ namespace KillMutants.Reporting;
 public sealed class MutationTestReport
 {
     /// <summary>Creates a report from the results of every mutant tested.</summary>
-    public MutationTestReport(IReadOnlyList<MutantResult> results)
+    /// <param name="results">Every mutant, with its outcome.</param>
+    /// <param name="duration">How long the whole run took.</param>
+    public MutationTestReport(IReadOnlyList<MutantResult> results, TimeSpan duration = default)
     {
         ArgumentNullException.ThrowIfNull(results);
 
         Results = results;
+        Duration = duration;
         Killed = Count(MutantStatus.Killed);
         Survived = Count(MutantStatus.Survived);
         TimedOut = Count(MutantStatus.Timeout);
@@ -23,6 +26,9 @@ public sealed class MutationTestReport
 
     /// <summary>Every mutant, with its outcome.</summary>
     public IReadOnlyList<MutantResult> Results { get; }
+
+    /// <summary>How long the whole run took.</summary>
+    public TimeSpan Duration { get; }
 
     /// <summary>How many mutants were generated.</summary>
     public int Total => Results.Count;

@@ -81,7 +81,7 @@ namespace boundaries are already where the assembly boundaries would go.
 | xUnit 4 / MTP 2 specifics | `KillMutants.Testing.XUnit` | The only place that knows the runner's CLI |
 | Test-to-mutant mapping | `KillMutants.Coverage` | A type-preserving probe, one run per test (ADR-0007) |
 | Orchestration | `KillMutants.Execution` | The short, linear phase list |
-| Results | `KillMutants.Reporting` | `MutationTestReport`, console writer |
+| Results | `KillMutants.Reporting` | `MutationTestReport`, console and JSON writers, progress |
 | CLI | `KillMutants.Cli` | `dotnet killmutants` |
 
 **Instrumentation has no code of its own, by design.** Because each mutant gets its own compilation
@@ -147,7 +147,13 @@ M2 grew the catalogue to six families. M3 handles real solution structure: sever
 several projects under test, project references followed transitively, and a framework pinned per
 project. M6 tests mutants in parallel, each worker in a private copy of the test output directory. M4 and M5
 discover the tests and measure which ones reach which mutants, so uncovered mutants are never run and
-the rest run only what can kill them. Still ahead: M7 reporting; M8 CI; M9 advanced mutations.
+the rest run only what can kill them. M7 reports: live progress, findings grouped by file, and a JSON
+report for anything that is not a person. Still ahead: M8 CI; M9 advanced mutations.
+
+**Two output streams, on purpose.** Progress goes to standard error and the report to standard
+output, so `killmutants > report.txt` captures the report without the progress line threaded through
+it. On a terminal the progress line is rewritten in place; when the stream is redirected each phase
+is announced once instead, because thousands of carriage returns in a CI log help nobody.
 
 **Why sandboxes rather than a shared, warmed-up test host.** Reusing one host across mutants is the
 most tempting optimisation available and the one we refuse: it is the source of Stryker's

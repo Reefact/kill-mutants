@@ -57,8 +57,10 @@ public class ConsoleReportWriterTests
             """
             KillMutants
 
-            Survived:
-              Ages.cs(1,28)  a >= 18 -> a > 18  [Comparison]
+            Survived (1)
+
+              Ages.cs
+                1:28  a >= 18 -> a > 18  [Comparison]
 
             Mutants: 2
             Killed: 1
@@ -68,6 +70,54 @@ public class ConsoleReportWriterTests
 
             """.ReplaceLineEndings("\n"),
             output);
+    }
+
+    [Fact]
+    public void Findings_are_grouped_by_file_and_lined_up()
+    {
+        // Two files, several mutants each, deliberately out of order.
+        IReadOnlyList<Mutant> mutants = MutantsFor(
+            "class C { bool M(int a) => a >= 18; bool N(int a, bool b) => b && a >= 5; }");
+
+        string output = Render([.. mutants.Select(m => new MutantResult(m, MutantStatus.Survived))]);
+
+        Assert.Contains("Survived (5)", output, StringComparison.Ordinal);
+        Assert.Contains("  Ages.cs", output, StringComparison.Ordinal);
+        Assert.Contains("[LogicalOperator]", output, StringComparison.Ordinal);
+
+        // The point of the padding: every arrow lands in the same column, so a block of findings
+        // reads as a table rather than as ragged text.
+        int[] arrowColumns = [.. output
+            .Split('\n')
+            .Where(line => line.Contains(" -> ", StringComparison.Ordinal))
+            .Select(line => line.IndexOf(" -> ", StringComparison.Ordinal))];
+
+        Assert.Equal(5, arrowColumns.Length);
+        Assert.Single(arrowColumns.Distinct());
+    }
+
+    [Fact]
+    public void Uncovered_mutants_are_named_too_because_untested_code_is_its_own_finding()
+    {
+        Mutant mutant = MutantsFor("class C { bool M(int a) => a >= 18; }")[0];
+
+        string output = Render(new MutantResult(mutant, MutantStatus.NoCoverage));
+
+        Assert.Contains("No coverage (1)", output, StringComparison.Ordinal);
+        Assert.Contains("Ages.cs", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_elapsed_time_is_shown_when_it_was_measured()
+    {
+        Mutant mutant = MutantsFor("class C { bool M(int a) => a >= 18; }")[0];
+        var writer = new StringWriter();
+
+        ConsoleReportWriter.Write(
+            writer,
+            new MutationTestReport([new MutantResult(mutant, MutantStatus.Killed)], TimeSpan.FromSeconds(12.34)));
+
+        Assert.Contains("Elapsed: 12.3 s", writer.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]
