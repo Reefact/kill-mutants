@@ -69,16 +69,16 @@ internal sealed class ProjectDiscovery
         CancellationToken cancellationToken)
     {
         Dictionary<string, ProjectFacts> byPath = projects.ToDictionary(
-            project => project.ProjectPath, StringComparer.Ordinal);
+            project => project.ProjectPath, ProjectPaths.Comparer);
 
         // Ordinal ordering keeps the report stable between runs, which matters as soon as there is
         // more than one project to report on.
-        SortedDictionary<string, List<TestProject>> testsByProject = new(StringComparer.Ordinal);
-        Dictionary<string, string> frameworkByProject = new(StringComparer.Ordinal);
+        SortedDictionary<string, List<TestProject>> testsByProject = new(ProjectPaths.Comparer);
+        Dictionary<string, string> frameworkByProject = new(ProjectPaths.Comparer);
 
         // Filled only when a test project actually reaches an excluded project, so a repository
         // that excludes directories nothing references pays nothing for it.
-        Dictionary<string, ProjectFacts?> beyondExclusions = new(StringComparer.Ordinal);
+        Dictionary<string, ProjectFacts?> beyondExclusions = new(ProjectPaths.Comparer);
 
         foreach (ProjectFacts testProject in testProjects)
         {
@@ -150,7 +150,7 @@ internal sealed class ProjectDiscovery
         CancellationToken cancellationToken)
     {
         List<string> reachable = [];
-        HashSet<string> seen = new(StringComparer.Ordinal);
+        HashSet<string> seen = new(ProjectPaths.Comparer);
         Queue<string> pending = new(testProject.ProjectReferences);
 
         while (pending.Count > 0)
@@ -301,7 +301,8 @@ internal sealed class ProjectDiscovery
         string[] projectPaths = [.. targets
             .SelectMany(target => target.TestProjects)
             .Select(test => test.ProjectPath)
-            .Distinct(StringComparer.Ordinal)
+            // Identity by the filesystem's rule; order ordinal, so a report reads the same twice.
+            .Distinct(ProjectPaths.Comparer)
             .Order(StringComparer.Ordinal)];
 
         for (int index = 0; index < projectPaths.Length; index++)
@@ -330,7 +331,7 @@ internal sealed class ProjectDiscovery
     {
         foreach (TestProject testProject in targets
                      .SelectMany(target => target.TestProjects)
-                     .DistinctBy(test => test.ProjectPath, StringComparer.Ordinal)
+                     .DistinctBy(test => test.ProjectPath, ProjectPaths.Comparer)
                      .OrderBy(test => test.ProjectPath, StringComparer.Ordinal))
         {
             if (XUnitVersion.WhyUnsupported(Path.GetDirectoryName(testProject.AssemblyPath)!) is { } reason)
