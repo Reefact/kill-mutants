@@ -49,6 +49,7 @@ The few choices that are expensive to reverse. Each is recorded in [docs/adr](do
 | ADR-0003 — Compilation inputs from the csc command line | [en](docs/adr/0003-compilation-inputs-from-csc-command-line-en.md) | [fr](docs/adr/0003-compilation-inputs-from-csc-command-line-fr.md) |
 | ADR-0004 — Run tests by launching the test executable | [en](docs/adr/0004-run-tests-by-launching-the-test-executable-en.md) | [fr](docs/adr/0004-run-tests-by-launching-the-test-executable-fr.md) |
 | ADR-0005 — Verify the baseline before mutating | [en](docs/adr/0005-verify-the-baseline-before-mutating-en.md) | [fr](docs/adr/0005-verify-the-baseline-before-mutating-fr.md) |
+| ADR-0006 — Identify tests by name, not by unique id | [en](docs/adr/0006-identify-tests-by-name-not-by-unique-id-en.md) | [fr](docs/adr/0006-identify-tests-by-name-not-by-unique-id-fr.md) |
 
 ## Licence
 
