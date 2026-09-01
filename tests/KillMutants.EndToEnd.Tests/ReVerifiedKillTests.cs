@@ -65,6 +65,13 @@ public class ReVerifiedKillTests
         Assert.All(report.Results, result => Assert.Null(result.Disagreement));
         Assert.DoesNotContain(
             report.Warnings, w => w.Text.Contains("did not survive", StringComparison.Ordinal));
+
+        // And the report says how many were actually checked. Silence about a sample is how "no
+        // disagreements" comes to mean nothing at all: the fixture has fewer kills than the twenty
+        // asked for, so this is the real count and not an echo of the setting.
+        Assert.Equal(
+            report.Results.Count(result => result.Status == MutantStatus.Killed),
+            report.Environment!.KillsReVerified);
     }
 
     private static Task<MutationTestReport> Run(string root, ITestRunner runner, int verifyKills) =>

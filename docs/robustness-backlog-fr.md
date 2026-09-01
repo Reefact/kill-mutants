@@ -792,3 +792,55 @@ partagé entre ces travailleurs est un mauvais marché pour un outil dont la pir
 verdict discrètement faux — et RB-020, sur la même page, montre ce que le partage d'état de
 chargement entre exécutions nous a déjà coûté. C'est consigné plutôt que fait, pour que la prochaine
 personne qui remarquera le pilote jeté trouve la mesure au lieu de la refaire.
+
+---
+
+## RB-023 — Un bac à sable isole l'assemblage, pas le système de fichiers que les tests touchent · OUVERT
+
+**Comment elle a été trouvée.** En passant l'épreuve proposée par un second rapport terrain :
+balayer le même projet à concurrence 1 puis à concurrence N, et exiger que les verdicts coïncident
+mutant par mutant. S'ils ne coïncident pas, l'outil ne mesure pas le code, il mesure la machine.
+
+**Ce qui a été mesuré.** Ce dépôt, 516 mutants, quatre cœurs :
+
+| | `-p 1` | `-p 4` |
+| --- | --- | --- |
+| Tués | 156 | 158 |
+| Survivants | 169 | 167 |
+| En dépassement de délai | 0 | 0 |
+| Score | 30,23 % | 30,62 % |
+
+Deux mutants sur 516 — 0,4 % — survivent seuls et sont tués sous charge. Les deux sont dans
+`MsBuildQuery`, et leurs deux tueurs appartiennent à `ProjectCompilationTests`, la seule classe de
+tests qui lance un vrai MSBuild contre le répertoire de fixture partagé du dépôt. L'un des deux
+inverse la garde qui force `CoreCompile` à s'exécuter : son observabilité dépend entièrement d'un
+fichier de cache situé dans un répertoire où les trois autres travailleurs écrivent aussi.
+
+**Le mécanisme.** Chaque travailleur a son bac à sable, et le bac à sable contient l'assemblage sous
+test. Il ne contient rien de ce que les tests atteignent par eux-mêmes : un répertoire de fixture, un
+chemin temporaire, une base, un port. Quatre travailleurs exécutent donc quatre copies d'une suite
+écrite pour s'exécuter une fois, et `DisableParallelization` à l'intérieur d'un processus de test ne
+dit rien de quatre processus.
+
+**Ce que ce n'est pas.** Pas la défaillance de délai décrite par le rapport terrain — aucun mutant
+n'a dépassé le délai dans l'un ou l'autre balayage, et le budget n'en a jamais approché. C'est la
+même classe de défaut arrivée par un autre chemin : un verdict qui dépend d'autre chose que du code
+sous test.
+
+**Ce qui existe déjà.** `--verify-kills` rejoue seuls un échantillon des mutants rapportés tués et
+consigne un désaccord sans changer le statut. C'est exactement le mécanisme qui attrape ceci, et dans
+le balayage `-p 4` il a échantillonné dix des 158 tués sans tirer aucun des deux. La taille de
+l'échantillon est désormais rapportée, pour que la force du contrôle soit visible plutôt que
+supposée.
+
+**Pourquoi c'est ouvert.** Isoler le système de fichiers qu'une suite de tests atteint n'est pas
+quelque chose que cet outil peut faire de l'extérieur sans décider de ce que « le système de fichiers
+qu'une suite atteint » veut dire — une copie du dépôt entier par travailleur en est la version
+honnête, et elle est chère. Les options à peser : donner à l'échantillon une taille par défaut qui
+veuille dire quelque chose plutôt que zéro, vérifier aussi les survivants et pas seulement les tués,
+ou simplement écrire dans le rapport qu'une suite touchant un état partagé ne donnera pas la même
+réponse à deux concurrences. Aucune n'est gratuite, et choisir entre elles est une décision, pas une
+correction.
+
+**Nos tests.** Aucun. La reproduction, ce sont deux balayages complets de ce dépôt, ce qui n'est pas
+un test.

@@ -734,3 +734,50 @@ workers at once. Buying under one percent of a run with state shared across thos
 trade in a tool whose worst failure is a verdict that is quietly wrong — and RB-020, on the same
 page, is what sharing loader state across runs already cost us. This is recorded rather than done, so
 that the next person to notice the discarded driver finds the measurement instead of repeating it.
+
+---
+
+## RB-023 — A sandbox isolates the assembly, not the filesystem the tests touch · OPEN
+
+**How it was found.** By running the test a second field report proposed: sweep the same project at
+concurrency 1 and at concurrency N, and require the verdicts to match mutant by mutant. If they do
+not, the tool is measuring the machine rather than the code.
+
+**What was measured.** This repository, 516 mutants, four cores:
+
+| | `-p 1` | `-p 4` |
+| --- | --- | --- |
+| Killed | 156 | 158 |
+| Survived | 169 | 167 |
+| Timed out | 0 | 0 |
+| Score | 30.23 % | 30.62 % |
+
+Two mutants out of 516 — 0.4 % — survive alone and are killed under load. Both are in
+`MsBuildQuery`, and both killers belong to `ProjectCompilationTests`, the one test class that runs a
+real MSBuild against the repository's shared fixture directory. One of the two inverts the guard that
+forces `CoreCompile` to run, so whether it is observable depends entirely on a cache file in a
+directory the other three workers are also writing to.
+
+**The mechanism.** Each worker gets its own sandbox, and the sandbox holds the assembly under test.
+It does not hold anything the tests reach on their own: a fixture directory, a temporary path, a
+database, a port. Four workers therefore run four copies of a suite that was written to run once, and
+`DisableParallelization` inside one test process says nothing about four of them.
+
+**What it is not.** Not the timeout failure the field report described — no mutant timed out in
+either sweep, and the budget was never close. This is the same class of defect arriving by a
+different route: a verdict that depends on something other than the code under test.
+
+**What is already there.** `--verify-kills` re-runs a sample of the mutants reported killed, on their
+own, and records a disagreement without changing the status. That is exactly the mechanism that
+catches this, and in the `-p 4` sweep it sampled ten of 158 kills and did not draw either of the two.
+The sample size is now reported, so the strength of the check is visible rather than assumed.
+
+**Why it is open.** Isolating the filesystem a test suite reaches is not something this tool can do
+from the outside without deciding what "the filesystem a test suite reaches" means — a copy of the
+whole repository per worker is the honest version and it is expensive. The alternatives worth
+weighing are: making the sample size default to something meaningful rather than zero, verifying
+survivors as well as kills, and simply saying in the report that a suite touching shared state will
+not give the same answer at two concurrencies. None of them is free, and picking between them is a
+decision rather than a fix.
+
+**Our tests.** None. The reproduction is two full sweeps of this repository, which is not a test.
