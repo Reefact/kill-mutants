@@ -59,16 +59,33 @@ jobs:
         id: solution
         run: |
           set -euo pipefail
+          # shellcheck source=tools/trains.sh
+          . tools/trains.sh
           count="$(find . -maxdepth 1 \( -name '*.sln' -o -name '*.slnx' \) | wc -l)"
-          if [ "$count" -eq 0 ]; then
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::No solution at the repository root yet; the release rehearsal is skipped."
-          elif [ "$count" -gt 1 ]; then
+          if [ "$count" -gt 1 ]; then
             echo "::error::Found $count solutions at the repository root; 'dotnet build' cannot pick one."
             exit 1
-          else
-            echo "present=true" >> "$GITHUB_OUTPUT"
           fi
+          if [ "$count" -eq 1 ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # No solution. That is legitimate only while nothing is packable: the moment a project
+          # declares a train, release.yml would refuse the release ("Expected exactly one solution")
+          # — but only once a tag is pushed. Skipping here would let the pull request that
+          # introduces that project go green on a rehearsal that silently exercised nothing, and
+          # move the failure to release day. Fail here instead, where the change is still in review.
+          packable=''
+          for train in $(train_ids); do
+            if [ -n "$(projects_of "$train")" ]; then packable="${packable} ${train}"; fi
+          done
+          if [ -n "$packable" ]; then
+            echo "::error::No solution at the repository root, but these trains already have projects:${packable}. A release of them would fail, so the rehearsal fails now instead of at tag time. Add the root solution."
+            exit 1
+          fi
+          echo "present=false" >> "$GITHUB_OUTPUT"
+          echo "::notice::No solution and no project on any train yet; the release rehearsal is skipped."
+
 
       - name: Build
         if: steps.solution.outputs.present == 'true'

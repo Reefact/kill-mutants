@@ -67,7 +67,35 @@ for project in $(projects_of "$train"); do
   fi
 done
 
+# The root fallback may serve AT MOST ONE train. The trains version independently, so two of
+# them can legitimately reach the same version number — and a single root heading carries no
+# train identity, so `## [1.0.0]` written for the engine would silently authorise the CLI's
+# 1.0.0 as well, which is precisely the undocumented release this script exists to refuse.
+#
+# A train contends for the root file only once it HAS projects and none of them keeps a
+# changelog beside it. A train whose project does not exist yet is not a contender: it cannot
+# be released at all (pack.sh refuses an empty train), and counting it would block the first
+# real release of the train that IS ready.
 if [ -z "$files" ] && [ -f CHANGELOG.md ]; then
+  contenders=''
+  for other in $(train_ids); do
+    other_projects="$(projects_of "$other")"
+    [ -n "$other_projects" ] || continue
+    other_has_own=0
+    for project in $other_projects; do
+      if [ -f "$(dirname "$project")/CHANGELOG.md" ]; then other_has_own=1; break; fi
+    done
+    [ "$other_has_own" = 1 ] || contenders="$contenders $other"
+  done
+  # More than one contender means the root file cannot say which train an entry documents.
+  if [ "$(printf '%s\n' $contenders | grep -c .)" -gt 1 ]; then
+    printf 'check-changelog: the root CHANGELOG.md would have to document more than one train (%s),\n' \
+      "$(printf '%s' "${contenders# }")" >&2
+    printf '  and a version heading carries no train identity — so an entry written for one would\n' >&2
+    printf '  authorise a release of the other at the same version. Give each of those trains a\n' >&2
+    printf '  CHANGELOG.md beside its project.\n' >&2
+    exit 1
+  fi
   files=' CHANGELOG.md'
 fi
 

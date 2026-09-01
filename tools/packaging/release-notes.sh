@@ -38,6 +38,20 @@ train_scopes="$(scopes_of "$train")"
 
 # Previous tag of the SAME train (most recent one that is not the current tag). When there
 # is none, this is the train's first release: take the whole history up to the end ref.
+#
+# This reads TAGS, and so takes a tag to mean "this was released". A tag left behind by a run
+# that failed before publishing breaks that assumption: it becomes the lower bound, and the
+# next release's notes then omit every commit up to it — changes no consumer ever received.
+#
+# The remedy is operational, not algorithmic: DELETE the tag of a release that published
+# nothing (RELEASING.md, "When a release fails"). Nothing was published under it, so it
+# describes an event that did not happen; deleting it restores the assumption for every later
+# release, and costs one command at the moment the failure is already being handled.
+#
+# The alternative — resolving the previous SUCCESSFULLY published release — means asking
+# nuget.org or the GitHub API which tags shipped. That trades a pure-git script, runnable and
+# testable anywhere with no credentials, for one that needs the network and a token to say what
+# a release contains. Not worth it for a case a `git tag -d` closes.
 previous_tag="$(git tag --list "${prefix}*" --sort=-version:refname | grep -Fxv "$current_tag" | head -n1 || true)"
 if [ -n "$previous_tag" ]; then
   range="${previous_tag}..${end_ref}"

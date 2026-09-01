@@ -145,8 +145,19 @@ jobs:
           # from the package identity, so a tag like lib-v1.2.3+build5 packs as <Package>.1.2.3.nupkg.
           # If 1.2.3 were already published, the push's --skip-duplicate would then turn this release into
           # a green no-op that publishes nothing. Better to fail loudly here than to "succeed" silently.
-          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
-            echo "::error::Invalid version '$VERSION'; expected a SemVer value like 1.2.3 or 1.2.3-beta.1 (build metadata '+...' is not allowed: NuGet drops it from the package identity)."
+          # The SemVer grammar itself, not an approximation of it: every numeric identifier is
+          # 0 or a leading-zero-free number, in the core AND in the pre-release. A loose
+          # '[0-9]+' accepts 01.2.3, which NuGet normalizes to 1.2.3 when it packs — verified:
+          # -p:Version=01.2.3 produces <Package>.1.2.3.nupkg. That is the same normalization
+          # collision the build-metadata rule below exists to prevent, and with the same
+          # outcome: if 1.2.3 is already published, --skip-duplicate makes the push a green
+          # no-op while a GitHub Release is still cut under the un-normalized tag name.
+          #
+          # Build metadata (+...) stays REJECTED even though SemVer allows it, for that same
+          # reason: NuGet strips it from the package identity, so lib-v1.2.3+build5 packs as
+          # <Package>.1.2.3.nupkg. Better to fail loudly here than to "succeed" silently.
+          if ! printf '%s' "$VERSION" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?$'; then
+            echo "::error::Invalid version '$VERSION'; expected a SemVer value like 1.2.3 or 1.2.3-beta.1. Leading zeroes (01.2.3) and build metadata ('+...') are both rejected: NuGet normalizes them away, so the package identity would not match the tag."
             exit 1
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -300,10 +311,38 @@ jobs:
           # $TAG — as the range's upper bound: on a workflow_dispatch publish the tag does not exist yet
           # (gh creates it below), so git log must resolve against the commit.
           tools/packaging/release-notes.sh "$TRAIN" "$TAG" "$GITHUB_SHA" > release-notes.md
-          # On a re-run the release already exists, so `gh release create` fails and the fallback runs:
-          # `gh release upload` refreshes the assets but cannot change the prerelease flag, so
-          # `gh release edit` reconciles it — keeping a repair run idempotent in both directions.
-          gh release create "$TAG" "${assets[@]}" \
-            --title "$TAG" --notes-file release-notes.md --target "$GITHUB_SHA" --prerelease="$PRERELEASE" \
-          || { gh release upload "$TAG" "${assets[@]}" --clobber \
-                 && gh release edit "$TAG" --prerelease="$PRERELEASE"; }
+          # On a re-run the release already exists, so `gh release create` fails and the fallback
+          # runs: `gh release upload --clobber` refreshes the assets but cannot change the
+          # prerelease flag, so `gh release edit` reconciles it — keeping a repair run idempotent
+          # in both directions.
+          #
+          # The fallback is for RE-RUNNING THIS COMMIT, and it has to say so, because --clobber
+          # deletes and re-uploads. Dispatch the same train and version from a different SHA and
+          # the unguarded fallback would replace the assets — and the provenance attesting them —
+          # with ones built from the new commit, while the tag, the source archive and the
+          # already-published (and immutable) nuget.org package still describe the old one. The
+          # push above is a green no-op in that case (--skip-duplicate), so nothing else would
+          # have objected. Refuse instead: an existing tag pointing elsewhere is a mistake to
+          # report, not a state to repair.
+          if ! gh release create "$TAG" "${assets[@]}" \
+                 --title "$TAG" --notes-file release-notes.md --target "$GITHUB_SHA" --prerelease="$PRERELEASE"
+          then
+            # "Already exists" is the only failure the repair path is for. Any other one — a
+            # network error, a missing scope — must surface as itself rather than be retried
+            # as an upload that will fail again with a worse message.
+            if ! gh release view "$TAG" >/dev/null 2>&1; then
+              echo "::error::Creating the $TAG release failed and no such release exists; see the error above."
+              exit 1
+            fi
+            # Resolve the tag from the REMOTE: on a workflow_dispatch the checkout is a branch,
+            # so a tag created since (or never fetched) may be absent locally. rev-list gives the
+            # commit for a lightweight and an annotated tag alike.
+            git fetch origin "refs/tags/$TAG:refs/tags/$TAG" --force --quiet 2>/dev/null || true
+            EXISTING_SHA="$(git rev-list -n1 "refs/tags/$TAG" 2>/dev/null || true)"
+            if [ "$EXISTING_SHA" != "$GITHUB_SHA" ]; then
+              echo "::error::The $TAG release already exists at ${EXISTING_SHA:-an unresolvable commit}, but this run built $GITHUB_SHA. Refusing to replace its assets: the tag, its source archive and the already-published nuget.org package would still describe the other commit. Release a new version instead."
+              exit 1
+            fi
+            gh release upload "$TAG" "${assets[@]}" --clobber
+            gh release edit "$TAG" --prerelease="$PRERELEASE"
+          fi

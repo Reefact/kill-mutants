@@ -85,7 +85,13 @@ violations=''
 # Intentionally unquoted: the project list is newline-separated with no spaces in paths.
 for project in $projects; do
   project_dir="$(dirname "$project")"
-  references="$(sed -n 's|.*<ProjectReference[^>]*Include="\([^"]*\)".*|\1|p' "$project")"
+  # Both XML quoting forms. MSBuild accepts Include='...' as readily as Include="...", and a
+  # double-quote-only expression finds nothing in a project written with apostrophes — so the
+  # guard below would report success over exactly the reference it exists to catch.
+  references="$(sed -n \
+    -e 's|.*<ProjectReference[^>]*Include="\([^"]*\)".*|\1|p' \
+    -e "s|.*<ProjectReference[^>]*Include='\([^']*\)'.*|\1|p" \
+    "$project")"
   for reference in $references; do
     # Project files carry Windows separators; translate, then resolve against the
     # referring project's directory so the '..' segments collapse.

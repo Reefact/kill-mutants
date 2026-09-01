@@ -145,6 +145,22 @@ That is the whole procedure. The workflow then resolves the version from the tag
 verifies the changelog, builds, tests, packs only that train, attests the artifacts,
 pushes to NuGet, and publishes a GitHub Release with train-scoped notes.
 
+## When a release fails
+
+Delete the tag. A run that failed before publishing leaves a tag describing a release that did
+not happen, and `release-notes.sh` reads tags as the record of what shipped — so the next
+release would start its notes from that tag and omit every commit up to it, changes no consumer
+ever received.
+
+```sh
+git push --delete origin lib-v1.2.3 && git tag -d lib-v1.2.3
+```
+
+Then fix the cause and tag again. Re-tagging the SAME version is safe only while nothing was
+published under it; once nuget.org has the version, it is immutable — release the next one
+instead. A run that failed AFTER the NuGet push falls in that second case: the packages are out,
+so keep the tag and go forward.
+
 ## Rehearsing
 
 - **Every pull request** runs `release-dryrun`: build, pack every train, embed the SBOM,
