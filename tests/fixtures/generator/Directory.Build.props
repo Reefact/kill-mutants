@@ -6,4 +6,24 @@
   <PropertyGroup>
     <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
   </PropertyGroup>
+
+  <!--
+    The one fixture setting that is not about standing in for a user's project.
+
+    This fixture is copied to a throwaway directory per test, and every copy builds an analyzer
+    assembly with the same identity from a different path. The shared compiler server caches analyzer
+    assemblies across builds and outlives them by minutes, so a later copy gets an earlier copy's -
+    from a directory that has since been deleted. Reproduced with plain `dotnet build`, no
+    KillMutants involved: build a copy, delete it, build a fresh one, and the second fails with
+    CS8784 "Could not load file or assembly 'Sample.Generator.Support'" followed by CS0103 for the
+    code the generator should have produced. Setting this makes it build; it is the whole of the
+    intermittent generator-fixture failures. See RB-024.
+
+    Deliberately not set in the product: a user builds their project in place, so the stale path this
+    guards against does not arise, and turning the compiler server off would cost them build time
+    for a problem they do not have.
+  -->
+  <PropertyGroup>
+    <UseSharedCompilation>false</UseSharedCompilation>
+  </PropertyGroup>
 </Project>
