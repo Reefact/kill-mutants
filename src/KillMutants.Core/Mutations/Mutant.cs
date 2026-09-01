@@ -11,9 +11,10 @@ namespace KillMutants.Mutations;
 /// </remarks>
 public sealed class Mutant
 {
-    internal Mutant(MutantId id, MutationCandidate candidate)
+    internal Mutant(MutantId id, MutationCandidate candidate, string root)
     {
         ArgumentNullException.ThrowIfNull(candidate);
+        ArgumentNullException.ThrowIfNull(root);
 
         Id = id;
         Mutator = candidate.Mutator;
@@ -22,10 +23,22 @@ public sealed class Mutant
         Location = SourceLocation.From(candidate.Original);
         OriginalText = candidate.Original.ToString();
         MutatedText = candidate.Replacement.ToString();
+        RelativePath = Relative(Location.FilePath, root);
+        Key = MutantKey.For(
+            RelativePath, Location.Line, Location.Character, Mutator, OriginalText, MutatedText);
     }
 
-    /// <summary>Identifies this mutant within the run.</summary>
+    /// <summary>Numbers this mutant within the run, for progress lines and logs.</summary>
+    /// <remarks>
+    /// A counter, and only useful inside one run. <see cref="Key"/> is what survives between runs.
+    /// </remarks>
     public MutantId Id { get; }
+
+    /// <summary>Identifies this mutant by its content, the same in every run - see <see cref="MutantKey"/>.</summary>
+    public MutantKey Key { get; }
+
+    /// <summary>The source file, relative to the directory the run was pointed at.</summary>
+    public string RelativePath { get; }
 
     /// <summary>The rule that produced this mutation.</summary>
     public MutatorName Mutator { get; }
@@ -48,4 +61,23 @@ public sealed class Mutant
 
     /// <inheritdoc />
     public override string ToString() => $"{Id} {Location} {OriginalText} -> {MutatedText}";
+
+    /// <summary>
+    /// The path relative to the run's root, or the absolute path when it lies outside it.
+    /// </summary>
+    /// <remarks>
+    /// Falling back to the absolute path keeps a linked file identifiable rather than turning it
+    /// into a chain of <c>..</c> segments that says nothing.
+    /// </remarks>
+    private static string Relative(string path, string root)
+    {
+        if (root.Length == 0 || path.Length == 0)
+        {
+            return path;
+        }
+
+        string relative = Path.GetRelativePath(root, path);
+
+        return relative.StartsWith("..", StringComparison.Ordinal) ? path : relative;
+    }
 }

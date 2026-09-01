@@ -187,8 +187,33 @@ internal sealed class XUnitTestRunner : ITestRunner
             Failed: ReadCount(assembly, "failed"),
             Errors: ReadCount(assembly, "errors"),
             Duration: process.Duration,
-            TimedOut: false);
+            TimedOut: false,
+            FailedTests: ReadFailures(assembly));
     }
+
+    /// <summary>Names the tests that did not pass, in the form <c>-method</c> accepts.</summary>
+    /// <remarks>
+    /// The runner writes a test's full case name, arguments included -
+    /// <c>Class.Method(age: 18)</c> - and that form matches nothing when handed back as a filter,
+    /// measured against xUnit 4. Everything up to the first parenthesis is the method, which does
+    /// match; a C# method name cannot contain one, so the cut is unambiguous.
+    /// </remarks>
+    private static IReadOnlyList<TestName> ReadFailures(XElement assembly) =>
+    [
+        .. assembly
+            .Descendants("test")
+            .Where(test => test.Attribute("result")?.Value is not ("Pass" or "Skip"))
+            .Select(test => test.Attribute("name")?.Value)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name![..IndexOfArguments(name!)].TrimEnd())
+            .Where(name => name.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .Select(TestName.Create),
+    ];
+
+    private static int IndexOfArguments(string name) =>
+        name.IndexOf('(', StringComparison.Ordinal) is var index && index >= 0 ? index : name.Length;
 
     private static string Truncate(string output) =>
         output.Length <= 2000 ? output : output[..2000] + "...";

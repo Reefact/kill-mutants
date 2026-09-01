@@ -72,15 +72,24 @@ public static class JsonReportWriter
 
     private static object Describe(MutantResult result) => new
     {
+        // The stable one, first, because it is the one to join two reports on. `id` is a counter
+        // and means nothing outside the run that produced it.
+        key = result.Mutant.Key.ToString(),
         id = result.Mutant.Id.ToString(),
         mutator = result.Mutant.Mutator.ToString(),
         status = result.Status.ToString(),
         outcome = result.Outcome.ToString(),
+        path = result.Mutant.RelativePath,
         file = result.Mutant.Location.FilePath,
         line = result.Mutant.Location.Line,
         character = result.Mutant.Location.Character,
         original = result.Mutant.OriginalText,
         mutated = result.Mutant.MutatedText,
+
+        // With the three fields above and these names, a kill can be reproduced by hand: put the
+        // mutation in the file at that position, run these tests, watch them fail. A verdict nobody
+        // can reproduce is a verdict nobody can dispute.
+        killedBy = result.KilledBy.Select(test => test.ToString()).ToArray(),
         detail = result.Detail,
     };
 }

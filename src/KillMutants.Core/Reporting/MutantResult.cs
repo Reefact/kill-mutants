@@ -1,4 +1,5 @@
 using KillMutants.Mutations;
+using KillMutants.Testing;
 
 namespace KillMutants.Reporting;
 
@@ -6,8 +7,30 @@ namespace KillMutants.Reporting;
 /// <param name="Mutant">The mutant that was tested.</param>
 /// <param name="Status">What became of it.</param>
 /// <param name="Detail">Why, when the status needs explaining - compiler errors, for instance.</param>
-public sealed record MutantResult(Mutant Mutant, MutantStatus Status, string? Detail = null)
+/// <param name="KilledBy">
+/// The tests that failed against this mutant, empty unless it was killed by one.
+/// </param>
+public sealed record MutantResult(
+    Mutant Mutant,
+    MutantStatus Status,
+    string? Detail = null,
+    IReadOnlyList<TestName>? KilledBy = null)
 {
+    /// <summary>The tests that failed against this mutant, named so they can be run again.</summary>
+    /// <remarks>
+    /// <para>
+    /// A kill nobody can reproduce is not a kill. With this, the mutation and the failing test, a
+    /// reader can put the change into the file by hand, run those tests, and watch them fail -
+    /// without this tool in the loop at all. That is the only way a disputed verdict can be settled.
+    /// </para>
+    /// <para>
+    /// Testing stops at the first failure, so this names the test that settled it rather than every
+    /// test that would have failed. One is enough to reproduce the kill, and looking for the rest
+    /// would cost a full suite run per mutant.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<TestName> KilledBy { get; init; } = KilledBy ?? [];
+
     /// <summary>What this result says about the test suite - see <see cref="MutantOutcome"/>.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The status is not one this tool produces.</exception>
     public MutantOutcome Outcome => Status switch
