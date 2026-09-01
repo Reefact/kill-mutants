@@ -181,6 +181,12 @@ projects_of() {
       printf '%s\n' "$_po_proj"
     fi
   done
+  # Always succeed, for the reason train_of_tag does: callers read the RESULT through a
+  # command substitution, and `x="$(projects_of lib)"` in a `set -e` script would abort on
+  # the non-zero status the leading grep returns when it matches nothing — which is every
+  # repository that has no .csproj yet, this one included. Emptiness is an answer here, not
+  # a failure. Measured: without this, the rehearsal died before reaching its own checks.
+  return 0
 }
 
 # ambiguous_trains — echo the .csproj paths declaring <ReleaseTrain> more than once.
@@ -198,6 +204,7 @@ ambiguous_trains() {
       printf '%s\n' "$_at_proj"
     fi
   done
+  return 0   # empty is an answer; see projects_of
 }
 
 # declared_trains — echo every train id declared by a .csproj anywhere in the
@@ -231,4 +238,5 @@ conditioned_trains() {
       printf '%s\n' "$_ct_proj"
     fi
   done
+  return 0   # empty is an answer; see projects_of
 }
