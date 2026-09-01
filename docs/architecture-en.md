@@ -260,7 +260,13 @@ That is not a reason to delete them: a surviving `StringLiteral` mutant is a tru
 project that asserts on its messages it is a useful one. It is a reason to *report the split* and let
 the user act on it, which is what `--mutators` and `--without` are for. The report shows what each
 family cost and caught, so the choice is made against a project's own numbers rather than against
-this one's.
+this one's. Dropping those two here takes the run from 413 mutants in 7.1 minutes to 207 in 4.1, and
+the survivors to read from 129 to 62.
+
+**Which makes one thing worth saying out loud:** a score is only comparable to another score from the
+same catalogue. That same change moves the number from 28.81% to 43%, and the tests did not improve —
+a different question was asked. A CI job should pick a catalogue and keep it; the JSON report lists
+the families that actually ran, so a consumer can tell which question was answered.
 
 M11 also stops mutating anything marked `[ExcludeFromCodeCoverage]`. The attribute is a statement of
 intent — this code is not part of what the tests are expected to cover — and since uncovered and
