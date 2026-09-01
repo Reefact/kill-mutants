@@ -46,6 +46,9 @@ public class CatalogueCorpusTests
             { "interpolation and a raw string", "string a", "string M({0}) => $\"x{a}y\" + \"\"\"z\"\"\";" },
             { "an operator inside an interpolation hole", "int a, int b", "string M({0}) => $\"{a + b} of {a} did not pass\";" },
             { "a conditional inside an interpolation hole", "bool f, int a", "string M({0}) => $\"{(f ? a : 0)} left\";" },
+            { "a literal in a constant pattern", "string s", "bool M({0}) => s is \"abc\";" },
+            { "a literal in a switch expression arm", "string s", "int M({0}) => s switch { \"abc\" => 1, _ => 0 };" },
+            { "a for loop's clauses", "int n", "int M({0}) { int t = 0; for (int i = 0; i < n; i++) { t += i; } return t; }" },
             { "compound assignment on a string", "string a", "string M({0}) { a += \"x\"; return a; }" },
             { "compound assignment and increment", "int a", "int M({0}) { a += 1; a *= 2; a++; --a; return a; }" },
             { "switch expression with patterns", "object o", "int M({0}) => o switch { int i when i >= 3 => i, string s => s.Length, _ => 0 };" },
@@ -75,6 +78,9 @@ public class CatalogueCorpusTests
 
             // The ternary declares `first`, and swapping its branches would orphan it (RB-016).
             { "a conditional over a list pattern", "int[] xs", "int M({0}) => xs is [var first, ..] ? first : xs[^1];" },
+
+            // Numeric literals are not in the catalogue, so a case label offers nothing to mutate.
+            { "a switch case label", "int a", "int M({0}) { switch (a) { case 3: return 1; default: return 0; } }" },
         };
 
     /// <summary>

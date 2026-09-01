@@ -567,3 +567,31 @@ for a case we have not yet seen.
 **Our tests.** `MutationTestingEndToEndTests.A_source_generator_with_a_dependency_of_its_own_is_run_and_not_mutated`,
 against `tests/fixtures/generator`, which fails on either defect alone.
 
+---
+
+## RB-019 — A pattern is made of constants, and a recorder is not one · COVERED
+
+The one entry in this file that came from reading Stryker.NET rather than from running our own tool,
+which is what the method in the header is for.
+
+**How it was found.** Their orchestrator list carries a `ConstantPatternSyntaxOrchestrator` whose
+whole body is "block injection here, restore it after". Nothing in it says why, so the question was
+whether the constraint it defends against still exists for us — our instrumentation is a wrapping
+call rather than an injected switch, so most of their placement rules do not apply. This one does.
+Measured against the .NET 10 SDK: instrumenting the literal in `s is "abc"` yields
+`CS9135 - a constant value of type 'string' is expected`, and the same for a switch expression arm.
+The instrumented build fails, so the run stops before a single mutant is tested.
+
+**The rule.** No site with a `PatternSyntax` or `SwitchLabelSyntax` ancestor carries a recorder. A
+`when` clause is deliberately outside it: it is a sibling of the pattern rather than part of it, and
+its expressions are ordinary code.
+
+**What stays.** The *mutation* is unaffected and must be: `s is "abc"` rewritten to `s is ""` is a
+constant, compiles, and changes what matches. This is a rule about recorders, exactly like RB-017 —
+the mutants at those sites are tested against the whole suite instead of a measured subset.
+
+**Our tests.** `MutationSitesTests.A_site_inside_a_pattern_carries_no_recorder`,
+`A_site_in_a_when_clause_still_carries_one`, and the corpus entries "a literal in a constant pattern"
+and "a literal in a switch expression arm", which assert both halves at once: the mutants compile and
+differ, and instrumenting the file still leaves it building.
+
