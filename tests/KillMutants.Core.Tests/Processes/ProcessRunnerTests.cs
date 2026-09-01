@@ -54,4 +54,34 @@ public class ProcessRunnerTests
         Assert.Equal(3, result.ExitCode);
         Assert.False(result.Succeeded);
     }
+
+    /// <summary>
+    /// Cancelling is not the same as walking away. The timeout path always killed the process; the
+    /// caller's own token skipped that catch entirely, so the exception travelled out, the Process
+    /// object was disposed - which stops nothing - and the program kept running.
+    /// </summary>
+    [Fact]
+    public async Task A_process_the_caller_cancels_is_killed_rather_than_abandoned()
+    {
+        string marker = Path.Combine(Path.GetTempPath(), $"killmutants-test-{Guid.NewGuid():N}.marker");
+
+        // Survives long enough to be cancelled, and leaves proof behind if it is left running.
+        (string command, string[] arguments) = OperatingSystem.IsWindows()
+            ? ("cmd.exe", ["/c", $"timeout /t 5 /nobreak > nul & type nul > \"{marker}\""])
+            : ("/bin/sh", new[] { "-c", $"sleep 5; touch '{marker}'" });
+
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => ProcessRunner.RunAsync(
+                command, arguments, Path.GetTempPath(), TimeSpan.FromMinutes(5),
+                cancellationToken: cancellation.Token));
+
+        // Well past when the process would have written it, had it survived.
+        await Task.Delay(TimeSpan.FromSeconds(7), TestContext.Current.CancellationToken);
+
+        Assert.False(
+            File.Exists(marker),
+            "the cancelled process ran to completion, so it was never killed");
+    }
 }
