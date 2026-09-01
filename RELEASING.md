@@ -68,12 +68,22 @@ Following the convention every Reefact repository already shares — `Diagnostic
 
 | Train | `PackageId` | `ToolCommandName` |
 | ----- | ----------- | ----------------- |
-| `lib` | `KillMutants` | — |
+| `lib` | `KillMutants.Core` | — |
 | `cli` | `KillMutants.Cli` | `dotnet-killmutants` — typed `dotnet killmutants` |
 
-The repository name is kebab-case and the package ids are PascalCase; sub-packages are
-suffixed with a dot (`KillMutants.Xunit`, ...). No package id carries a hyphen, which is
-why one glob covers them all.
+The repository name is kebab-case and the package ids are PascalCase, suffixed with a dot
+(`KillMutants.Xunit`, ...). No package id carries a hyphen, which is why one glob covers
+them all.
+
+One deliberate departure, for now: the sibling repositories give the engine the BARE name
+(`DiagnosticCatalog`, `JustDummies`, `FirstClassErrors`) and suffix only the satellites,
+whereas the engine here is `KillMutants.Core`. Nothing in the pipeline cares — the glob,
+the trains and the workflows are all written against ids they never spell out — so `Core`
+can stay, or a bare `KillMutants` can join or replace it later, with no release change.
+
+Worth doing early either way: reserve the `KillMutants.` prefix on nuget.org (prefix
+reservation, for a verified owner). The package ids match a domain the project owns, and
+an id nobody has claimed is an id anybody can claim.
 
 `PackageId` and `ToolCommandName` are independent properties, and the convention uses
 that: you install `DiagnosticCatalog.Cli` and you type `dcat`. The short name belongs to
