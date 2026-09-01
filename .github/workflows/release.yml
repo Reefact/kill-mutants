@@ -1,0 +1,309 @@
+name: release
+
+on:
+  push:
+    # Publish on a train-prefixed semantic-version tag. The trains version independently;
+    # the authoritative list is tools/trains.sh, but GitHub requires these patterns to be
+    # literal, so a train added there must be added here too. A tag whose prefix matches
+    # no train is rejected by "Resolve version" below, so the two cannot drift silently.
+    tags:
+      - 'lib-v*.*.*'
+      - 'cli-v*.*.*'
+  workflow_dispatch:
+    inputs:
+      train:
+        description: 'Which release train to pack/publish'
+        type: choice
+        options:
+          - lib
+          - cli
+        required: true
+      version:
+        description: 'Package version, without any prefix (e.g. 1.2.3; a dry run can use any SemVer, e.g. 0.0.0-dry.1)'
+        required: true
+      # release.yml is the only workflow no ordinary CI run exercises before a real tag:
+      # version resolution, pack, SBOM generation, OIDC and the attestation permissions
+      # only ever execute in production conditions. Dry run makes all of it testable on
+      # demand: everything runs up to AND INCLUDING the attestation and the OIDC login —
+      # both deliberately stay in, since OIDC and permission failures are exactly what a
+      # dry run rehearses — while the steps that actually publish (the NuGet push and the
+      # GitHub Release) are skipped. Defaults to true so an accidental dispatch publishes
+      # nothing; publishing requires explicitly unticking it.
+      dry_run:
+        description: 'Dry run: stop after pack + attestation; skip the publish steps (NuGet push, GitHub Release)'
+        type: boolean
+        default: true
+
+# Never publish the same ref twice concurrently.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+# Least privilege at the top level: read-only by default. The single job below widens only the write scopes it
+# needs, which is what OpenSSF Scorecard's Token-Permissions check rewards (a read-only top level, writes per job).
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+  NUGET_FEED: 'https://api.nuget.org/v3/index.json'
+
+jobs:
+  pack-push:
+    name: Pack & push NuGet
+    runs-on: ubuntu-latest
+    # build + test + pack + attest + push; cap a hung release rather than the 6-hour default.
+    timeout-minutes: 20
+    permissions:
+      # Create the GitHub Release and upload the attested .nupkg/.snupkg as its assets. Nothing in
+      # this pipeline writes to a branch: the release is the only use of the write scope.
+      contents: write
+      # Request a GitHub OIDC token, exchanged for a short-lived NuGet API key via trusted publishing
+      # (no long-lived NUGET_API_KEY secret is stored).
+      id-token: write
+      # Store the signed build-provenance attestations in the repository's attestation store,
+      # so anyone can verify a released package with `gh attestation verify`.
+      attestations: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # Full history + tags so tools/packaging/release-notes.sh can resolve the previous
+          # same-train tag — the lower bound of the release-notes commit range.
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      # A release tag bypasses every gate that protects main: branch protection protects BRANCHES, and this
+      # workflow triggers on a tag push. `actions/checkout` above has no `ref:`, so it checks out the tagged
+      # commit itself -- whatever that commit is. Nothing so far required it to have been reviewed, tested, or
+      # even seen: `git push origin <tag>` carries the objects the tag needs, so a commit that never existed on
+      # the remote arrives with it and gets published. nuget.org versions are immutable.
+      #
+      # Ancestry of main is the whole check, and it is enough. main is protected and requires its checks, so a
+      # commit reachable from main provably went through them. Querying the API for each check run of the tagged
+      # commit would be more precise and much heavier for the same verdict -- a bounded check that refuses
+      # loudly, rather than a clever one.
+      #
+      # The explicit fetch is required: checkout resolved a TAG, so origin/main is not necessarily present in
+      # the clone even at fetch-depth 0. Skipped on workflow_dispatch, whose ref is already a branch.
+      - name: Refuse to publish a commit that is not on main
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --quiet
+          # FETCH_HEAD, not origin/main: checkout configures the remote for the ref that triggered the run, so
+          # the remote-tracking branch may simply not exist here. FETCH_HEAD is what the fetch just wrote.
+          if git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD; then
+            echo "ok: $GITHUB_SHA is on main"
+          else
+            echo "::error::The tagged commit $GITHUB_SHA is not an ancestor of main, so it never passed the checks that protect it. Refusing to publish. Tag a commit that is on main."
+            exit 1
+          fi
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        # Read the (attacker-controllable) tag name and manual inputs via the environment rather than interpolating
+        # ${{ ... }} straight into the script, and validate the result against a strict SemVer allowlist. A tag such
+        # as "lib-v1.2.3;id" is a valid Git ref that matches the release-tag trigger, so an unchecked value could
+        # inject shell commands into every step that uses it.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TRAIN: ${{ github.event.inputs.train }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # shellcheck source=tools/trains.sh
+          . tools/trains.sh
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            TRAIN="$INPUT_TRAIN"
+            VERSION="$INPUT_VERSION"
+          else
+            # REF_NAME is the train-prefixed tag (e.g. lib-v1.2.3). The train is resolved against
+            # tools/trains.sh rather than a hardcoded list, so a train added there routes without
+            # editing this script — and a tag whose prefix matches nothing fails here.
+            TRAIN="$(train_of_tag "$REF_NAME")"
+            if [ -z "$TRAIN" ]; then
+              echo "::error::Tag '$REF_NAME' matches no release train (known: $(train_ids | tr '\n' ' '))."
+              exit 1
+            fi
+            VERSION="${REF_NAME#"$(prefix_of "$TRAIN")"}"
+          fi
+          if ! require_train "$TRAIN"; then
+            echo "::error::Invalid train '$TRAIN'."
+            exit 1
+          fi
+          # Build metadata (+...) is deliberately REJECTED even though SemVer allows it: NuGet strips it
+          # from the package identity, so a tag like lib-v1.2.3+build5 packs as <Package>.1.2.3.nupkg.
+          # If 1.2.3 were already published, the push's --skip-duplicate would then turn this release into
+          # a green no-op that publishes nothing. Better to fail loudly here than to "succeed" silently.
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::Invalid version '$VERSION'; expected a SemVer value like 1.2.3 or 1.2.3-beta.1 (build metadata '+...' is not allowed: NuGet drops it from the package identity)."
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "train=$TRAIN" >> "$GITHUB_OUTPUT"
+          echo "Resolved $TRAIN release version: $VERSION"
+
+      # Refuse to publish a version the train's changelog does not document. Placed here, before
+      # the restore, so the run fails in seconds rather than after a build and a full test pass —
+      # and, more to the point, before anything has been packed, attested or pushed.
+      #
+      # Skipped on a dry run, and only there: a rehearsal passes a throwaway version (0.0.0-dryrun)
+      # that no changelog documents and none should. The condition is the same one the publishing
+      # steps carry, so the check covers exactly the runs that publish.
+      - name: Check the changelog documents this version
+        if: github.event_name == 'push' || inputs.dry_run == false
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TRAIN: ${{ steps.version.outputs.train }}
+        run: tools/packaging/check-changelog.sh "$TRAIN" "$VERSION"
+
+      # A release with no solution would fail deep inside `dotnet restore` with MSB1003. Say it here
+      # instead, before anything else runs. Discovered rather than named, so this never needs editing
+      # when the solution is added.
+      - name: Check the solution is present
+        run: |
+          set -euo pipefail
+          count="$(find . -maxdepth 1 \( -name '*.sln' -o -name '*.slnx' \) | wc -l)"
+          if [ "$count" -ne 1 ]; then
+            echo "::error::Expected exactly one solution at the repository root; found $count. Nothing can be released."
+            exit 1
+          fi
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: dotnet build -c Release --no-restore -p:Version="$VERSION"
+
+      - name: Test
+        run: dotnet test -c Release --no-build --logger "console;verbosity=normal"
+
+      # Pack only the train this release targets, so an engine release never republishes the tool
+      # and vice versa. The projects on the train are the ones declaring it; the packed set, the
+      # flags, the embedded SBOM and the cross-train guard are all in pack.sh, which the
+      # release-dryrun workflow calls too — so the rehearsal can never drift from the real release.
+      - name: Pack
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TRAIN: ${{ steps.version.outputs.train }}
+        run: tools/packaging/pack.sh "$VERSION" "$TRAIN"
+
+      - name: Upload packages as build artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: nupkgs
+          # Keep the symbol packages (.snupkg) alongside the .nupkg so a release run's artifacts
+          # mirror exactly what is pushed to nuget.org (dotnet nuget push sends both).
+          path: |
+            artifacts/*.nupkg
+            artifacts/*.snupkg
+          if-no-files-found: error
+
+      # SLSA build provenance: sign an attestation binding each artifact's SHA-256 to this repository,
+      # workflow, commit and runner (via Sigstore + the job's OIDC identity), and store it in the repo's
+      # attestation store. The attestation covers the bytes packed HERE — which are published verbatim as
+      # GitHub Release assets below. It deliberately does NOT match the nuget.org copy: nuget.org repository-
+      # signs every upload (adds a .signature.p7s inside the .nupkg), changing the checksum, so consumers
+      # verify provenance against the Release asset and the nuget.org signature via `dotnet nuget verify`.
+      # Runs BEFORE both publications on purpose: only attested artifacts are ever released or pushed.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            artifacts/*.nupkg
+            artifacts/*.snupkg
+
+      # Trusted publishing: exchange the job's OIDC token for a short-lived, single-use NuGet API key.
+      # Requires a trusted publishing policy on nuget.org (owner Reefact / repo kill-mutants /
+      # workflow release.yml) for each published package, and the NUGET_USER repository VARIABLE set to
+      # the nuget.org account username (profile name, not the email address).
+      #
+      # NUGET_USER is a repository VARIABLE, not a secret, and deliberately so. It is not a credential:
+      # the OIDC token carries the proof of identity, and this only names the nuget.org account whose
+      # trusted-publishing policy to look the token up against. A nuget.org username is public — it is
+      # in the profile URL and on every package the account owns, and NuGet's own example passes it as
+      # a literal. Storing it as a secret would buy no confidentiality and would cost the one thing
+      # that matters when this step fails: the logs would print '***' instead of the account actually
+      # attempted, which is precisely what a failed token exchange needs to show.
+      #
+      # NOTHING HAS BEEN PUBLISHED YET, so nuget.org has no policy for these packages: until the policy
+      # and NUGET_USER are set up, every run of this workflow — dry run included — fails at this step by
+      # design. See RELEASING.md, "One-time setup".
+      #
+      # This login runs on EVERY trigger, INCLUDING a dry run: the OIDC token exchange is what validates the
+      # trusted-publishing policy, so rehearsing it here makes a dry run fail red when the policy or
+      # NUGET_USER is missing/misconfigured — instead of only ever finding out during a real release. It
+      # mints a short-lived, single-use key that a dry run never spends (the push below is skipped). Only the
+      # steps that actually PUBLISH are gated off on a dry run: a tag push always publishes (inputs.* is
+      # empty on push, so the event check short-circuits first); a manual dispatch publishes only with
+      # dry_run explicitly unticked.
+      - name: NuGet login (OIDC)
+        id: nuget-login
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      - name: Push to NuGet
+        if: github.event_name == 'push' || inputs.dry_run == false
+        env:
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+        run: |
+          dotnet nuget push "artifacts/*.nupkg" \
+            --api-key "$NUGET_API_KEY" \
+            --source "$NUGET_FEED" \
+            --skip-duplicate
+
+      # Publish the exact attested artifacts as GitHub Release assets — the byte-for-byte bytes the
+      # provenance attestation covers, so `gh attestation verify <asset>.nupkg` succeeds against them
+      # (unlike the nuget.org copy, which is repository-signed). `gh` is preinstalled on the runner, so no
+      # extra action is pinned. On a tag push the tag already exists (--target is then ignored); on
+      # workflow_dispatch the tag is missing and `gh` would otherwise auto-create it from the DEFAULT
+      # branch's latest state — --target "$GITHUB_SHA" pins it to the commit this job actually built and
+      # attested, so the release tag, source archive and attested packages all point at the same commit
+      # even when dispatched from a hotfix branch or an older SHA. The `|| upload --clobber` fallback
+      # keeps a re-run idempotent if the release already exists.
+      - name: Publish GitHub Release with attested packages
+        if: github.event_name == 'push' || inputs.dry_run == false
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TRAIN: ${{ steps.version.outputs.train }}
+        run: |
+          set -euo pipefail
+          # shellcheck source=tools/trains.sh
+          . tools/trains.sh
+          # nullglob: a train may ship no .snupkg (a tool package has no symbol package), so the
+          # pattern must expand to nothing rather than to a literal path gh would fail to upload.
+          shopt -s nullglob
+          TAG="$(prefix_of "$TRAIN")${VERSION}"
+          assets=(artifacts/*.nupkg artifacts/*.snupkg)
+          # A SemVer pre-release label (anything after '-') marks the GitHub Release as a pre-release,
+          # matching how NuGet lists it, so a preview never shows up as the repo's "Latest" release.
+          # Build metadata '+...' is already rejected in "Resolve version", so a '-' here is
+          # unambiguously the pre-release separator (-preview.1, -beta.1, -rc.1, ...).
+          PRERELEASE=false
+          case "$VERSION" in *-*) PRERELEASE=true ;; esac
+          # Train-scoped notes (only this train's Conventional Commit scopes) instead of --generate-notes,
+          # so an engine release never lists the tool's commits and vice versa. Pass $GITHUB_SHA — not
+          # $TAG — as the range's upper bound: on a workflow_dispatch publish the tag does not exist yet
+          # (gh creates it below), so git log must resolve against the commit.
+          tools/packaging/release-notes.sh "$TRAIN" "$TAG" "$GITHUB_SHA" > release-notes.md
+          # On a re-run the release already exists, so `gh release create` fails and the fallback runs:
+          # `gh release upload` refreshes the assets but cannot change the prerelease flag, so
+          # `gh release edit` reconciles it — keeping a repair run idempotent in both directions.
+          gh release create "$TAG" "${assets[@]}" \
+            --title "$TAG" --notes-file release-notes.md --target "$GITHUB_SHA" --prerelease="$PRERELEASE" \
+          || { gh release upload "$TAG" "${assets[@]}" --clobber \
+                 && gh release edit "$TAG" --prerelease="$PRERELEASE"; }
