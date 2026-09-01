@@ -35,12 +35,30 @@ packed, which was never published. `pack.sh` refuses such a release.
 Until both are done, every run of `release.yml` — dry run included — fails at the
 NuGet login step, by design.
 
-1. **`NUGET_USER` repository variable** → the nuget.org account username (the profile
-   name, not the email). A *variable*, not a secret: it is an identifier, not a
-   credential, and masking it would only make a failed login harder to read.
-2. **A trusted-publishing policy on nuget.org** for each published package id, bound to
-   owner `Reefact`, repository `kill-mutants`, workflow `release.yml`. No long-lived
-   API key is stored anywhere.
+**1. The `NUGET_USER` repository variable** → the nuget.org account username (the
+profile name, not the email). A *variable*, not a secret: it is an identifier, not a
+credential, and masking it would only make a failed login harder to read.
+
+**2. A trusted-publishing policy on nuget.org** (your username → *Trusted Publishing*):
+
+| Field | Value | |
+| ----- | ----- | - |
+| Repository Owner | `Reefact` | |
+| Repository | `kill-mutants` | |
+| Workflow File | `release.yml` | The file NAME only — no `.github/workflows/` path. A mistyped name matches nothing and fails the login on a real tag. |
+| Environment | *(empty)* | `release.yml` declares no `environment:`. Filling this in requires the token to carry that claim, and the push fails. |
+| Scopes | Push new packages and package versions | Nothing is published yet; "only new package versions" would refuse the first publish of a new package id. |
+| Glob Patterns | `KillMutants*` and `kill-mutants*`, one per line | Limits what this workflow may push. Not `*`, which would let a compromised repository publish to every package the account owns. The trap is the hyphen, not the case: `KillMutants*` does not match `kill-mutants`. Tighten to exact ids once published. |
+
+No long-lived API key is stored anywhere: the OIDC exchange mints a short-lived,
+single-use key, valid for an hour, which is why `release.yml` logs in immediately
+before the push rather than at the top of the job.
+
+A new policy may start *temporarily active for 7 days* — typically on a private
+repository — and goes inactive if nothing publishes in that window (it can be
+restarted at any time). nuget.org needs the GitHub repository and owner ids, which
+only a successful token exchange supplies, to lock the policy against resurrection
+attacks. A dry run is enough to satisfy it: see "Rehearsing" below.
 
 ## Cutting a release
 
