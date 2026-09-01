@@ -224,10 +224,28 @@ lequel donne une réponse pour un framework indéterminé. Des mutants pourraien
 un framework que le projet de test ne charge jamais.
 
 **Notre comportement.** Un projet à muter est toujours résolu contre le framework du projet de test
-qui l'atteint, épinglé explicitement sur la requête MSBuild. Un *projet de test* qui en vise
+qui l'atteint, épinglé explicitement sur les deux requêtes MSBuild. Un *projet de test* qui en vise
 plusieurs est refusé avec un message les nommant, plutôt que d'en choisir un en silence et de
 rapporter un score pour un framework que l'utilisateur n'a pas choisi — chacun demanderait son propre
 run, sa propre sortie et son propre verdict.
+
+**Cette entrée a été fausse pendant un temps, et cela mérite d'être consigné.** « Épinglé
+explicitement sur la requête MSBuild » était vrai de la requête sur les *faits* d'un projet et faux
+de la requête sur sa *ligne de commande de compilation*, qui ne nommait aucun framework. Une revue
+automatique de la pull request d'ouverture l'a trouvé. La conséquence n'est pas celle que cette
+entrée prévoyait : une compilation externe ne répond pas pour un framework indéterminé, elle répond
+une liste vide et sort en code zéro — mesuré contre le SDK .NET 10 — si bien que
+`CscCommandLine.Parse` la refusait et que l'exécution s'arrêtait en accusant une compilation qui
+avait réussi. Une bibliothèque visant deux frameworks était tout simplement inmutable.
+
+La leçon porte sur ce document plutôt que sur MSBuild. COUVERT avait été écrit d'après la conception
+et non d'après un test, et rien ici n'exerçait un projet multi-cible avant que
+`tests/fixtures/multitarget` n'existe. Une entrée qui affirme qu'un défaut est traité doit nommer ce
+qui le retient.
+
+**Nos tests.** `MultiTargetedProjectTests.A_library_built_for_several_frameworks_is_mutated_for_the_one_its_tests_load`,
+contre une bibliothèque construite pour `netstandard2.0;net10.0` et un projet de test qui en charge
+un seul.
 
 ---
 

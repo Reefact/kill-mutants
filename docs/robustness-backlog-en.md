@@ -208,9 +208,24 @@ which one gives an answer for an unspecified one. Mutants could then be emitted 
 the test project never loads.
 
 **Our behaviour.** A project under test is always resolved against the framework of the test project
-that reaches it, pinned explicitly on the MSBuild query. A *test* project that targets several is
+that reaches it, pinned explicitly on both MSBuild queries. A *test* project that targets several is
 refused with a message naming them, rather than silently picking one and reporting a score for a
 framework the user did not choose — each would need its own run, its own output and its own verdict.
+
+**This entry was wrong for a while, and that is worth recording.** "Pinned explicitly on the MSBuild
+query" was true of the query for a project's *facts* and false of the query for its *compiler command
+line*, which named no framework at all. An automated review of the opening pull request found it. The
+consequence is not the one this entry predicted: an outer build does not answer for an unspecified
+framework, it answers with an empty list and exits zero — measured against the .NET 10 SDK — so
+`CscCommandLine.Parse` refused it and the run stopped, blaming a build that had succeeded. A library
+targeting two frameworks could not be mutated at all.
+
+The lesson is about this document rather than about MSBuild. COVERED was written from the design,
+not from a test, and nothing here exercised a multi-targeted project until
+`tests/fixtures/multitarget` existed. An entry claiming a defect is handled has to name what holds it.
+
+**Our tests.** `MultiTargetedProjectTests.A_library_built_for_several_frameworks_is_mutated_for_the_one_its_tests_load`,
+against a library built for `netstandard2.0;net10.0` and a test project that loads one of them.
 
 ---
 
