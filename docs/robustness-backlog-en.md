@@ -637,6 +637,12 @@ already loaded from the first path — whatever it contains, and even when that 
 The `Directories` list the `Resolving` fallback searches is `static` as well, so one run's analyzer
 directories stay on the list for every run after it.
 
+It shows up in two shapes, both observed. The second run gets the first run's generators — the case
+above — or it gets no generators at all: running the whole suite, a run of the generator fixture
+reported eight generators where it should have had nine, the project's own having quietly
+contributed nothing, and the compilation then failed on the code it should have produced. Nothing
+was recorded as unloadable, so the run had no idea anything was missing.
+
 **What it costs.** Nothing through the CLI, which runs one session per process and exits. Through the
 library API — `MutationTesting.RunAsync` called twice, which is what our own tests do and what a
 watch mode or an IDE integration would do — a second run silently generates with the first run's
