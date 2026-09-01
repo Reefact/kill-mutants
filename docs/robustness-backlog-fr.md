@@ -355,3 +355,46 @@ mécanisme qui rapporte silencieusement des mutants comme tués alors qu'ils ne 
 
 Consigné comme assumé plutôt qu'ouvert : le coût est compris, l'alternative est comprise, et
 l'arbitrage a été fait exprès.
+
+---
+
+## RB-015 — Un mutateur par suppression peut changer le type, pas seulement la valeur · COUVERT
+
+Découvert en ajoutant la famille `NullCoalescing` au M9, et la raison pour laquelle cette famille
+n'est pas la réécriture d'une ligne qu'elle paraît être.
+
+**Pourquoi cela compte.** `a ?? b` est très souvent là pour *supprimer* la nullabilité plutôt que
+pour fournir une valeur de repli. Retirer le repli laisse alors une expression d'un autre type :
+`int total = count ?? 0` muté en `int total = count` est une erreur dure (CS0266), pas un mutant.
+Pire, le cas des types référence n'est pas symétrique : `string s = name ?? ""` muté en
+`string s = name` compile, parce que la plainte de nullabilité est un avertissement, et que les
+avertissements sont déjà neutralisés pour les compilations de mutants par RB-004. Une règle naïve
+produit donc silencieusement des mutants utiles dans une moitié des cas et des erreurs de compilation
+dans l'autre.
+
+**La règle.** Classifier la conversion que le compilateur devrait faire depuis le seul opérande
+gauche vers ce qu'attendait le code environnant :
+`ClassifyConversion(coalesce.Left, GetTypeInfo(coalesce).ConvertedType)`, et ne proposer la mutation
+que si cette conversion existe et est implicite. Les cas d'élargissement restent mutables
+(`object o = text ?? fallback`) et exactement les cas de suppression de nullabilité sont rejetés.
+
+**Pourquoi pas la mutation miroir.** Réécrire `a ?? b` en `b` est tentant par symétrie, et n'est
+délibérément pas fait : cela supprime l'opérande gauche et tout effet de bord qu'il porte, ce qui
+transforme un signal de couverture manquante en un changement de comportement sans rapport. Le mutant
+survivant serait vrai mais sans enseignement.
+
+**Le cas voisin, même milestone.** `Conditional` échange les branches de `c ? a : b`, et un ternaire
+dont les deux branches sont la même expression donnerait un mutant au comportement identique à
+l'original : survie garantie, pour une raison qui ne dit rien des tests. Ceux-là sont écartés. La
+vérification de liaison de cette famille a dû être *plus faible* que celle des binaires : un
+conditionnel n'a pas nécessairement de type naturel — `flag ? 1 : null` n'en acquiert un que de sa
+cible — donc un type nul ne doit pas être lu comme un échec, contrairement à ce que fait
+`BinaryOperatorMutator`.
+
+**Nos tests.** `NullCoalescingMutatorTests.A_fallback_that_removes_nullability_is_not_dropped`,
+`A_left_operand_that_widens_to_the_expected_type_is_dropped`,
+`ConditionalExpressionMutatorTests.Identical_branches_are_not_swapped`,
+`A_target_typed_conditional_is_mutated`, et le test de bout en bout
+`Every_mutator_family_is_exercised_against_the_fixture`, qui échoue si une famille cesse de produire
+des mutants contre un vrai projet.
+
