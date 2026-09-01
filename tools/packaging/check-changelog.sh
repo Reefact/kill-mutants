@@ -60,12 +60,31 @@ cd "$root"
 # The changelogs the train owns: one beside each of its projects, or the root file when
 # its projects carry none.
 files=''
+missing=''
 for project in $(projects_of "$train"); do
   candidate="$(dirname "$project")/CHANGELOG.md"
   if [ -f "$candidate" ]; then
     files="$files $candidate"
+  else
+    missing="$missing $project"
   fi
 done
+
+# A train is either wholly per-project or wholly on the root file — never half of each.
+# Collecting only the changelogs that EXIST made $files non-empty as soon as one project had
+# one, which skipped the root fallback for the others: a train with two packages and one
+# changelog passed this check while the second package shipped documented nowhere. Since the
+# entry proving a release is the thing being looked for, a project with no changelog at all
+# is the one case that must never pass quietly.
+if [ -n "$files" ] && [ -n "$missing" ]; then
+  printf 'check-changelog: the %s train mixes per-project and absent changelogs.\n' "$train" >&2
+  printf '  These of its projects keep one beside them:%s\n' \
+    "$(printf '%s' "$files" | sed 's|/CHANGELOG.md||g')" >&2
+  printf '  These have none, so their packages would ship documented nowhere:%s\n' "$missing" >&2
+  printf '  Give every project on the train its own CHANGELOG.md, or none of them (the root\n' >&2
+  printf '  CHANGELOG.md then documents the train as a whole).\n' >&2
+  exit 1
+fi
 
 # The root fallback may serve AT MOST ONE train. The trains version independently, so two of
 # them can legitimately reach the same version number — and a single root heading carries no

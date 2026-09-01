@@ -85,13 +85,16 @@ violations=''
 # Intentionally unquoted: the project list is newline-separated with no spaces in paths.
 for project in $projects; do
   project_dir="$(dirname "$project")"
-  # Both XML quoting forms. MSBuild accepts Include='...' as readily as Include="...", and a
-  # double-quote-only expression finds nothing in a project written with apostrophes — so the
-  # guard below would report success over exactly the reference it exists to catch.
-  references="$(sed -n \
-    -e 's|.*<ProjectReference[^>]*Include="\([^"]*\)".*|\1|p' \
-    -e "s|.*<ProjectReference[^>]*Include='\([^']*\)'.*|\1|p" \
-    "$project")"
+  # Every shape MSBuild accepts, because the guard is worthless on the ones it cannot see:
+  # both quoting forms (Include='...' as readily as Include="..."), and an element split
+  # across lines, which is ordinary formatting once a reference carries more than one
+  # attribute. _flattened removes comments and joins the lines, so grep -o can then lift out
+  # each complete element and the sed only has to read its Include.
+  references="$(_flattened "$project" \
+    | grep -oE '<ProjectReference[^>]*>' \
+    | sed -n \
+        -e 's|.*Include="\([^"]*\)".*|\1|p' \
+        -e "s|.*Include='\([^']*\)'.*|\1|p")"
   for reference in $references; do
     # Project files carry Windows separators; translate, then resolve against the
     # referring project's directory so the '..' segments collapse.
@@ -102,7 +105,10 @@ for project in $projects; do
     # the build's failure to report, with a better message than this script could
     # give, so skip rather than duplicate it.
     [ -f "$resolved" ] || continue
-    referenced_train="$(sed -n 's|.*<ReleaseTrain>[[:space:]]*\([^<[:space:]]*\)[[:space:]]*</ReleaseTrain>.*|\1|p' "$resolved" | head -n1)"
+    referenced_train="$(_flattened "$resolved" \
+      | grep -oE '<ReleaseTrain>[^<]*</ReleaseTrain>' \
+      | sed -E 's|<ReleaseTrain>[[:space:]]*([^<[:space:]]*)[[:space:]]*</ReleaseTrain>|\1|' \
+      | head -n1)"
     [ -n "$referenced_train" ] || continue          # on no train: bundled, not depended upon
     [ "$referenced_train" = "$train" ] && continue  # same train, co-published at this very version
     violations="${violations}  - ${project} -> ${resolved#"$root"/} (train '${referenced_train}')
@@ -131,6 +137,19 @@ echo "ok: no cross-train ProjectReference on the '${train}' train"
 # then ship those leftovers under the release's number. Compiling here removes the whole class:
 # no step that ran earlier can decide what a release ships. The build is deterministic, so
 # recompiling the same source at the same version reproduces the bytes the test step exercised.
+# Start from an EMPTY output directory. Everything downstream globs artifacts/*.nupkg —
+# the SBOM guard here, the provenance attestation, and `dotnet nuget push`, which is
+# irreversible — so any package that happens to be sitting there is attested, attached to
+# this train's GitHub Release and published under it. That is not hypothetical: the step
+# order above is build, TEST, pack, and a packaging test that restores a package like a
+# consumer would packs one itself. A stale artifact is also exactly what the other train's
+# rehearsal leaves behind when both are packed in one job.
+#
+# Removing rather than reusing: the point is that what this script publishes is only ever
+# what THIS invocation produced, for the train it was given.
+rm -rf artifacts
+mkdir -p artifacts
+
 for project in $projects; do
   dotnet pack "$project" -c Release -p:Version="$version" -p:GenerateSBOM=true -o artifacts
 done

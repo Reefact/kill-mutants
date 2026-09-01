@@ -140,6 +140,24 @@ _without_xml_comments() {
   ' "$1"
 }
 
+# _flattened <path> — echo the file with every comment removed and every newline turned into
+# a space, so an element written across several lines matches as a single one.
+#
+# MSBuild does not care where the line breaks fall. Both of these are ordinary XML and it
+# reads both:
+#
+#     <ReleaseTrain>          <ProjectReference
+#       lib                     Include="../Core/Core.csproj" />
+#     </ReleaseTrain>
+#
+# A line-oriented grep or sed sees neither. That is not a cosmetic gap: a project MSBuild
+# considers to be on a train would be left out of its own release, and the release would stay
+# green — the exact failure the discover-don't-list design exists to prevent. Verified with
+# `dotnet msbuild -getProperty:ReleaseTrain`, which reads "      lib" from the form above.
+_flattened() {
+  _without_xml_comments "$1" | tr '\n' ' '
+}
+
 # projects_of <id> — echo the .csproj paths that declare this train, one per line.
 # Empty output means the train publishes nothing yet, which is a normal state for
 # a train whose project has not been created — and is exactly the state this
@@ -151,12 +169,14 @@ _without_xml_comments() {
 # path with no restore behind it and fails the release rehearsal, and a copy that
 # HAD been restored would publish the same package twice from one train.
 projects_of() {
-  # grep first as a cheap filter over the tree, then re-check each candidate with its
-  # comments removed. Only files that already mention the train pay for the second pass.
-  grep -rl -E "<ReleaseTrain>[[:space:]]*$1[[:space:]]*</ReleaseTrain>" \
+  # The cheap tree-wide filter matches the OPENING TAG only — that much is always on one
+  # line — and the precise test then runs on the flattened file, so a declaration split
+  # across lines survives the filter instead of being dropped by it. Only files that mention
+  # the element at all pay for the second pass.
+  grep -rl "<ReleaseTrain>" \
     --include='*.csproj' --exclude-dir=bin --exclude-dir=obj . 2>/dev/null \
     | sed 's|^\./||' | sort | while read -r _po_proj; do
-    if _without_xml_comments "$_po_proj" \
+    if _flattened "$_po_proj" \
          | grep -q -E "<ReleaseTrain>[[:space:]]*$1[[:space:]]*</ReleaseTrain>"; then
       printf '%s\n' "$_po_proj"
     fi
@@ -170,9 +190,9 @@ projects_of() {
 declared_trains() {
   # Build outputs are skipped here for the reason given on projects_of: a value only a
   # copy declares would be reported as if a project had chosen it.
-  grep -rl -E "<ReleaseTrain>[^<]*</ReleaseTrain>" \
+  grep -rl "<ReleaseTrain>" \
     --include='*.csproj' --exclude-dir=bin --exclude-dir=obj . 2>/dev/null \
-    | while read -r _dt_proj; do _without_xml_comments "$_dt_proj"; done \
+    | while read -r _dt_proj; do _flattened "$_dt_proj"; done \
     | grep -o -E "<ReleaseTrain>[^<]*</ReleaseTrain>" \
     | sed -E 's|.*<ReleaseTrain>[[:space:]]*([^<[:space:]]*)[[:space:]]*</ReleaseTrain>.*|\1|' \
     | sort -u || true

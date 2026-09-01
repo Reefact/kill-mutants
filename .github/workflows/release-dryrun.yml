@@ -110,6 +110,21 @@ jobs:
           set -euo pipefail
           # shellcheck source=tools/trains.sh
           . tools/trains.sh
+
+          # Reject an unknown <ReleaseTrain> value HERE, before the loop, and not only inside
+          # pack.sh. pack.sh runs for a train that has projects, so a value matching no train
+          # leaves every known train empty, skips every pack, and takes its own check with it:
+          # a repository whose only project misspells its train rehearsed clean and found out
+          # at tag time. The check has to sit where a typo cannot switch it off.
+          unknown=''
+          for declared in $(declared_trains); do
+            if [ -z "$(prefix_of "$declared")" ]; then unknown="${unknown} ${declared}"; fi
+          done
+          if [ -n "$unknown" ]; then
+            echo "::error::project(s) declare unknown release train(s):${unknown} — known trains: $(train_ids | tr '\n' ' '). Fix the <ReleaseTrain> value, or add the train to tools/trains.sh."
+            exit 1
+          fi
+
           packed=0
           for train in $(train_ids); do
             if [ -z "$(projects_of "$train")" ]; then
@@ -119,6 +134,11 @@ jobs:
             echo "::group::pack $train"
             tools/packaging/pack.sh "$VERSION" "$train"
             echo "::endgroup::"
+            # pack.sh empties artifacts/ so that a release only ever publishes what it just
+            # packed. Stage each train's output before the next pack reclaims the directory,
+            # or the upload below would carry the last train alone.
+            mkdir -p "dryrun-artifacts/$train"
+            cp -a artifacts/. "dryrun-artifacts/$train/"
             packed=$((packed + 1))
           done
           if [ "$packed" -eq 0 ]; then
@@ -130,9 +150,11 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: nupkgs-dryrun
+          # One directory per train: pack.sh clears its output between trains, so the staged
+          # copies are what the whole rehearsal produced.
           path: |
-            artifacts/*.nupkg
-            artifacts/*.snupkg
+            dryrun-artifacts/**/*.nupkg
+            dryrun-artifacts/**/*.snupkg
           # `warn`, not `error`: before the first packable project exists there is legitimately
           # nothing to upload, and the pack step above has already reported why.
           if-no-files-found: warn

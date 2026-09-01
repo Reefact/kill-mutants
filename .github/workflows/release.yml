@@ -324,23 +324,36 @@ jobs:
           # push above is a green no-op in that case (--skip-duplicate), so nothing else would
           # have objected. Refuse instead: an existing tag pointing elsewhere is a mistake to
           # report, not a state to repair.
+          # Verify the tag BEFORE anything is created, not only when creation fails.
+          #
+          # `--target` applies only when gh has to CREATE the tag; against one that already
+          # exists it is ignored and the tag keeps its own commit. So a tag left behind by a run
+          # that died after the NuGet push but before the Release — the one repair a maintainer
+          # is most likely to attempt — makes `gh release create` SUCCEED from a newer SHA,
+          # attaching packages and provenance built here to a release whose tag, source archive
+          # and published package all describe the earlier commit. Guarding only the failure
+          # branch left exactly that path open.
+          #
+          # Resolve from the REMOTE: on a workflow_dispatch the checkout is a branch, so a tag
+          # created since (or never fetched) may be absent locally. rev-list gives the commit for
+          # a lightweight and an annotated tag alike. On a tag push $GITHUB_SHA is that tag's own
+          # commit, so this passes without doing anything.
+          git fetch origin "refs/tags/$TAG:refs/tags/$TAG" --force --quiet 2>/dev/null || true
+          EXISTING_SHA="$(git rev-list -n1 "refs/tags/$TAG" 2>/dev/null || true)"
+          if [ -n "$EXISTING_SHA" ] && [ "$EXISTING_SHA" != "$GITHUB_SHA" ]; then
+            echo "::error::Tag $TAG already exists at $EXISTING_SHA, but this run built $GITHUB_SHA. Refusing to publish: the tag, its source archive and any already-published nuget.org package would describe the other commit. Release a new version instead."
+            exit 1
+          fi
+
           if ! gh release create "$TAG" "${assets[@]}" \
                  --title "$TAG" --notes-file release-notes.md --target "$GITHUB_SHA" --prerelease="$PRERELEASE"
           then
             # "Already exists" is the only failure the repair path is for. Any other one — a
             # network error, a missing scope — must surface as itself rather than be retried
-            # as an upload that will fail again with a worse message.
+            # as an upload that will fail again with a worse message. The tag is already known
+            # to match this commit, so the repair below is re-running THIS release.
             if ! gh release view "$TAG" >/dev/null 2>&1; then
               echo "::error::Creating the $TAG release failed and no such release exists; see the error above."
-              exit 1
-            fi
-            # Resolve the tag from the REMOTE: on a workflow_dispatch the checkout is a branch,
-            # so a tag created since (or never fetched) may be absent locally. rev-list gives the
-            # commit for a lightweight and an annotated tag alike.
-            git fetch origin "refs/tags/$TAG:refs/tags/$TAG" --force --quiet 2>/dev/null || true
-            EXISTING_SHA="$(git rev-list -n1 "refs/tags/$TAG" 2>/dev/null || true)"
-            if [ "$EXISTING_SHA" != "$GITHUB_SHA" ]; then
-              echo "::error::The $TAG release already exists at ${EXISTING_SHA:-an unresolvable commit}, but this run built $GITHUB_SHA. Refusing to replace its assets: the tag, its source archive and the already-published nuget.org package would still describe the other commit. Release a new version instead."
               exit 1
             fi
             gh release upload "$TAG" "${assets[@]}" --clobber
