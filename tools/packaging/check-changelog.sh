@@ -59,16 +59,26 @@ cd "$root"
 
 # The changelogs the train owns: one beside each of its projects, or the root file when
 # its projects carry none.
+# Read the project list LINE BY LINE, and keep the results newline-delimited. A space in a
+# path — src/Kill Mutants/Core.csproj — would otherwise split into two nonexistent projects,
+# whose changelogs are of course absent: the real one beside the real project would be ignored,
+# and the root fallback could then authorise the release from an unrelated heading. Newline is
+# the one separator a path cannot contain, so it is the one used throughout.
 files=''
 missing=''
-for project in $(projects_of "$train"); do
+while IFS= read -r project; do
+  [ -n "$project" ] || continue
   candidate="$(dirname "$project")/CHANGELOG.md"
   if [ -f "$candidate" ]; then
-    files="$files $candidate"
+    files="${files}${candidate}
+"
   else
-    missing="$missing $project"
+    missing="${missing}${project}
+"
   fi
-done
+done <<PROJECTS
+$(projects_of "$train")
+PROJECTS
 
 # A train is either wholly per-project or wholly on the root file — never half of each.
 # Collecting only the changelogs that EXIST made $files non-empty as soon as one project had
@@ -78,9 +88,10 @@ done
 # is the one case that must never pass quietly.
 if [ -n "$files" ] && [ -n "$missing" ]; then
   printf 'check-changelog: the %s train mixes per-project and absent changelogs.\n' "$train" >&2
-  printf '  These of its projects keep one beside them:%s\n' \
-    "$(printf '%s' "$files" | sed 's|/CHANGELOG.md||g')" >&2
-  printf '  These have none, so their packages would ship documented nowhere:%s\n' "$missing" >&2
+  printf '  These of its projects keep one beside them:\n' >&2
+  printf '%s' "$files" | sed 's|/CHANGELOG.md$||; s|^|    |' >&2
+  printf '  These have none, so their packages would ship documented nowhere:\n' >&2
+  printf '%s' "$missing" | sed 's|^|    |' >&2
   printf '  Give every project on the train its own CHANGELOG.md, or none of them (the root\n' >&2
   printf '  CHANGELOG.md then documents the train as a whole).\n' >&2
   exit 1
@@ -101,9 +112,12 @@ if [ -z "$files" ] && [ -f CHANGELOG.md ]; then
     other_projects="$(projects_of "$other")"
     [ -n "$other_projects" ] || continue
     other_has_own=0
-    for project in $other_projects; do
+    while IFS= read -r project; do
+      [ -n "$project" ] || continue
       if [ -f "$(dirname "$project")/CHANGELOG.md" ]; then other_has_own=1; break; fi
-    done
+    done <<OTHER
+${other_projects}
+OTHER
     [ "$other_has_own" = 1 ] || contenders="$contenders $other"
   done
   # More than one contender means the root file cannot say which train an entry documents.
@@ -115,7 +129,10 @@ if [ -z "$files" ] && [ -f CHANGELOG.md ]; then
     printf '  CHANGELOG.md beside its project.\n' >&2
     exit 1
   fi
-  files=' CHANGELOG.md'
+  # Newline-terminated, like every other value of $files. A line without a trailing newline is
+  # not read by `while read`, which silently emptied the loop below and passed every version.
+  files='CHANGELOG.md
+'
 fi
 
 if [ -z "$files" ]; then
@@ -129,13 +146,18 @@ fi
 # neighbouring version would let the wrong release through.
 escaped="$(printf '%s' "$version" | sed 's/[].[^$*\/\\]/\\&/g')"
 
+# The loop below runs in a subshell (a pipeline), so a variable assigned inside it would not
+# survive. A marker file carries the verdict out instead.
+_status_file="$(mktemp)"
+
 # Keep a Changelog's dated form. The date is required rather than tolerated: an entry
 # left as "## [1.0.0]" is one somebody opened and never closed, which is exactly the
 # state this refuses to publish against.
 pattern="^## \\[$escaped\\] - [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]"
 
 status=0
-for file in $files; do
+printf '%s' "$files" | while IFS= read -r file; do
+  [ -n "$file" ] || continue
   if grep -qE "$pattern" "$file"; then
     printf 'ok: %s documents %s\n' "$file" "$version"
   else
@@ -143,8 +165,10 @@ for file in $files; do
     printf '  Add a heading of the form:  ## [%s] - YYYY-MM-DD\n' "$version" >&2
     printf '  An entry still under "## [Unreleased]" is the usual cause: the content is\n' >&2
     printf '  written and the heading still says it never shipped.\n' >&2
-    status=1
+    printf '1' > "$_status_file"
   fi
 done
 
+[ -s "$_status_file" ] && status=1
+rm -f "$_status_file"
 exit "$status"

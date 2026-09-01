@@ -55,22 +55,25 @@ env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
   NUGET_FEED: 'https://api.nuget.org/v3/index.json'
 
+# Two jobs, and the split is the point: NOTHING that executes repository-controlled code holds a
+# credential. `dotnet restore`, `build`, `test` and `pack` run arbitrary MSBuild targets — the
+# repository's own, and any that a restored package contributes — so a job that both builds and
+# publishes hands every one of them a contents-write token, an OIDC identity able to mint a
+# nuget.org key, and the ability to write attestations, from its first step. The build job below
+# holds none of those; the publish job holds them and runs no project code, only this
+# repository's own scripts over an artifact the build job produced.
 jobs:
-  pack-push:
-    name: Pack & push NuGet
+  build:
+    name: Verify, build & pack
     runs-on: ubuntu-latest
-    # build + test + pack + attest + push; cap a hung release rather than the 6-hour default.
     timeout-minutes: 20
+    # Read-only, deliberately. Everything this job runs is untrusted in the relevant sense.
     permissions:
-      # Create the GitHub Release and upload the attested .nupkg/.snupkg as its assets. Nothing in
-      # this pipeline writes to a branch: the release is the only use of the write scope.
-      contents: write
-      # Request a GitHub OIDC token, exchanged for a short-lived NuGet API key via trusted publishing
-      # (no long-lived NUGET_API_KEY secret is stored).
-      id-token: write
-      # Store the signed build-provenance attestations in the repository's attestation store,
-      # so anyone can verify a released package with `gh attestation verify`.
-      attestations: write
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      train: ${{ steps.version.outputs.train }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -78,6 +81,10 @@ jobs:
           # Full history + tags so tools/packaging/release-notes.sh can resolve the previous
           # same-train tag — the lower bound of the release-notes commit range.
           fetch-depth: 0
+          # Do not leave the token in .git/config. Checkout authenticates its own fetch and then
+          # forgets it, so a build target cannot read a credential out of the working tree and
+          # push with it. Nothing later in this job talks to the remote.
+          persist-credentials: false
 
       - name: Setup .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
@@ -292,6 +299,45 @@ jobs:
             artifacts/*.snupkg
           if-no-files-found: error
 
+  publish:
+    name: Attest & publish
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # The credentials live here, and this job runs no project code: it checks out this
+    # repository's own scripts, takes the packages the build job produced, and publishes them.
+    permissions:
+      # Create the GitHub Release and upload the attested .nupkg/.snupkg as its assets. Nothing in
+      # this pipeline writes to a branch: the release is the only use of the write scope.
+      contents: write
+      # Request a GitHub OIDC token, exchanged for a short-lived NuGet API key via trusted publishing
+      # (no long-lived NUGET_API_KEY secret is stored).
+      id-token: write
+      # Store the signed build-provenance attestations in the repository's attestation store,
+      # so anyone can verify a released package with `gh attestation verify`.
+      attestations: write
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+      TRAIN: ${{ needs.build.outputs.train }}
+      TAG: ${{ needs.build.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # Full history + tags for tools/packaging/release-notes.sh, and no persisted credential:
+          # the release is created through `gh` with GITHUB_TOKEN, never through git.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The exact bytes the build job packed — not a rebuild. A second compilation could differ
+      # from the one the guards inspected, and it is those guards' verdict that this job is
+      # publishing on.
+      - name: Download the packages built by the build job
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: nupkgs
+          path: artifacts
+
       # SLSA build provenance: sign an attestation binding each artifact's SHA-256 to this repository,
       # workflow, commit and runner (via Sigstore + the job's OIDC identity), and store it in the repo's
       # attestation store. The attestation covers the bytes packed HERE — which are published verbatim as
@@ -359,9 +405,6 @@ jobs:
         if: github.event_name == 'push' || inputs.dry_run == false
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
-          TRAIN: ${{ steps.version.outputs.train }}
-          TAG: ${{ steps.version.outputs.tag }}
         run: |
           set -euo pipefail
           # shellcheck source=tools/trains.sh

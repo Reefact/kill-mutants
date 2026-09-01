@@ -234,7 +234,12 @@ conditioned_trains() {
   grep -rl "<ReleaseTrain" \
     --include='*.csproj' --exclude-dir=bin --exclude-dir=obj . 2>/dev/null \
     | sed 's|^\./||' | sort | while read -r _ct_proj; do
-    if _flattened "$_ct_proj" | grep -q -E "<ReleaseTrain[[:space:]][^>]*>"; then
+    # An ATTRIBUTE, not merely whitespace. `<ReleaseTrain >lib</ReleaseTrain>` is valid XML with
+    # no attribute at all, and so is a declaration whose closing `>` sits on the next line —
+    # which _flattened turns into exactly that shape. Treating any space inside the opening tag
+    # as proof of a Condition refused both, so an attribute is now recognised by the thing that
+    # makes it one: a name starting after the whitespace.
+    if _flattened "$_ct_proj" | grep -q -E "<ReleaseTrain[[:space:]][[:space:]]*[A-Za-z_][^>]*>"; then
       printf '%s\n' "$_ct_proj"
     fi
   done

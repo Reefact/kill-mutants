@@ -79,6 +79,63 @@ fi
 
 root="$(cd "$(dirname "$0")/../.." && pwd)"
 
+# --- the repository's package identities, evaluated ------------------------------
+# One "<PackageId>|<ReleaseTrain>" line per project. Read from MSBuild rather than from the
+# project text: PackageId may be defaulted by the SDK to the project name, set in an imported
+# .props, or written as a property expression, and every spelling reaches the nuspec while a
+# text scan reads something else.
+#
+# -p:Configuration=Release because that is what the pack below uses. Evaluating in the default
+# Debug would read a different value for any property conditioned on the configuration, and the
+# whole point of asking MSBuild is to be told what the RELEASE package will say.
+_project_property() {
+  dotnet msbuild "$1" -getProperty:"$2" -p:Configuration=Release -nologo 2>/dev/null | tr -d '\r\n'
+}
+
+local_map=''
+find . -name '*.csproj' -not -path '*/bin/*' -not -path '*/obj/*' -print > "${TMPDIR:-/tmp}/km-projects.$$"
+while IFS= read -r _proj; do
+  [ -n "$_proj" ] || continue
+  _id="$(_project_property "$_proj" PackageId)"
+  [ -n "$_id" ] || continue
+  local_map="${local_map}${_id}|$(_project_property "$_proj" ReleaseTrain)|${_proj}
+"
+done < "${TMPDIR:-/tmp}/km-projects.$$"
+rm -f "${TMPDIR:-/tmp}/km-projects.$$"
+
+# _local_train <package-id> — echo the train of the local project owning that PackageId, or
+# nothing when no local project does. Fields are compared as LITERAL strings: a package id is
+# full of dots, and interpolating one into a regular expression turns each into a wildcard —
+# an external `Foo.Bar` would then be mistaken for a local `FooXBar` and refused.
+_local_train() {
+  printf '%s\n' "$local_map" | while IFS='|' read -r _lt_id _lt_train _lt_proj; do
+    [ "$_lt_id" = "$1" ] && { printf '%s\n' "$_lt_train"; break; }
+  done
+  return 0
+}
+_is_local() { printf '%s\n' "$local_map" | cut -d'|' -f1 | grep -Fxq "$1"; }
+
+# --- guard: no two projects claim the same package identity ----------------------
+# Checked across the WHOLE repository, not within the packed train. Two projects on ONE train
+# overwrite each other's .nupkg, which the per-train count below catches; two projects on
+# DIFFERENT trains each pack cleanly on their own run, and the two independently versioned
+# releases then publish different artifacts under one nuget.org identity — the second either
+# overwriting the story of the first or landing as a --skip-duplicate no-op. No count taken
+# inside a single train can see that.
+duplicate_ids="$(printf '%s\n' "$local_map" | cut -d'|' -f1 | grep -v '^$' | sort | uniq -d)"
+if [ -n "$duplicate_ids" ]; then
+  echo "error: more than one project resolves to the same PackageId:" >&2
+  printf '%s\n' "$duplicate_ids" | while IFS= read -r _dup; do
+    [ -n "$_dup" ] || continue
+    printf '  - %s\n' "$_dup" >&2
+    printf '%s\n' "$local_map" | while IFS='|' read -r _id _tr _pr; do
+      [ "$_id" = "$_dup" ] && printf '      %s (train %s)\n' "$_pr" "${_tr:-none}" >&2
+    done
+  done
+  echo "       A package identity belongs to exactly one project; give each its own PackageId." >&2
+  exit 1
+fi
+
 # Every loop over the project list reads it LINE BY LINE. `for project in $projects` word-splits,
 # so a project under a path containing a space — src/Kill Mutants/Core.csproj — would reach
 # dotnet as two nonexistent paths and fail the whole train. The list is newline-delimited by
@@ -221,21 +278,6 @@ echo "ok: ${produced} package(s) for ${expected} project(s) on the '${train}' tr
 #                      caught in review: it aborted every release of a train that depends on
 #                      another, which is the shape this repository is built around.
 #
-# Identities come from MSBuild, not from the project text: PackageId may be defaulted by the SDK
-# to the project name, set in an imported .props, or written as a property expression, and each
-# spelling reaches the nuspec while a text scan reads something else. -getProperty evaluates.
-_project_property() { dotnet msbuild "$1" -getProperty:"$2" -nologo 2>/dev/null | tr -d '\r\n'; }
-
-local_map=''   # one "<PackageId>|<train>" line per project in the repository
-find . -name '*.csproj' -not -path '*/bin/*' -not -path '*/obj/*' -print > /tmp/km-projects.$$
-while IFS= read -r _proj; do
-  _id="$(_project_property "$_proj" PackageId)"
-  [ -n "$_id" ] || continue
-  local_map="${local_map}${_id}|$(_project_property "$_proj" ReleaseTrain)
-"
-done < /tmp/km-projects.$$
-rm -f /tmp/km-projects.$$
-
 produced_ids=''
 for package in artifacts/*.nupkg; do
   produced_ids="${produced_ids}$(unzip -p "$package" '*.nuspec' | tr '\n' ' ' \
@@ -249,9 +291,9 @@ for package in artifacts/*.nupkg; do
   for dep in $(printf '%s' "$nuspec" | grep -oE '<dependency id="[^"]*" version="[^"]*"' \
                  | sed 's|<dependency id="||; s|" version="|@|; s|"$||'); do
     dep_id="${dep%@*}"; dep_version="${dep#*@}"
-    dep_train="$(printf '%s' "$local_map" | grep -m1 "^${dep_id}|" | cut -d'|' -f2)"
-    printf '%s' "$local_map" | grep -q "^${dep_id}|" || continue     # not ours: ordinary dependency
-    printf '%s\n' "$produced_ids" | grep -Fxq "$dep_id" && continue  # co-published by this pack
+    _is_local "$dep_id" || continue                                   # not ours: ordinary dependency
+    printf '%s\n' "$produced_ids" | grep -Fxq "$dep_id" && continue   # co-published by this pack
+    dep_train="$(_local_train "$dep_id")"
     if [ -z "$dep_train" ]; then
       phantom="${phantom}  - $(basename "$package") -> ${dep_id} ${dep_version} (on no release train: nothing publishes it)
 "
