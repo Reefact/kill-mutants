@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!--
+      The point of this fixture. MSBuild answers -getItem:CscCommandLineArgs on the OUTER build of a
+      multi-targeted project with an empty list: only an inner build compiles. A query that does not
+      name a framework therefore reconstructs nothing at all.
+    -->
+    <TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+</Project>

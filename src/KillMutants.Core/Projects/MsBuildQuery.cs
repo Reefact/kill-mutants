@@ -242,9 +242,25 @@ internal sealed class MsBuildQuery
     /// <see cref="Analysis.CscCommandLine.Parse"/> would then happily produce an empty compilation,
     /// so the target is forced to run and the result validated as well.
     /// </para>
+    /// <para>
+    /// <paramref name="targetFramework"/> is not optional in practice, and leaving it out was a
+    /// defect. A multi-targeted project compiles in its inner builds, never in the outer one, so an
+    /// unqualified query returns an empty list: measured against the .NET 10 SDK, an outer build of
+    /// a project already built for both frameworks answers <c>"CscCommandLineArgs": []</c> and exits
+    /// zero. <see cref="Analysis.CscCommandLine.Parse"/> then refuses it - correctly, but blaming a
+    /// project that was built perfectly well - and the run stops rather than mutating a library that
+    /// KillMutants is meant to support.
+    /// </para>
     /// </remarks>
+    /// <param name="projectPath">The project to ask about.</param>
+    /// <param name="targetFramework">
+    /// The framework to compile for. Required for a project that targets several; harmless for one
+    /// that targets a single framework, which is why the caller passes it unconditionally.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the MSBuild invocation.</param>
     public async Task<IReadOnlyList<string>> GetCscCommandLineAsync(
         string projectPath,
+        string? targetFramework = null,
         CancellationToken cancellationToken = default)
     {
         ForceCompileToRun(projectPath);
@@ -257,8 +273,14 @@ internal sealed class MsBuildQuery
             "-p:ProvideCommandLineArgs=true",
             "-p:SkipCompilerExecution=true",
             "-nologo",
-            "-getItem:CscCommandLineArgs",
         ];
+
+        if (!string.IsNullOrEmpty(targetFramework))
+        {
+            arguments.Add($"-p:TargetFramework={targetFramework}");
+        }
+
+        arguments.Add("-getItem:CscCommandLineArgs");
 
         JsonDocument json = await RunAsync(projectPath, arguments, cancellationToken).ConfigureAwait(false);
 

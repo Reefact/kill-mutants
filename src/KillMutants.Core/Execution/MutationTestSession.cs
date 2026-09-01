@@ -363,8 +363,11 @@ internal sealed class MutationTestSession
         ProjectUnderTest projectUnderTest,
         CancellationToken cancellationToken)
     {
+        // The framework matters: a project targeting several compiles only in its inner builds, and
+        // an outer-build query answers with an empty command line rather than an error.
         IReadOnlyList<string> commandLine = await new MsBuildQuery(_configuration)
-            .GetCscCommandLineAsync(projectUnderTest.ProjectPath, cancellationToken)
+            .GetCscCommandLineAsync(
+                projectUnderTest.ProjectPath, projectUnderTest.TargetFramework, cancellationToken)
             .ConfigureAwait(false);
 
         CSharpCommandLineArguments arguments = CscCommandLine.Parse(
