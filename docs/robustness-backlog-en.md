@@ -331,3 +331,43 @@ when they were not.
 
 Recorded as accepted rather than open: the cost is understood, the alternative is understood, and
 the trade has been made on purpose.
+
+---
+
+## RB-015 — A deletion mutator can change the type, not only the value · COVERED
+
+Found while adding the `NullCoalescing` family in M9, and the reason that family is not the one-line
+rewrite it looks like.
+
+**Why it matters.** `a ?? b` is very often there to *remove* nullability rather than to supply a
+fallback value. Dropping the fallback then leaves an expression of a different type:
+`int total = count ?? 0` mutated to `int total = count` is a hard error (CS0266), not a mutant. Worse,
+the reference-typed case is not symmetric with it — `string s = name ?? ""` mutated to `string s = name`
+compiles, because the nullability complaint is a warning, and warnings are already neutralised for
+mutant compilations by RB-004. So a naive rule silently produces useful mutants in one half of the
+cases and compile errors in the other.
+
+**The rule.** Classify the conversion the compiler would have to make from the left operand alone to
+whatever the surrounding code expected: `ClassifyConversion(coalesce.Left, GetTypeInfo(coalesce).ConvertedType)`,
+and propose the mutation only when that conversion exists and is implicit. This keeps the widening
+cases mutable (`object o = text ?? fallback`) and rejects exactly the nullability-removing ones.
+
+**Why not the mirror mutation.** Rewriting `a ?? b` into `b` is tempting for symmetry, and is
+deliberately not done: it discards the left operand and any side effect it carries, which turns a
+missing-coverage signal into an unrelated behaviour change. The surviving mutant would be true but
+uninformative.
+
+**The neighbouring case, same milestone.** `Conditional` swaps the branches of `c ? a : b`, and a
+ternary whose branches are the same expression would yield a mutant that behaves exactly like the
+original: guaranteed to survive, for a reason that says nothing about the tests. Those are skipped.
+The binding check for this family also had to be *weaker* than the binary one: a conditional need not
+have a natural type — `flag ? 1 : null` only acquires one from its target — so a null type must not be
+read as a failure the way `BinaryOperatorMutator` reads it.
+
+**Our tests.** `NullCoalescingMutatorTests.A_fallback_that_removes_nullability_is_not_dropped`,
+`A_left_operand_that_widens_to_the_expected_type_is_dropped`,
+`ConditionalExpressionMutatorTests.Identical_branches_are_not_swapped`,
+`A_target_typed_conditional_is_mutated`, and the end-to-end
+`Every_mutator_family_is_exercised_against_the_fixture`, which fails if any family stops producing
+mutants against a real project.
+

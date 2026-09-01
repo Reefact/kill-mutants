@@ -84,6 +84,32 @@ namespace boundaries are already where the assembly boundaries would go.
 | Results | `KillMutants.Reporting` | `MutationTestReport`, console and JSON writers, progress |
 | CLI | `KillMutants.Cli` | `dotnet killmutants`, thresholds and exit codes (ADR-0009) |
 
+**The catalogue, as of M9.** Eleven families, each a separate `IMutator`, each with its own tests
+and each exercised end to end against a real fixture project.
+
+| Family | Rewrites | Into |
+|---|---|---|
+| `Comparison` | `>=` `>` `<=` `<` | the boundary shift and the negation |
+| `Comparison` | `==` `!=` | the negation only — there is no boundary to shift |
+| `LogicalOperator` | `&&` `\|\|` | each other |
+| `Arithmetic` | `+` `-` `*` `/` `%` | its counterpart |
+| `Bitwise` | `&` `\|` `^` `<<` `>>` | its counterpart |
+| `Assignment` | `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `<<=` `>>=` | its counterpart |
+| `Increment` | `++` `--` | each other, prefix and postfix alike |
+| `Conditional` | `c ? a : b` | `c ? b : a` |
+| `NullCoalescing` | `a ?? b` | `a` |
+| `BooleanLiteral` | `true` `false` | each other |
+| `Negation` | `!x` | `x` |
+| `StringLiteral` | `"text"` | `""`, and `""` into a non-empty string |
+
+Three properties hold across all of them. Each replacement is a **new node of the target kind**, not
+a swapped token ([RB-001](robustness-backlog-en.md)). Each asks the compiler whether the replacement
+would bind before proposing it, so a mutant that cannot compile is never generated
+([RB-011](robustness-backlog-en.md)). And each family that could produce a mutant identical in
+behaviour to the original declines to: `NullCoalescing` keeps only the left operand, never the right,
+so no side effect is silently dropped, and `Conditional` skips a ternary whose branches are the same
+expression.
+
 **Instrumentation has no code of its own, by design.** Because each mutant gets its own compilation
 ([ADR-0002](adr/0002-one-compilation-per-mutant-en.md)), "instrumenting" a mutant is one call to
 `SyntaxNode.ReplaceNode` followed by `Compilation.ReplaceSyntaxTree`. The entire apparatus that a
@@ -143,14 +169,14 @@ duration already recorded for the budget.*
 ## 7. Roadmap position
 
 Milestone 1 was one project pair, one mutator (`>=` becomes `>`), one mutant, executed for real.
-M2 grew the catalogue to six families. M3 handles real solution structure: several test projects,
-several projects under test, project references followed transitively, and a framework pinned per
-project. M6 tests mutants in parallel, each worker in a private copy of the test output directory. M4 and M5
+M2 grew the catalogue to six families, M9 to eleven. M3 handles real solution structure: several
+test projects, several projects under test, project references followed transitively, and a
+framework pinned per project. M6 tests mutants in parallel, each worker in a private copy of the test output directory. M4 and M5
 discover the tests and measure which ones reach which mutants, so uncovered mutants are never run and
 the rest run only what can kill them. M7 reports: live progress, findings grouped by file, and a JSON
 report for anything that is not a person. M8 makes it usable as a quality gate: an opt-in
-`--break-at` threshold and exit codes that separate a weak test suite from a broken run. Still
-ahead: M9 advanced mutations.
+`--break-at` threshold and exit codes that separate a weak test suite from a broken run. M9
+completes the operator catalogue.
 
 **Two output streams, on purpose.** Progress goes to standard error and the report to standard
 output, so `killmutants > report.txt` captures the report without the progress line threaded through

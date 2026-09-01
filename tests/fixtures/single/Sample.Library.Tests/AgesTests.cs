@@ -51,4 +51,39 @@ public class AgesTests
     {
         Assert.Equal(expected, Ages.Describe(age));
     }
+
+    [Fact]
+    public void Common_flags_are_the_bits_both_sides_set()
+    {
+        // `&` gives 4; the `|` mutant would give 14.
+        Assert.Equal(4, Ages.CommonFlags(6, 12));
+    }
+
+    [Theory]
+    [InlineData(30, false)]
+    [InlineData(10, true)]
+    public void A_guardian_is_required_below_adulthood(int age, bool expected)
+    {
+        Assert.Equal(expected, Ages.RequiresGuardian(age));
+    }
+
+    [Fact]
+    public void The_next_birthday_adds_a_year()
+    {
+        Assert.Equal(31, Ages.AgeOnNextBirthday(30));
+    }
+
+    [Fact]
+    public void Ages_are_totalled_by_accumulation()
+    {
+        Assert.Equal(60, Ages.TotalOfAges([20, 40]));
+    }
+
+    [Theory]
+    [InlineData("Ada", "Ada")]
+    [InlineData(null, "unknown")]
+    public void A_missing_name_falls_back_to_a_default(string? name, string expected)
+    {
+        Assert.Equal(expected, Ages.NameOrDefault(name));
+    }
 }

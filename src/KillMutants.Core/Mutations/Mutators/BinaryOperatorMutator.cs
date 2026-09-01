@@ -104,6 +104,11 @@ internal abstract class BinaryOperatorMutator : IMutator
         SyntaxKind.MultiplyExpression => SyntaxKind.AsteriskToken,
         SyntaxKind.DivideExpression => SyntaxKind.SlashToken,
         SyntaxKind.ModuloExpression => SyntaxKind.PercentToken,
+        SyntaxKind.BitwiseAndExpression => SyntaxKind.AmpersandToken,
+        SyntaxKind.BitwiseOrExpression => SyntaxKind.BarToken,
+        SyntaxKind.ExclusiveOrExpression => SyntaxKind.CaretToken,
+        SyntaxKind.LeftShiftExpression => SyntaxKind.LessThanLessThanToken,
+        SyntaxKind.RightShiftExpression => SyntaxKind.GreaterThanGreaterThanToken,
         _ => throw new ArgumentOutOfRangeException(
             nameof(expressionKind), expressionKind, "No operator token is known for this expression kind."),
     };
