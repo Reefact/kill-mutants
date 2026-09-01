@@ -107,13 +107,29 @@ rm -f "${TMPDIR:-/tmp}/km-projects.$$"
 # nothing when no local project does. Fields are compared as LITERAL strings: a package id is
 # full of dots, and interpolating one into a regular expression turns each into a wildcard —
 # an external `Foo.Bar` would then be mistaken for a local `FooXBar` and refused.
+# NuGet package identities are CASE-INSENSITIVE: KillMutants.Core and killmutants.core are one
+# package to the feed, while Linux file names and a plain sort treat them as two. Every identity
+# comparison here folds case for that reason — a duplicate that differs only in case is still a
+# duplicate, and a dependency written in another casing is still the same dependency.
+_fold() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+
 _local_train() {
+  _lt_want="$(_fold "$1")"
   printf '%s\n' "$local_map" | while IFS='|' read -r _lt_id _lt_train _lt_proj; do
-    [ "$_lt_id" = "$1" ] && { printf '%s\n' "$_lt_train"; break; }
+    [ "$(_fold "$_lt_id")" = "$_lt_want" ] && { printf '%s\n' "$_lt_train"; break; }
   done
   return 0
 }
-_is_local() { printf '%s\n' "$local_map" | cut -d'|' -f1 | grep -Fxq "$1"; }
+_local_project() {
+  _lp_want="$(_fold "$1")"
+  printf '%s\n' "$local_map" | while IFS='|' read -r _lp_id _lp_train _lp_proj; do
+    [ "$(_fold "$_lp_id")" = "$_lp_want" ] && { printf '%s\n' "$_lp_proj"; break; }
+  done
+  return 0
+}
+_is_local() {
+  printf '%s\n' "$local_map" | cut -d'|' -f1 | tr '[:upper:]' '[:lower:]' | grep -Fxq "$(_fold "$1")"
+}
 
 # --- guard: no two projects claim the same package identity ----------------------
 # Checked across the WHOLE repository, not within the packed train. Two projects on ONE train
@@ -122,17 +138,19 @@ _is_local() { printf '%s\n' "$local_map" | cut -d'|' -f1 | grep -Fxq "$1"; }
 # releases then publish different artifacts under one nuget.org identity — the second either
 # overwriting the story of the first or landing as a --skip-duplicate no-op. No count taken
 # inside a single train can see that.
-duplicate_ids="$(printf '%s\n' "$local_map" | cut -d'|' -f1 | grep -v '^$' | sort | uniq -d)"
+duplicate_ids="$(printf '%s\n' "$local_map" | cut -d'|' -f1 | grep -v '^$' \
+  | tr '[:upper:]' '[:lower:]' | sort | uniq -d)"
 if [ -n "$duplicate_ids" ]; then
   echo "error: more than one project resolves to the same PackageId:" >&2
   printf '%s\n' "$duplicate_ids" | while IFS= read -r _dup; do
     [ -n "$_dup" ] || continue
     printf '  - %s\n' "$_dup" >&2
     printf '%s\n' "$local_map" | while IFS='|' read -r _id _tr _pr; do
-      [ "$_id" = "$_dup" ] && printf '      %s (train %s)\n' "$_pr" "${_tr:-none}" >&2
+      [ "$(_fold "$_id")" = "$_dup" ] && printf '      %s as %s (train %s)\n' "$_pr" "$_id" "${_tr:-none}" >&2
     done
   done
   echo "       A package identity belongs to exactly one project; give each its own PackageId." >&2
+  echo "       Compared case-insensitively, because nuget.org is." >&2
   exit 1
 fi
 
@@ -144,6 +162,41 @@ echo "Packing the '${train}' train at ${version}:"
 printf '%s\n' "$projects" | while IFS= read -r project; do
   [ -n "$project" ] && echo "  ${project}"
 done
+
+# --- guard: the SDK stamps the assembly version ----------------------------------
+# The assembly/package version guard in Directory.Build.targets compares two MSBuild PROPERTIES.
+# It cannot see an attribute a project emits itself: with GenerateAssemblyInfo (or
+# GenerateAssemblyVersionAttribute) turned off, $(AssemblyVersion) can still agree with
+# $(Version) while the compiled binary carries something else, and the package ships an assembly
+# identity that disagrees with its number — precisely the failure that guard exists to prevent,
+# in the one shape invisible to it.
+#
+# Refused rather than worked around. Reading the version out of a compiled assembly means parsing
+# PE metadata in shell, and the property comparison would still be what decides; requiring the SDK
+# to stamp the attribute is a rule that can be checked exactly, and costs a train project nothing
+# it should want.
+hand_stamped=''
+while IFS= read -r project; do
+  [ -n "$project" ] || continue
+  for prop in GenerateAssemblyInfo GenerateAssemblyVersionAttribute; do
+    value="$(_project_property "$project" "$prop")"
+    case "$(_fold "$value")" in
+      false) hand_stamped="${hand_stamped}  - ${project} sets ${prop}=false
+" ;;
+      *) ;;   # unset or true: the SDK stamps it, and the targets guard can see it
+    esac
+  done
+done <<PROJECTS
+${projects}
+PROJECTS
+if [ -n "$hand_stamped" ]; then
+  echo "error: a project on the '${train}' train stamps its own assembly version:" >&2
+  printf '%s' "$hand_stamped" >&2
+  echo "       Then nothing can prove the assembly matches the package version it ships under." >&2
+  echo "       Let the SDK generate the attribute from \$(Version), which the release sets." >&2
+  exit 1
+fi
+echo "ok: the SDK stamps the assembly version on every project of the '${train}' train"
 
 # --- guard: no cross-train project reference ----------------------------------
 # The trains version independently, so a package on one train may only depend on
@@ -270,14 +323,38 @@ echo "ok: ${produced} package(s) for ${expected} project(s) on the '${train}' tr
 #   on no train        refuse always — nothing will ever publish it;
 #   on THIS train      allowed, since it is co-published at this very version (and the count
 #                      guard above already proved every project on the train produced a package);
-#   on ANOTHER train   refuse ONLY at the version being packed. That number is the signature of
-#                      a ProjectReference, which stamps the dependency at the pack version — a
-#                      version of the other train that no release ever produced. A DIFFERENT,
-#                      fixed version is the prescribed cross-train mechanism: a PackageReference
-#                      on something already published. Refusing that was a real regression here,
-#                      caught in review: it aborted every release of a train that depends on
-#                      another, which is the shape this repository is built around.
+#   on ANOTHER train   refused when a ProjectReference reaches it from a project being packed,
+#                      because that is what stamps the dependency at the version being packed —
+#                      a version of the other train no release ever produced. Reached instead
+#                      through a PackageReference, it is the prescribed cross-train mechanism
+#                      and is allowed.
 #
+# How the two are told apart matters, and the obvious shortcut is wrong. Comparing the dependency
+# version to the version being packed looks like it identifies a ProjectReference, and does not:
+# independently versioned trains reach the same number all the time — most obviously at the FIRST
+# release of both, where cli 1.0.0 legitimately depends on the published lib 1.0.0. That heuristic
+# blocked exactly that release. The reference kind is asked of MSBuild instead, which also answers
+# for a reference contributed by an imported .props or written under a Condition — neither of which
+# any reading of the project text can see.
+_referenced_projects() {
+  dotnet msbuild "$1" -getItem:ProjectReference -p:Configuration=Release -nologo 2>/dev/null \
+    | grep -oE '"FullPath": "[^"]*"' | sed 's|.*: "||; s|"$||'
+  return 0
+}
+
+# The absolute paths of every project reachable by ProjectReference from anything this pack
+# builds. Compared as paths rather than ids, so a project whose PackageId is defaulted or
+# computed is still recognised as the one being referenced.
+stamped_ids="$(
+  while IFS= read -r project; do
+    [ -n "$project" ] || continue
+    _abs_project="$(cd "$(dirname "$project")" && pwd)/$(basename "$project")"
+    _referenced_projects "$_abs_project"
+  done <<PROJECTS2
+${projects}
+PROJECTS2
+)"
+
 produced_ids=''
 for package in artifacts/*.nupkg; do
   produced_ids="${produced_ids}$(unzip -p "$package" '*.nuspec' | tr '\n' ' ' \
@@ -294,11 +371,14 @@ for package in artifacts/*.nupkg; do
     _is_local "$dep_id" || continue                                   # not ours: ordinary dependency
     printf '%s\n' "$produced_ids" | grep -Fxq "$dep_id" && continue   # co-published by this pack
     dep_train="$(_local_train "$dep_id")"
+    dep_project="$(_local_project "$dep_id")"
+    dep_abs=''
+    [ -n "$dep_project" ] && dep_abs="$(cd "$(dirname "$dep_project")" 2>/dev/null && pwd)/$(basename "$dep_project")"
     if [ -z "$dep_train" ]; then
       phantom="${phantom}  - $(basename "$package") -> ${dep_id} ${dep_version} (on no release train: nothing publishes it)
 "
-    elif [ "$dep_version" = "$version" ]; then
-      phantom="${phantom}  - $(basename "$package") -> ${dep_id} ${dep_version} (train '${dep_train}' at THIS version: a ProjectReference stamped it; that version was never released)
+    elif [ -n "$dep_abs" ] && printf '%s\n' "$stamped_ids" | grep -Fxq "$dep_abs"; then
+      phantom="${phantom}  - $(basename "$package") -> ${dep_id} ${dep_version} (train '${dep_train}', reached by ProjectReference: the version is stamped at this pack's, and that release never happened)
 "
     fi
   done

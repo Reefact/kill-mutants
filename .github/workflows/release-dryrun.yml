@@ -125,7 +125,7 @@ jobs:
           # -p:Configuration=Release so the restore evaluates the same graph the build compiles. A
           # PackageReference conditioned on Release is otherwise absent from project.assets.json
           # and the build may not restore again. The real release does the same.
-          dotnet restore "$SOLUTION" -p:Configuration=Release
+          dotnet restore "$SOLUTION" -p:Configuration=Release -p:Version="$VERSION"
           dotnet build "$SOLUTION" -c Release --no-restore -p:Version="$VERSION"
 
       # One pack per train that actually has projects. A train whose project does not exist yet is

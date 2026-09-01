@@ -258,14 +258,17 @@ jobs:
           # the solution removes the ambiguity instead of forbidding the layout.
           echo "path=$(find . -maxdepth 1 \( -name '*.sln' -o -name '*.slnx' \) | head -n1)" >> "$GITHUB_OUTPUT"
 
-      # -p:Configuration=Release so the restore evaluates the SAME graph the build below uses.
-      # A plain `dotnet restore` evaluates with the default Configuration (Debug), so a
-      # PackageReference conditioned on Release is left out of project.assets.json — verified —
-      # and the build that follows may not restore again (--no-restore).
+      # Restore under the SAME properties the build uses, because the build may not restore again
+      # (--no-restore) and a reference conditioned on either one would otherwise be missing from
+      # project.assets.json. Configuration was verified: a Release-only PackageReference is absent
+      # after a plain `dotnet restore`. Version is here for the same reason and not because it was
+      # separately measured — the invariant is that restore and build evaluate one graph, and
+      # leaving a property out of one of them is what breaks it.
       - name: Restore
         env:
           SOLUTION: ${{ steps.solution.outputs.path }}
-        run: dotnet restore "$SOLUTION" -p:Configuration=Release
+          VERSION: ${{ steps.version.outputs.version }}
+        run: dotnet restore "$SOLUTION" -p:Configuration=Release -p:Version="$VERSION"
 
       - name: Build
         env:

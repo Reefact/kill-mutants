@@ -69,6 +69,15 @@ missing=''
 while IFS= read -r project; do
   [ -n "$project" ] || continue
   candidate="$(dirname "$project")/CHANGELOG.md"
+  # A project sitting at the repository ROOT resolves to ./CHANGELOG.md, which is the root file,
+  # not a per-project one. Counting it as per-project made $files non-empty, which skipped the
+  # single-contender check below and let one heading authorise both trains — the very ambiguity
+  # that check exists to refuse. Two root-level projects on different trains is a supported
+  # layout, so this has to be decided by WHICH file it is, not by where the project sits.
+  case "$candidate" in
+    ./CHANGELOG.md|CHANGELOG.md) continue ;;
+    *) ;;
+  esac
   if [ -f "$candidate" ]; then
     files="${files}${candidate}
 "
@@ -79,6 +88,35 @@ while IFS= read -r project; do
 done <<PROJECTS
 $(projects_of "$train")
 PROJECTS
+
+# A changelog beside a directory shared by projects of DIFFERENT trains is ambiguous for the same
+# reason the root file is: one dated heading would authorise two independent releases, and nothing
+# in the file says which train it describes.
+shared=''
+while IFS= read -r file; do
+  [ -n "$file" ] || continue
+  owning=''
+  for other in $(train_ids); do
+    while IFS= read -r other_project; do
+      [ -n "$other_project" ] || continue
+      [ "$(dirname "$other_project")/CHANGELOG.md" = "$file" ] && { owning="$owning $other"; break; }
+    done <<OTHER
+$(projects_of "$other")
+OTHER
+  done
+  if [ "$(printf '%s\n' $owning | grep -c .)" -gt 1 ]; then
+    shared="${shared}  - ${file} is claimed by trains:${owning}
+"
+  fi
+done <<FILES
+${files}
+FILES
+if [ -n "$shared" ]; then
+  printf 'check-changelog: one changelog cannot document two independently versioned trains.\n' >&2
+  printf '%s' "$shared" >&2
+  printf '  Give each train its own file, beside projects that do not share a directory.\n' >&2
+  exit 1
+fi
 
 # A train is either wholly per-project or wholly on the root file — never half of each.
 # Collecting only the changelogs that EXIST made $files non-empty as soon as one project had
@@ -114,7 +152,14 @@ if [ -z "$files" ] && [ -f CHANGELOG.md ]; then
     other_has_own=0
     while IFS= read -r project; do
       [ -n "$project" ] || continue
-      if [ -f "$(dirname "$project")/CHANGELOG.md" ]; then other_has_own=1; break; fi
+      other_candidate="$(dirname "$project")/CHANGELOG.md"
+      # Same exclusion as above: the ROOT file is not a per-project changelog, so a train whose
+      # projects sit at the repository root has none of its own and does contend for it.
+      case "$other_candidate" in
+        ./CHANGELOG.md|CHANGELOG.md) continue ;;
+        *) ;;
+      esac
+      if [ -f "$other_candidate" ]; then other_has_own=1; break; fi
     done <<OTHER
 ${other_projects}
 OTHER
