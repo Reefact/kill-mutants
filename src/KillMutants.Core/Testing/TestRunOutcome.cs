@@ -41,6 +41,37 @@ public sealed record TestRunOutcome(
     /// </remarks>
     public bool NoTestsRan => !TimedOut && !Crashed && Total == 0;
 
+    /// <summary>
+    /// Why this run is not a clean pass, phrased for a message, or null when it is one.
+    /// </summary>
+    /// <remarks>
+    /// Both places that require a green suite - the baseline and the instrumented build the coverage
+    /// pass measures against - need exactly these three checks in exactly this order, and each frames
+    /// the answer differently. Deciding here means neither can forget one; in particular neither can
+    /// forget <see cref="NoTestsRan"/>, which the runner reports as exit code zero.
+    /// </remarks>
+    public string? WhyNotGreen()
+    {
+        if (TimedOut)
+        {
+            return "it exceeded its time budget";
+        }
+
+        if (Crashed)
+        {
+            return $"the test application could not be run ({CrashDetail})";
+        }
+
+        if (NoTestsRan)
+        {
+            return "it ran no tests at all";
+        }
+
+        return AnyFailed
+            ? $"{Failed + Errors} of its {Total} tests did not pass"
+            : null;
+    }
+
     /// <summary>A run that was killed for exceeding its time budget.</summary>
     public static TestRunOutcome FromTimeout(TimeSpan duration) => new(0, 0, 0, duration, TimedOut: true);
 

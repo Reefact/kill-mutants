@@ -113,6 +113,23 @@ tests et chacune exercée de bout en bout contre un vrai projet de fixture.
 | `Negation` | `!x` | `x` |
 | `StringLiteral` | `"texte"` | `""`, et `""` en une chaîne non vide |
 
+**Ce qu'il ne mute délibérément pas.** Le catalogue est sélectif et non exhaustif : chaque mutant
+coûte une exécution de tests, donc un opérateur gagne sa place au signal qu'il porte. L'inventaire
+ci-dessous a été mesuré en passant le catalogue sur chaque forme, pas lu dans la spécification.
+
+| Non muté | Décision |
+|---|---|
+| `>>>`, `>>>=` | **Candidat futur.** Fort signal : décalage signé et non signé ne diffèrent que pour les valeurs négatives, exactement le cas qu'une suite de tests oublie. |
+| `^=` | **Candidat futur.** `^` est muté mais pas sa forme composée : c'est une incohérence, pas une décision. |
+| Motifs relationnels (`is > 3`) | **Candidat futur**, et grandissant : c'est le jumeau de la famille `Comparison` pour du code écrit en motifs. |
+| Littéraux numériques | **Candidat futur.** Classique et à fort signal, mais assez bruyant pour mériter une activation explicite plutôt qu'une place par défaut. |
+| `-x` | **Candidat futur**, en dessous des autres : la plupart des erreurs de signe sont déjà atteignables par la famille arithmétique. |
+| `+x` | **Non supporté.** Retirer un plus unaire ne change rien : le mutant est équivalent par construction et ne peut jamais être tué. |
+| `~x` | **Non supporté pour l'instant.** Le retirer change la valeur si radicalement que tout test touchant l'expression le tue ; le mutant est presque gratuit à écrire et presque sans valeur. |
+| `?.`, `as` | **Non supportés.** Les deux mutent vers des formes qui lèvent plutôt qu'elles ne calculent : elles mesurent si un test touche la ligne, pas s'il en vérifie le résultat — et `?.` ne compile souvent même plus une fois le chemin null retiré. |
+| `is T` | **Non supporté pour l'instant.** À revoir avec les motifs relationnels ci-dessus, comme une seule famille consciente des motifs plutôt que deux règles. |
+| Bras de `switch` | **Non supportés.** Réordonner ou supprimer un bras est une mutation structurelle, pas une mutation d'opérateur, et demande un autre raisonnement sur l'exhaustivité. |
+
 Trois propriétés valent pour toutes. Chaque remplacement est un **nouveau nœud du bon type**, pas un
 jeton échangé ([RB-001](robustness-backlog-fr.md)). Chacune demande au compilateur si le remplacement
 se lierait avant de le proposer : un mutant qui ne compile pas n'est jamais engendré
@@ -205,7 +222,8 @@ mutants : les mutants non couverts ne sont jamais exécutés, et les autres n'ex
 les tuer. M7 rapporte : progression en direct, constats groupés par fichier, et un rapport JSON pour
 tout ce qui n'est pas un humain. M8 en fait une barrière de qualité utilisable : un seuil optionnel
 `--break-at` et des codes de sortie qui séparent une suite de tests faible d'un run cassé. M9
-achève le catalogue d'opérateurs. M10 en fait un outil et non plus un moteur : empaqueté en
+porte le catalogue d'opérateurs à onze familles — sélectif et non complet, les omissions
+ci-dessus étant décidées et non oubliées. M10 en fait un outil et non plus un moteur : empaqueté en
 `dotnet killmutants`, doté du `--exclude` qu'exige un vrai dépôt, et — c'est le cœur du milestone —
 exécuté sur le code source de KillMutants lui-même, ce qui a fait apparaître RB-016 en quelques
 secondes.

@@ -19,9 +19,13 @@ public sealed class MutationTestReport
         TimedOut = Count(MutantStatus.Timeout);
         CompileErrors = Count(MutantStatus.CompileError);
         Uncovered = Count(MutantStatus.NoCoverage);
-        Score = MutationScore.FromCounts(Killed, Survived, TimedOut);
+        Detected = CountOutcome(MutantOutcome.Detected);
+        Undetected = CountOutcome(MutantOutcome.Undetected);
+        Untestable = CountOutcome(MutantOutcome.Untestable);
+        Score = MutationScore.FromCounts(Detected, Undetected);
 
         int Count(MutantStatus status) => results.Count(result => result.Status == status);
+        int CountOutcome(MutantOutcome outcome) => results.Count(result => result.Outcome == outcome);
     }
 
     /// <summary>Every mutant, with its outcome.</summary>
@@ -48,9 +52,19 @@ public sealed class MutationTestReport
     /// <summary>Mutants in code no test reaches, which were therefore never run.</summary>
     public int Uncovered { get; }
 
-    /// <summary>The share of tested mutants that were caught.</summary>
-    public MutationScore Score { get; }
+    /// <summary>Mutants the suite noticed: <see cref="Killed"/> plus <see cref="TimedOut"/>.</summary>
+    public int Detected { get; }
 
-    /// <summary>True when every tested mutant was caught.</summary>
-    public bool AllMutantsKilled => Survived == 0;
+    /// <summary>
+    /// Mutants the suite did not notice: <see cref="Survived"/> plus <see cref="Uncovered"/>.
+    /// </summary>
+    public int Undetected { get; }
+
+    /// <summary>
+    /// Mutants the suite was never asked about, because KillMutants could not build them.
+    /// </summary>
+    public int Untestable { get; }
+
+    /// <summary>The share of judged mutants the suite detected.</summary>
+    public MutationScore Score { get; }
 }

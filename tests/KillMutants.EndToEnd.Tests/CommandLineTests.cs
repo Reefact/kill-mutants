@@ -88,6 +88,24 @@ public class CommandLineTests
     }
 
     /// <summary>
+    /// The quality gate must react to code that has no tests at all, which is the harshest thing a
+    /// mutation run can find. Before uncovered mutants were counted as undetected this returned
+    /// success: the untested code was excluded from the denominator, so the score stayed at 100%.
+    /// </summary>
+    [Fact]
+    public async Task Code_with_no_tests_at_all_fails_the_threshold()
+    {
+        using var fixture = FixtureCopy.Create();
+        fixture.AddCodeNoTestReaches();
+
+        (int exitCode, string output, string message) = await RunAsync(fixture.Root, "--break-at", "100");
+
+        Assert.Equal(ScoreBelowThreshold, exitCode);
+        Assert.Contains("below the 100% threshold", message, StringComparison.Ordinal);
+        Assert.Contains("No coverage:", output, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Excluding every project is a mistake worth its own message: "no project found" would send
     /// the user looking at the directory they gave rather than at the pattern they wrote.
     /// </summary>

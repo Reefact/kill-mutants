@@ -23,6 +23,18 @@ internal static class CoverageProbe
     /// <summary>The environment variable naming the file the recorder writes to.</summary>
     public const string OutputPathVariable = "KILLMUTANTS_COVERAGE_FILE";
 
+    /// <summary>
+    /// The last line the recorder writes, which is how a reader knows it finished.
+    /// </summary>
+    /// <remarks>
+    /// Without it, a file of three hits written by a process that died on its fourth is
+    /// indistinguishable from a complete measurement, and the sites it never got to would be read as
+    /// unreached. The recorder also creates the file the moment it is first touched, so an absent
+    /// file means the assembly under test was never entered at all - a real answer - while a file
+    /// without this marker means a measurement that started and did not finish.
+    /// </remarks>
+    public const string CompletionMarker = "#complete";
+
     /// <summary>The recorder's source.</summary>
     public static string Source { get; } =
         """
@@ -36,7 +48,12 @@ internal static class CoverageProbe
 
                 static CoverageProbe()
                 {
-                    System.AppDomain.CurrentDomain.ProcessExit += delegate { Flush(); };
+                    // Claim the file straight away. A process that dies later then leaves a file
+                    // without the completion marker, which reads as "measurement failed" rather
+                    // than as "this test reached nothing".
+                    Write(false);
+
+                    System.AppDomain.CurrentDomain.ProcessExit += delegate { Write(true); };
                 }
 
                 public static T Hit<T>(int id, T value)
@@ -46,7 +63,7 @@ internal static class CoverageProbe
                     return value;
                 }
 
-                private static void Flush()
+                private static void Write(bool complete)
                 {
                     string path = System.Environment.GetEnvironmentVariable("KILLMUTANTS_COVERAGE_FILE");
 
@@ -59,7 +76,17 @@ internal static class CoverageProbe
                         foreach (int id in Hits) { builder.Append(id).Append('\n'); }
                     }
 
-                    System.IO.File.WriteAllText(path, builder.ToString());
+                    if (complete) { builder.Append("#complete").Append('\n'); }
+
+                    try
+                    {
+                        System.IO.File.WriteAllText(path, builder.ToString());
+                    }
+                    catch (System.IO.IOException)
+                    {
+                        // An unwritable file leaves no marker, which is read as a failed
+                        // measurement - the conservative answer, and the right one.
+                    }
                 }
             }
         }

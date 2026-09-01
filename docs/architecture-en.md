@@ -103,6 +103,23 @@ and each exercised end to end against a real fixture project.
 | `Negation` | `!x` | `x` |
 | `StringLiteral` | `"text"` | `""`, and `""` into a non-empty string |
 
+**What it deliberately does not mutate.** The catalogue is selective rather than exhaustive: every
+mutant costs a test run, so an operator earns its place by the signal it carries. The inventory below
+was measured by running the catalogue over each form rather than read off the language spec.
+
+| Not mutated | Decision |
+|---|---|
+| `>>>`, `>>>=` | **Future candidate.** High signal - unsigned and signed shift differ only for negative values, which is exactly the case a test suite forgets. |
+| `^=` | **Future candidate.** `^` is mutated but its compound form is not, which is an inconsistency rather than a decision. |
+| Relational patterns (`is > 3`) | **Future candidate**, and a growing one: it is the `Comparison` family's twin for code written in patterns. |
+| Numeric literals | **Future candidate.** Classic and high signal, but noisy enough that it wants its own opt-in rather than a place in the default set. |
+| `-x` | **Future candidate**, below the others: most sign errors are already reachable through the arithmetic family. |
+| `+x` | **Not supported.** Removing a unary plus changes nothing, so the mutant is equivalent by construction and can never be killed. |
+| `~x` | **Not supported for now.** Removing it changes the value so drastically that any test touching the expression kills it; the mutant is nearly free to write and nearly worthless. |
+| `?.`, `as` | **Not supported.** Both mutate into forms that usually throw rather than compute, so they measure whether a test touches the line, not whether it checks the result - and `?.` often does not even compile once the null path is removed. |
+| `is T` | **Not supported for now.** Worth revisiting with the relational patterns above, as one pattern-aware family rather than two rules. |
+| `switch` arms | **Not supported.** Reordering or removing arms is a structural mutation, not an operator one, and needs a different kind of reasoning about exhaustiveness. |
+
 Three properties hold across all of them. Each replacement is a **new node of the target kind**, not
 a swapped token ([RB-001](robustness-backlog-en.md)). Each asks the compiler whether the replacement
 would bind before proposing it, so a mutant that cannot compile is never generated
@@ -190,7 +207,8 @@ discover the tests and measure which ones reach which mutants, so uncovered muta
 the rest run only what can kill them. M7 reports: live progress, findings grouped by file, and a JSON
 report for anything that is not a person. M8 makes it usable as a quality gate: an opt-in
 `--break-at` threshold and exit codes that separate a weak test suite from a broken run. M9
-completes the operator catalogue. M10 makes it a tool rather than an engine: packaged as
+grows the operator catalogue to eleven families - selective rather than complete, with the
+omissions listed above decided rather than overlooked. M10 makes it a tool rather than an engine: packaged as
 `dotnet killmutants`, given the `--exclude` a real repository needs, and — the point of the milestone
 — run against KillMutants' own source, which found RB-016 within seconds.
 
