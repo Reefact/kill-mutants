@@ -116,6 +116,12 @@ jobs:
           # leaves every known train empty, skips every pack, and takes its own check with it:
           # a repository whose only project misspells its train rehearsed clean and found out
           # at tag time. The check has to sit where a typo cannot switch it off.
+          conditioned="$(conditioned_trains)"
+          if [ -n "$conditioned" ]; then
+            echo "::error::<ReleaseTrain> carries an attribute in: $(printf '%s' "$conditioned" | tr '\n' ' '). Membership is an identity, not a build option; declare it unconditionally."
+            exit 1
+          fi
+
           unknown=''
           for declared in $(declared_trains); do
             if [ -z "$(prefix_of "$declared")" ]; then unknown="${unknown} ${declared}"; fi

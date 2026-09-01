@@ -51,6 +51,17 @@ if [ -n "$unknown" ]; then
   exit 1
 fi
 
+# An attribute on <ReleaseTrain> — a Condition, above all — is refused rather than guessed at.
+# See conditioned_trains in trains.sh for why neither reading is safe.
+conditioned="$(conditioned_trains)"
+if [ -n "$conditioned" ]; then
+  echo "error: <ReleaseTrain> carries an attribute in:" >&2
+  printf '%s\n' "$conditioned" | sed 's|^|  - |' >&2
+  echo "       Release-train membership is an identity, not a build option, and a conditional" >&2
+  echo "       declaration cannot be resolved from the project text. Declare it unconditionally." >&2
+  exit 1
+fi
+
 projects="$(projects_of "$train")"
 if [ -z "$projects" ]; then
   echo "error: no project declares <ReleaseTrain>${train}</ReleaseTrain>; there is nothing to publish on this train." >&2
@@ -153,6 +164,67 @@ mkdir -p artifacts
 for project in $projects; do
   dotnet pack "$project" -c Release -p:Version="$version" -p:GenerateSBOM=true -o artifacts
 done
+
+# --- guard: one distinct package per project ------------------------------------
+# Two projects on a train that resolve to the same PackageId pack to the same
+# <id>.<version>.nupkg path, so the second overwrites the first and every later guard still
+# sees a valid artifact. The release then succeeds having silently dropped a declared
+# project. Counting is enough to catch it, and says so before anything is attested.
+expected="$(printf '%s\n' $projects | grep -c .)"
+produced="$(ls artifacts/*.nupkg 2>/dev/null | wc -l)"
+if [ "$produced" -ne "$expected" ]; then
+  echo "error: the '${train}' train has ${expected} project(s) but packing produced ${produced} package(s)." >&2
+  echo "       Two projects resolving to the same PackageId overwrite each other's .nupkg; give each its own." >&2
+  exit 1
+fi
+echo "ok: ${produced} package(s) for ${expected} project(s) on the '${train}' train"
+
+# --- guard: no dependency on a package this repository never publishes -----------
+# Read from the PRODUCED nuspec, not from the project files, because that is the only place
+# the answer is exact — and because it is immune to how the reference was written. A
+# ProjectReference contributed by an imported .props/.targets, spelled with a Condition, or
+# formatted across lines never appears in the text this script used to scan; all three reach
+# the nuspec.
+#
+# The failure it closes: `dotnet pack` represents a ProjectReference as a package DEPENDENCY
+# at the version being packed — it does not embed the referenced assembly. A train project
+# referencing an ordinary helper project therefore ships
+# <dependency id="Helper" version="1.2.3" /> for a package that is never published, and every
+# consumer's restore fails (NU1101) against an immutable artifact. Measured: that nuspec is
+# exactly what a plain helper reference produces.
+#
+# A dependency is refused when its id belongs to a project in THIS repository that this pack
+# did not produce. Anything else — Newtonsoft.Json, another train's already-published package
+# at a fixed version — is a normal dependency and is left alone.
+local_ids="$(find . -name '*.csproj' -not -path '*/bin/*' -not -path '*/obj/*' 2>/dev/null \
+  | while read -r _proj; do
+      _id="$(_flattened "$_proj" | grep -oE '<PackageId>[^<]*</PackageId>' \
+             | sed -E 's|<PackageId>[[:space:]]*([^<[:space:]]*)[[:space:]]*</PackageId>|\1|' | head -n1)"
+      [ -n "$_id" ] || _id="$(basename "$_proj" .csproj)"
+      printf '%s\n' "$_id"
+    done | sort -u)"
+produced_ids="$(ls artifacts/*.nupkg 2>/dev/null \
+  | sed -E "s|.*/||; s|\.$(printf '%s' "$version" | sed 's/[].[^$*\/\\]/\\&/g')\.nupkg$||" | sort -u)"
+
+phantom=''
+for package in artifacts/*.nupkg; do
+  nuspec="$(unzip -p "$package" '*.nuspec' 2>/dev/null | tr '\n' ' ')"
+  for dep in $(printf '%s' "$nuspec" | grep -oE '<dependency id="[^"]*"' | sed 's|.*id="||; s|"$||'); do
+    printf '%s\n' "$local_ids" | grep -Fxq "$dep" || continue   # not one of ours: ordinary dependency
+    printf '%s\n' "$produced_ids" | grep -Fxq "$dep" && continue # co-published by this very pack
+    phantom="${phantom}  - $(basename "$package") depends on '${dep}', which this repository does not publish
+"
+  done
+done
+if [ -n "$phantom" ]; then
+  echo "error: package(s) would ship a dependency on a package that will never exist:" >&2
+  printf '%s' "$phantom" >&2
+  echo "       dotnet pack turns a ProjectReference into a dependency at the packed version; it does not" >&2
+  echo "       embed the assembly. Put the referenced project on this train, publish it on its own, or" >&2
+  echo "       keep its output inside the package (PrivateAssets=\"all\" plus an explicit Pack target)." >&2
+  exit 1
+fi
+echo "ok: no dependency on an unpublished local package"
 
 # --- guard: the SBOM is actually in there --------------------------------------
 # Positive proof, not just a green pack: a pack that silently stopped embedding the

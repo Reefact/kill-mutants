@@ -52,7 +52,33 @@ train_scopes="$(scopes_of "$train")"
 # nuget.org or the GitHub API which tags shipped. That trades a pure-git script, runnable and
 # testable anywhere with no credentials, for one that needs the network and a token to say what
 # a release contains. Not worth it for a case a `git tag -d` closes.
-previous_tag="$(git tag --list "${prefix}*" --sort=-version:refname | grep -Fxv "$current_tag" | head -n1 || true)"
+# Ordering matters twice here, and Git's default gets both wrong.
+#
+# `--sort=version:refname` places lib-v2.0.0-rc.1 ABOVE lib-v2.0.0 — measured — because it has
+# no notion of a pre-release. `versionsort.suffix=-` supplies it: everything after a hyphen
+# sorts before the bare version, which is SemVer precedence for the whole family
+# (alpha < beta < rc < release).
+#
+# And "the highest tag that is not this one" is not the previous release: with lib-v2.1.0-rc.1
+# already cut, a lib-v2.0.1 patch off a maintenance branch would take the RC as its lower
+# bound and produce notes for a range that runs backwards. The previous release is the tag
+# immediately BELOW this one in that ordering, which is what taking the line after it gives.
+#
+# The tag being released does not exist yet on a workflow_dispatch, so it is created locally,
+# for the length of the lookup only, to be placed by the same comparator rather than by a
+# second implementation of it. The trap removes it on every exit path.
+_temp_tag=''
+_cleanup() { [ -n "$_temp_tag" ] && git tag -d "$_temp_tag" >/dev/null 2>&1; return 0; }
+trap _cleanup EXIT
+if ! git rev-parse -q --verify "refs/tags/${current_tag}" >/dev/null 2>&1; then
+  if git tag "$current_tag" "$end_ref" >/dev/null 2>&1; then _temp_tag="$current_tag"; fi
+fi
+# -A1 prints the current tag and the one after it; when it is already the oldest, -A1 yields
+# only itself and the comparison below turns that into "no previous release".
+previous_tag="$(git -c versionsort.suffix=- tag --list "${prefix}*" --sort=-version:refname \
+  | grep -A1 -Fx "$current_tag" | tail -n1 || true)"
+[ "$previous_tag" = "$current_tag" ] && previous_tag=''
+_cleanup; _temp_tag=''; trap - EXIT
 if [ -n "$previous_tag" ]; then
   range="${previous_tag}..${end_ref}"
 else

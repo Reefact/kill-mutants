@@ -161,6 +161,15 @@ published under it; once nuget.org has the version, it is immutable — release 
 instead. A run that failed AFTER the NuGet push falls in that second case: the packages are out,
 so keep the tag and go forward.
 
+**A partly published version is burned.** A train with several packages pushes them one after
+another, so a failure in the middle leaves some published and some not. Do not retry that
+version: `--skip-duplicate` would keep the packages already out — built from the earlier commit —
+and publish the rest from the new one, permanently mixing two builds under one version number
+with nothing left to say so. Release the next version instead. The release refuses the neighbouring
+mistake on its own (a tag that points at another commit is rejected before anything is published),
+but a version half-pushed under *no* tag is not something the pipeline can see; this is the one
+recovery that stays a judgement call, so it is written down rather than guarded.
+
 ## Rehearsing
 
 - **Every pull request** runs `release-dryrun`: build, pack every train, embed the SBOM,

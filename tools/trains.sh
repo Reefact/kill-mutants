@@ -173,11 +173,11 @@ projects_of() {
   # line — and the precise test then runs on the flattened file, so a declaration split
   # across lines survives the filter instead of being dropped by it. Only files that mention
   # the element at all pay for the second pass.
-  grep -rl "<ReleaseTrain>" \
+  grep -rl "<ReleaseTrain" \
     --include='*.csproj' --exclude-dir=bin --exclude-dir=obj . 2>/dev/null \
     | sed 's|^\./||' | sort | while read -r _po_proj; do
     if _flattened "$_po_proj" \
-         | grep -q -E "<ReleaseTrain>[[:space:]]*$1[[:space:]]*</ReleaseTrain>"; then
+         | grep -q -E "<ReleaseTrain[^>]*>[[:space:]]*$1[[:space:]]*</ReleaseTrain>"; then
       printf '%s\n' "$_po_proj"
     fi
   done
@@ -190,10 +190,28 @@ projects_of() {
 declared_trains() {
   # Build outputs are skipped here for the reason given on projects_of: a value only a
   # copy declares would be reported as if a project had chosen it.
-  grep -rl "<ReleaseTrain>" \
+  grep -rl "<ReleaseTrain" \
     --include='*.csproj' --exclude-dir=bin --exclude-dir=obj . 2>/dev/null \
     | while read -r _dt_proj; do _flattened "$_dt_proj"; done \
-    | grep -o -E "<ReleaseTrain>[^<]*</ReleaseTrain>" \
-    | sed -E 's|.*<ReleaseTrain>[[:space:]]*([^<[:space:]]*)[[:space:]]*</ReleaseTrain>.*|\1|' \
+    | grep -o -E "<ReleaseTrain[^>]*>[^<]*</ReleaseTrain>" \
+    | sed -E 's|.*<ReleaseTrain[^>]*>[[:space:]]*([^<[:space:]]*)[[:space:]]*</ReleaseTrain>.*|\1|' \
     | sort -u || true
+}
+
+# conditioned_trains — echo the .csproj paths whose <ReleaseTrain> carries any attribute.
+#
+# Membership is an identity, not a build option: a project either ships on a train or it does
+# not. A Condition would make that depend on the configuration being evaluated, and no
+# text-based discovery can answer it — matching the element would over-count a project whose
+# condition is false, and ignoring the element would silently drop one whose condition is true.
+# Both are wrong in a way nothing downstream could detect, so the declaration is refused
+# instead, which is the one answer that is never wrong.
+conditioned_trains() {
+  grep -rl "<ReleaseTrain" \
+    --include='*.csproj' --exclude-dir=bin --exclude-dir=obj . 2>/dev/null \
+    | sed 's|^\./||' | sort | while read -r _ct_proj; do
+    if _flattened "$_ct_proj" | grep -q -E "<ReleaseTrain[[:space:]][^>]*>"; then
+      printf '%s\n' "$_ct_proj"
+    fi
+  done
 }
