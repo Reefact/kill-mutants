@@ -22,13 +22,15 @@ internal sealed class MutationTestSession
     private readonly TimeoutPolicy _timeoutPolicy;
     private readonly int _workerCount;
     private readonly bool _measureCoverage;
+    private readonly IProgress<MutationTestProgress>? _progress;
 
     public MutationTestSession(
         ITestRunner testRunner,
         string configuration,
         TimeoutPolicy? timeoutPolicy = null,
         int? workerCount = null,
-        bool measureCoverage = true)
+        bool measureCoverage = true,
+        IProgress<MutationTestProgress>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(testRunner);
         ArgumentException.ThrowIfNullOrWhiteSpace(configuration);
@@ -38,6 +40,7 @@ internal sealed class MutationTestSession
         _timeoutPolicy = timeoutPolicy ?? TimeoutPolicy.Default;
         _workerCount = workerCount ?? DefaultWorkerCount;
         _measureCoverage = measureCoverage;
+        _progress = progress;
     }
 
     /// <summary>
@@ -55,7 +58,8 @@ internal sealed class MutationTestSession
         string searchDirectory,
         CancellationToken cancellationToken = default)
     {
-        var discovery = new ProjectDiscovery(_configuration);
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var discovery = new ProjectDiscovery(_configuration, _progress);
 
         IReadOnlyList<MutationTestTarget> targets = await discovery
             .DiscoverAsync(searchDirectory, cancellationToken)
@@ -70,6 +74,10 @@ internal sealed class MutationTestSession
 
         foreach (MutationTestTarget target in targets)
         {
+            _progress?.Report(new MutationTestProgress(
+                MutationTestPhase.Analysing, compilations.Count, targets.Count,
+                target.ProjectUnderTest.Name));
+
             compilations.Add(await BuildCompilationAsync(target.ProjectUnderTest, cancellationToken)
                 .ConfigureAwait(false));
         }
@@ -84,7 +92,7 @@ internal sealed class MutationTestSession
                 .ConfigureAwait(false));
         }
 
-        return new MutationTestReport(results);
+        return new MutationTestReport(results, stopwatch.Elapsed);
     }
 
     private async Task<IReadOnlyList<MutantResult>> TestTargetAsync(
@@ -117,7 +125,7 @@ internal sealed class MutationTestSession
                 .ConfigureAwait(false);
 
             CoverageMap? coverage = _measureCoverage
-                ? await new CoverageCollector(_testRunner)
+                ? await new CoverageCollector(_testRunner, _progress)
                     .CollectAsync(sandboxes, compilation, mutants, budget, cancellationToken)
                     .ConfigureAwait(false)
                 : null;
@@ -156,6 +164,7 @@ internal sealed class MutationTestSession
     {
         var pending = new ConcurrentQueue<int>(Enumerable.Range(0, mutants.Count));
         var results = new MutantResult?[mutants.Count];
+        int tested = 0;
 
         async Task WorkAsync(TestSandbox sandbox)
         {
@@ -164,6 +173,9 @@ internal sealed class MutationTestSession
                 results[index] = await TestMutantAsync(
                         compilation, sandbox, mutants[index], coverage, budget, cancellationToken)
                     .ConfigureAwait(false);
+
+                _progress?.Report(new MutationTestProgress(
+                    MutationTestPhase.TestingMutants, Interlocked.Increment(ref tested), mutants.Count));
             }
         }
 
@@ -202,6 +214,9 @@ internal sealed class MutationTestSession
         TestSandbox sandbox,
         CancellationToken cancellationToken)
     {
+        _progress?.Report(new MutationTestProgress(
+            MutationTestPhase.VerifyingBaseline, Subject: target.ProjectUnderTest.Name));
+
         EmitOutcome baseline = compilation.EmitBaseline();
 
         if (!baseline.Success)

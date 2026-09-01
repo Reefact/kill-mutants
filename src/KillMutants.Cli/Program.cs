@@ -37,11 +37,28 @@ internal static class Program
 
         try
         {
+            using var progress = new ConsoleProgressReporter(
+                Console.Error, rewritesInPlace: !Console.IsErrorRedirected);
+
             MutationTestReport report = await MutationTesting
-                .RunAsync(options.Directory, options.Configuration, options.WorkerCount, options.MeasureCoverage)
+                .RunAsync(
+                    options.Directory, options.Configuration, options.WorkerCount,
+                    options.MeasureCoverage, progress)
                 .ConfigureAwait(false);
 
+            // Progress goes to stderr and the report to stdout, so piping the report somewhere
+            // useful does not drag the progress line along with it.
+            progress.Dispose();
+
             ConsoleReportWriter.Write(Console.Out, report);
+
+            if (options.JsonReportPath is { } jsonPath)
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(jsonPath)!);
+
+                using var json = new StreamWriter(jsonPath);
+                JsonReportWriter.Write(json, report);
+            }
 
             return Success;
         }
@@ -73,6 +90,7 @@ internal static class Program
               -p, --parallel <n>        Mutants to test at once. Defaults to half the processors.
                   --no-coverage         Run every test for every mutant, instead of only the ones
                                         that reach it.
+                  --report-json <path>  Also write the report as JSON, for CI and tooling.
               -h, --help                Show this help.
             """);
     }

@@ -5,8 +5,9 @@ namespace KillMutants.Cli;
 /// <param name="Configuration">The build configuration to analyse and run.</param>
 /// <param name="WorkerCount">How many mutants to test at once, or null for the default.</param>
 /// <param name="MeasureCoverage">Run only the tests that reach each mutant.</param>
+/// <param name="JsonReportPath">Where to write the machine-readable report, or null for none.</param>
 internal sealed record CommandLineOptions(
-    string Directory, string Configuration, int? WorkerCount, bool MeasureCoverage)
+    string Directory, string Configuration, int? WorkerCount, bool MeasureCoverage, string? JsonReportPath)
 {
     /// <summary>
     /// Parses the command line. The defaults are chosen so that <c>dotnet killmutants</c> with no
@@ -21,6 +22,7 @@ internal sealed record CommandLineOptions(
         string configuration = "Release";
         int? workerCount = null;
         bool measureCoverage = true;
+        string? jsonReportPath = null;
 
         for (int index = 0; index < args.Count; index++)
         {
@@ -63,6 +65,18 @@ internal sealed record CommandLineOptions(
 
                     break;
 
+                case "--report-json":
+                    index++;
+
+                    if (index >= args.Count)
+                    {
+                        throw new ArgumentException($"'{argument}' needs a file path.");
+                    }
+
+                    jsonReportPath = Path.GetFullPath(args[index]);
+
+                    break;
+
                 default:
                     if (argument.StartsWith('-'))
                     {
@@ -84,6 +98,7 @@ internal sealed record CommandLineOptions(
             Path.GetFullPath(directory ?? System.IO.Directory.GetCurrentDirectory()),
             configuration,
             workerCount,
-            measureCoverage);
+            measureCoverage,
+            jsonReportPath);
     }
 }
