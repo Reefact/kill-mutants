@@ -683,3 +683,33 @@ and proves a generator's own warnings are not treated as failures, and
 `FailedGeneratorTests.A_run_stops_rather_than_reporting_on_a_compilation_a_generator_did_not_finish`,
 which adds a throwing generator whose output nothing needs — so the build still works, and only the
 new rule stops the run.
+
+---
+
+## RB-022 — Every emit builds a new generator driver · ACCEPTED
+
+**How it was found.** The same automated review as RB-021 pointed out that
+`SourceGenerators.Run` discards the driver `RunGeneratorsAndUpdateCompilation` returns — the one
+holding Roslyn's incremental state — so a project with hundreds of mutants runs its generators from
+cold hundreds of times instead of getting the cached subsequent runs the design documents.
+
+**What was measured.** The claim is accurate about the mechanism and wrong about what it costs.
+Against the .NET 10 SDK on `tests/fixtures/single`, which carries eight generators without asking for
+any of them — `Microsoft.Interop.LibraryImportGenerator` and its siblings ship with the framework:
+
+| | Cost |
+| --- | --- |
+| First generator run in the process | 1 139 ms |
+| Every run after it | 4.5 ms |
+| The whole emit around it | 9 ms |
+
+The first run is assembly loading and JIT. That is paid once per process however the driver is held,
+so it is not what driver reuse would save; the 4.5 ms is. Against our own last self-run — 499 mutants
+in 7.4 minutes — reusing driver state could recover about two seconds, under one percent of the run,
+and the mutant phase is dominated by launching test hosts rather than by anything Roslyn does.
+
+**Why it is accepted rather than fixed.** A driver is state, and mutants are tested on several
+workers at once. Buying under one percent of a run with state shared across those workers is a poor
+trade in a tool whose worst failure is a verdict that is quietly wrong — and RB-020, on the same
+page, is what sharing loader state across runs already cost us. This is recorded rather than done, so
+that the next person to notice the discarded driver finds the measurement instead of repeating it.

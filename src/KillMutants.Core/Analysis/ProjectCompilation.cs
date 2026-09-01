@@ -161,9 +161,13 @@ internal sealed class ProjectCompilation
     /// </summary>
     /// <remarks>
     /// Generator output can depend on the code being mutated, so it is regenerated for each mutant
-    /// rather than reused. Measured on a project with seven generators: the first driver run costs
-    /// about a second, every later one 1.4 ms, against 60 ms to emit and roughly 600 ms to run the
-    /// tests. Correctness here is essentially free, so there is no reason to approximate.
+    /// rather than reused, and the driver that carries Roslyn's incremental state is deliberately not
+    /// kept. Re-measured against the .NET 10 SDK on the fixture project, which has eight generators
+    /// without asking for any - they ship with the framework: the first run costs 1 139 ms, which is
+    /// assembly loading and JIT and would be paid once however the driver were held, and every run
+    /// after it costs 4.5 ms inside a 9 ms emit. Against a mutant that takes hundreds of milliseconds
+    /// to test, keeping driver state across parallel workers would buy well under one percent of a
+    /// run in exchange for shared mutable state. See RB-022.
     /// </remarks>
     private EmitOutcome Emit(CSharpCompilation compilation)
     {
