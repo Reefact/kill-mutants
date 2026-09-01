@@ -1,0 +1,113 @@
+<Project>
+
+  <!--
+    Everything that has to READ a property the project itself sets lives here rather than in a
+    Directory.Build.props. The SDK imports the .props file at the TOP of a project, before the
+    project's own PropertyGroups have been evaluated, so a condition on $(ReleaseTrain) there
+    would always see an empty value. This file is imported at the BOTTOM, after the project body,
+    which is the only place the declaration below can be observed.
+
+    This file is the whole build-side contract of the release pipeline. It deliberately does NOT
+    set anything else — target frameworks, analyzers, warning levels, central package management —
+    because none of that is a release concern and all of it is the repository's to decide when the
+    first project lands.
+  -->
+
+  <!--
+    <ReleaseTrain> is how a project joins a release train, and it is the ONLY place that membership
+    is recorded: tools/trains.sh discovers the projects of a train by reading this property out of
+    the project files, and tools/packaging/pack.sh packs exactly what it finds.
+
+    Declaring a train is therefore a statement that the project SHIPS, which is what makes it
+    packable. Stating it here rather than in each project keeps the two facts from disagreeing — a
+    project declaring a train but left unpackable would be silently absent from its own release.
+  -->
+  <PropertyGroup Condition="'$(ReleaseTrain)' != ''">
+    <IsPackable>true</IsPackable>
+  </PropertyGroup>
+
+  <!--
+    Ship symbols as a separate .snupkg so the main package stays lean but stays debuggable.
+
+    Excluded for a tool: PackAsTool produces a self-contained tool package and no symbol package,
+    so asking for one there produces a pack warning and nothing else. Both workflows already expect
+    a train to ship no .snupkg (`shopt -s nullglob` before globbing the assets), so the cli train
+    passing through here without symbols is the case they were written for.
+  -->
+  <PropertyGroup Condition="'$(ReleaseTrain)' != '' and '$(PackAsTool)' != 'true'">
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <!-- Deterministic, path-normalized builds on CI; a no-op for local builds. This is what makes
+       "recompiling the same source at the same version reproduces the same bytes" true, which is
+       the assumption pack.sh relies on when it compiles what it packs. -->
+  <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <!--
+    Microsoft.Sbom.Targets is what makes -p:GenerateSBOM=true embed an SPDX inventory
+    (_manifest/spdx_2.2/manifest.spdx.json) in the produced package; pack.sh asserts the manifest is
+    present in every .nupkg it builds, so a project that shipped without this reference would fail
+    the pack rather than publish an inventory-less package.
+
+    Attached to the train declaration rather than repeated in every publishable project: the two
+    always go together, and a new project would otherwise ship without an SBOM until somebody
+    noticed. Build-time only (PrivateAssets=all): it never reaches a consumer's dependency graph.
+  -->
+  <ItemGroup Condition="'$(ReleaseTrain)' != ''">
+    <PackageReference Include="Microsoft.Sbom.Targets" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!--
+    The version pin, supplied here only while central package management is NOT in use. Under CPM a
+    Version on a PackageReference is an error (NU1008) and the pin belongs in Directory.Packages.props
+    instead — so the day this repository adopts CPM, this ItemGroup goes quiet on its own and the
+    version moves, rather than the build breaking on a conflict nobody predicted.
+  -->
+  <ItemGroup Condition="'$(ReleaseTrain)' != '' and '$(ManagePackageVersionsCentrally)' != 'true'">
+    <PackageReference Update="Microsoft.Sbom.Targets" Version="4.1.5" />
+  </ItemGroup>
+
+  <!--
+    The package version and the assembly version must say the same thing.
+
+    They are two independent properties, and nothing in the SDK ties them: $(Version) names the
+    package, $(AssemblyVersion) is stamped into the binary and is what the CLR binds on. A release
+    that sets one and not the other produces a package whose number is right and whose assembly
+    identity is not — which no amount of building, testing or packing notices, because every one of
+    those steps is internally consistent with itself. A sibling repository shipped exactly that: a
+    package numbered 1.0.0 around an assembly stamped 0.0.0.0, and a consumer met a
+    FileNotFoundException naming a version that was published and does not exist.
+
+    Be clear about what this does NOT catch. This compares two PROPERTIES of one evaluation, so it
+    sees a hand-set AssemblyVersion disagreeing at the source — not a pack over STALE bytes, where
+    both properties agree and the assembly on disk was stamped by an earlier compilation. What
+    closes that hole is pack.sh compiling what it packs; this target is the second line.
+
+    Both entry points are covered so the check holds wherever the stamp is decided: CoreCompile is
+    where it is applied, and GenerateNuspec catches a pack invoked on its own.
+
+    Only the three leading components are compared. A four-part $(AssemblyVersion) against a
+    three-part $(Version) is the ordinary case, not a mismatch, and a SemVer pre-release label
+    (1.0.0-rc.1) is deliberately outside the comparison: the CLR has nowhere to put it, so the
+    assembly of a pre-release legitimately reads 1.0.0.
+
+    A version neither side can parse as three numbers leaves this quiet rather than guessing. That
+    is a real gap and a small one — release.yml already refuses any tag that is not SemVer, so the
+    shape reaching a release is always one this reads.
+  -->
+  <Target Name="KillMutantsVerifyAssemblyVersionMatchesPackageVersion"
+          Condition="'$(ReleaseTrain)' != ''"
+          BeforeTargets="CoreCompile;GenerateNuspec">
+    <PropertyGroup>
+      <_KmPackageVersionCore>$([System.Text.RegularExpressions.Regex]::Match('$(Version)', '^[0-9]+\.[0-9]+\.[0-9]+').Value)</_KmPackageVersionCore>
+      <_KmAssemblyVersionCore>$([System.Text.RegularExpressions.Regex]::Match('$(AssemblyVersion)', '^[0-9]+\.[0-9]+\.[0-9]+').Value)</_KmAssemblyVersionCore>
+    </PropertyGroup>
+    <Error Condition="'$(_KmPackageVersionCore)' != '' and '$(_KmAssemblyVersionCore)' != '' and '$(_KmPackageVersionCore)' != '$(_KmAssemblyVersionCore)'"
+           Code="KMPACK001"
+           Text="$(PackageId) would ship version $(Version) with an assembly stamped $(AssemblyVersion). A consumer binds on the assembly version, so the two must agree on their first three components. Set Version (the release passes -p:Version) rather than AssemblyVersion, and do not set AssemblyVersion by hand." />
+  </Target>
+
+</Project>
