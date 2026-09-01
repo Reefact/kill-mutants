@@ -9,15 +9,23 @@ internal sealed class MutantGenerator
 {
     private readonly MutatorCatalog _catalog;
     private readonly PathFilter _exclusions;
+    private readonly string _root;
 
     private MutantId _nextId = MutantId.First;
 
-    public MutantGenerator(MutatorCatalog catalog, PathFilter? exclusions = null)
+    /// <param name="catalog">The rules to apply.</param>
+    /// <param name="exclusions">Paths to leave alone.</param>
+    /// <param name="root">
+    /// The directory the run was pointed at. Mutants record their file relative to it, so that a
+    /// mutant's key is the same on a CI runner and on a laptop - see <see cref="MutantKey"/>.
+    /// </param>
+    public MutantGenerator(MutatorCatalog catalog, PathFilter? exclusions = null, string? root = null)
     {
         ArgumentNullException.ThrowIfNull(catalog);
 
         _catalog = catalog;
         _exclusions = exclusions ?? PathFilter.None;
+        _root = root ?? string.Empty;
     }
 
     /// <summary>
@@ -63,7 +71,7 @@ internal sealed class MutantGenerator
                 {
                     foreach (MutationCandidate candidate in mutator.Mutate(node, semanticModel))
                     {
-                        mutants.Add(new Mutant(_nextId, candidate));
+                        mutants.Add(new Mutant(_nextId, candidate, _root));
                         _nextId = _nextId.Next();
                     }
                 }

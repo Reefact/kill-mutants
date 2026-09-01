@@ -94,7 +94,7 @@ internal sealed class MutationTestSession
         }
 
         // One generator for the whole session, so mutant identifiers never repeat across projects.
-        var generator = new MutantGenerator(_catalog, exclusions);
+        var generator = new MutantGenerator(_catalog, exclusions, searchDirectory);
         List<MutantResult> results = [];
 
         foreach ((MutationTestTarget target, ProjectCompilation compilation) in targets.Zip(compilations))
@@ -379,7 +379,8 @@ internal sealed class MutationTestSession
             if (outcome.Crashed)
             {
                 // The baseline proved this host runs cleanly unmutated, so a crash here is
-                // attributable to the mutation. The suite certainly did not pass.
+                // attributable to the mutation. The suite certainly did not pass. No test is named:
+                // the host died before saying which, and inventing one would be worse than silence.
                 return new MutantResult(mutant, MutantStatus.Killed, outcome.CrashDetail);
             }
 
@@ -391,7 +392,10 @@ internal sealed class MutationTestSession
 
             if (outcome.AnyFailed)
             {
-                return new MutantResult(mutant, MutantStatus.Killed);
+                // Named, so the kill can be reproduced without this tool: apply the mutation, run
+                // these tests, watch them fail.
+                return new MutantResult(
+                    mutant, MutantStatus.Killed, KilledBy: outcome.FailedTests);
             }
         }
 

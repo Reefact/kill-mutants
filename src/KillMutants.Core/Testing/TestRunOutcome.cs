@@ -7,14 +7,29 @@ namespace KillMutants.Testing;
 /// <param name="Duration">How long the run took.</param>
 /// <param name="TimedOut">True when the run exceeded its budget and was killed.</param>
 /// <param name="CrashDetail">Why the host died without reporting, or null when it reported normally.</param>
+/// <param name="FailedTests">
+/// The tests that did not pass, named so they can be run again. Empty when none did, or when the
+/// run produced no result file to read them from.
+/// </param>
 public sealed record TestRunOutcome(
     int Total,
     int Failed,
     int Errors,
     TimeSpan Duration,
     bool TimedOut,
-    string? CrashDetail = null)
+    string? CrashDetail = null,
+    IReadOnlyList<TestName>? FailedTests = null)
 {
+    /// <summary>The tests that did not pass, named so they can be run again.</summary>
+    /// <remarks>
+    /// Method names rather than the runner's full case names, because a name that cannot be used to
+    /// run the test again is not an answer. Measured against xUnit 4: passing
+    /// <c>Class.Method(age: 18)</c> to <c>-method</c> matches nothing, while <c>Class.Method</c>
+    /// matches the two cases behind it. A report naming killers nobody can re-run is what turns a
+    /// disputed kill into an unanswerable question.
+    /// </remarks>
+    public IReadOnlyList<TestName> FailedTests { get; init; } = FailedTests ?? [];
+
     /// <summary>
     /// True when the test host died without reporting a result at all.
     /// </summary>
