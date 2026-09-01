@@ -126,6 +126,17 @@ and the command line states the exception. A list on the command line replaces t
 adding to it. Paths in the file are relative to the file. A misspelt key stops the run rather than
 being ignored.
 
+Two things in the report exist so a verdict can be argued with. Every mutant carries a `key` derived
+from what it is — file, position, family, both texts — so two reports of the same commit can be joined
+even though the short `M12`-style numbers shift between runs. And every kill names the tests that
+failed, in the form the runner accepts, so a doubted verdict can be settled by hand: put the mutation
+in the file at the position given, run those tests, watch them fail.
+
+`--verify-kills <n>` goes further and tests a sample of the kills a second time, on their own. A
+verdict that does not survive its own repetition was never a measurement — a flaky or order-dependent
+test produces a kill the mutation did not cause — and the report says so rather than quietly picking
+a winner. It costs one test run per sampled mutant, so it is off unless asked for.
+
 **A score is only comparable to another score from the same catalogue.** Dropping those two families
 on this repository takes the run from 413 mutants in 7.1 minutes to 207 in 4.1, and the score from
 28.81% to 43% — not because the tests improved, but because a different question was asked. Pick a

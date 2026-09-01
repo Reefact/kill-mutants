@@ -23,6 +23,7 @@ public static class ConsoleReportWriter
 
         WriteTotals(writer, report);
         WriteFamilies(writer, report);
+        WriteWarnings(writer, report);
 
         writer.WriteLine();
         writer.WriteLine($"Mutation score: {report.Score}");
@@ -30,6 +31,11 @@ public static class ConsoleReportWriter
         if (report.Duration > TimeSpan.Zero)
         {
             writer.WriteLine($"Elapsed: {Format(report.Duration)}");
+        }
+
+        if (report.Environment is { } environment)
+        {
+            writer.WriteLine($"Ran on: {environment}");
         }
     }
 
@@ -133,6 +139,49 @@ public static class ConsoleReportWriter
                 $"  {family.Mutator.ToString().PadRight(nameWidth)}  " +
                 $"{Format(family.Total).PadLeft(totalWidth)} {Plural(family.Total, "mutant")}, " +
                 $"{Format(family.Detected).PadLeft(detectedWidth)} detected  ({family.Score})");
+        }
+    }
+
+    /// <summary>
+    /// Says what the score rests on, immediately before printing it.
+    /// </summary>
+    /// <remarks>
+    /// Placed here on purpose. A reader who scrolls to the last line and stops must not be able to
+    /// take a number away without the sentence that qualifies it, which is exactly how a report
+    /// reading "100%" over a component half of which was never judged goes unquestioned.
+    /// </remarks>
+    private static void WriteWarnings(TextWriter writer, MutationTestReport report)
+    {
+        foreach (RunWarning warning in report.Warnings)
+        {
+            writer.WriteLine();
+
+            foreach (string line in Wrap(warning.Text, width: 88))
+            {
+                writer.WriteLine($"! {line}");
+            }
+        }
+    }
+
+    /// <summary>Breaks a sentence into lines a terminal can hold.</summary>
+    private static IEnumerable<string> Wrap(string text, int width)
+    {
+        var line = new System.Text.StringBuilder();
+
+        foreach (string word in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (line.Length > 0 && line.Length + 1 + word.Length > width)
+            {
+                yield return line.ToString();
+                line.Clear();
+            }
+
+            line.Append(line.Length > 0 ? " " : string.Empty).Append(word);
+        }
+
+        if (line.Length > 0)
+        {
+            yield return line.ToString();
         }
     }
 

@@ -10,6 +10,7 @@ namespace KillMutants.Cli;
 /// <param name="Exclude">Patterns to leave alone. Empty means the option was not given.</param>
 /// <param name="Mutators">The only families to run. Empty means the option was not given.</param>
 /// <param name="WithoutMutators">Families to leave out. Empty means the option was not given.</param>
+/// <param name="VerifyKills">How many kills to test again, or null when it was not given.</param>
 /// <param name="JsonReportPath">Where to write the JSON report, or null when it was not given.</param>
 /// <param name="Threshold">The score the run must reach, or null when it was not given.</param>
 /// <remarks>
@@ -26,6 +27,7 @@ internal sealed record CommandLineOptions(
     IReadOnlyList<string> Exclude,
     IReadOnlyList<MutatorName> Mutators,
     IReadOnlyList<MutatorName> WithoutMutators,
+    int? VerifyKills,
     string? JsonReportPath,
     double? Threshold)
 {
@@ -45,6 +47,7 @@ internal sealed record CommandLineOptions(
         List<string> exclude = [];
         List<MutatorName> mutators = [];
         List<MutatorName> withoutMutators = [];
+        int? verifyKills = null;
         string? jsonReportPath = null;
         double? threshold = null;
 
@@ -113,6 +116,23 @@ internal sealed record CommandLineOptions(
 
                     break;
 
+                case "--verify-kills":
+                    index++;
+
+                    if (index >= args.Count ||
+                        !int.TryParse(
+                            args[index], System.Globalization.NumberStyles.Integer,
+                            System.Globalization.CultureInfo.InvariantCulture, out int sample) ||
+                        sample < 0)
+                    {
+                        throw new ArgumentException(
+                            $"'{argument}' needs a count of mutants to test again, zero or more.");
+                    }
+
+                    verifyKills = sample;
+
+                    break;
+
                 case "--break-at":
                     index++;
 
@@ -171,6 +191,7 @@ internal sealed record CommandLineOptions(
             exclude,
             mutators,
             withoutMutators,
+            verifyKills,
             jsonReportPath,
             threshold);
     }

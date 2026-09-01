@@ -25,6 +25,7 @@ internal sealed class MutationTestSession
     private readonly bool _measureCoverage;
     private readonly IReadOnlyList<string> _exclude;
     private readonly MutatorCatalog _catalog;
+    private readonly int _verifyKills;
     private readonly IProgress<MutationTestProgress>? _progress;
 
     public MutationTestSession(
@@ -35,6 +36,7 @@ internal sealed class MutationTestSession
         bool measureCoverage = true,
         IEnumerable<string>? exclude = null,
         MutatorCatalog? catalog = null,
+        int verifyKills = 0,
         IProgress<MutationTestProgress>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(testRunner);
@@ -47,6 +49,7 @@ internal sealed class MutationTestSession
         _measureCoverage = measureCoverage;
         _exclude = [.. exclude ?? []];
         _catalog = catalog ?? MutatorCatalog.Default;
+        _verifyKills = verifyKills;
         _progress = progress;
     }
 
@@ -97,19 +100,27 @@ internal sealed class MutationTestSession
         var generator = new MutantGenerator(_catalog, exclusions, searchDirectory);
         List<MutantResult> results = [];
 
+        // Recorded as the run goes, because a budget is derived per project and a report that omits
+        // it cannot explain a timeout afterwards.
+        List<TimeSpan> budgets = [];
+
         foreach ((MutationTestTarget target, ProjectCompilation compilation) in targets.Zip(compilations))
         {
-            results.AddRange(await TestTargetAsync(target, compilation, generator, cancellationToken)
+            results.AddRange(await TestTargetAsync(target, compilation, generator, budgets, cancellationToken)
                 .ConfigureAwait(false));
         }
 
-        return new MutationTestReport(results, stopwatch.Elapsed);
+        return new MutationTestReport(
+            results,
+            stopwatch.Elapsed,
+            RunEnvironment.Describe(_workerCount, TestFrameworkOf(targets), budgets));
     }
 
     private async Task<IReadOnlyList<MutantResult>> TestTargetAsync(
         MutationTestTarget target,
         ProjectCompilation compilation,
         MutantGenerator generator,
+        List<TimeSpan> budgets,
         CancellationToken cancellationToken)
     {
         IReadOnlyList<Mutant> mutants = generator.Generate(compilation.Compilation);
@@ -135,6 +146,8 @@ internal sealed class MutationTestSession
             TimeSpan budget = await VerifyBaselineAsync(target, compilation, sandboxes[0], cancellationToken)
                 .ConfigureAwait(false);
 
+            budgets.Add(budget);
+
             CoverageMap? coverage = _measureCoverage
                 ? await new CoverageCollector(_testRunner, _progress)
                     .CollectAsync(sandboxes, compilation, mutants, budget, cancellationToken)
@@ -147,6 +160,10 @@ internal sealed class MutationTestSession
 
             // Only now that every worker has stopped, so a re-run competes with nothing.
             await ConfirmTimeoutsAloneAsync(
+                    compilation, sandboxes[0], mutants, results, coverage, budget, cancellationToken)
+                .ConfigureAwait(false);
+
+            await ReVerifyKillsAsync(
                     compilation, sandboxes[0], mutants, results, coverage, budget, cancellationToken)
                 .ConfigureAwait(false);
 
@@ -249,6 +266,97 @@ internal sealed class MutationTestSession
                     compilation, sandbox, mutants[index], coverage, budget, cancellationToken)
                 .ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Tests a sample of the mutants reported killed a second time, and disagrees loudly.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Everything else in this file guards against a mutant being wrongly reported as <em>alive</em>.
+    /// This guards the other direction, which is the worse one: a mutant wrongly reported as killed
+    /// is a gap in the tests that gets celebrated instead of fixed. The baseline is verified once, at
+    /// the start; after that any failing test counts as a kill, whatever made it fail. A test that is
+    /// flaky, order-dependent or sensitive to the machine produces exactly that.
+    /// </para>
+    /// <para>
+    /// The check is a re-run, not an argument: same mutant, same tests, on a machine with nothing
+    /// else of ours running. A verdict that does not survive its own repetition was never a
+    /// measurement. It is a sample because certainty here costs a second full run, and a sample is
+    /// what turns "our kills are sound" from a belief into something a CI job checks every time.
+    /// </para>
+    /// <para>
+    /// Off unless asked, because it costs one test run per sampled mutant and that is the user's
+    /// time. What it never does is change a verdict: a disagreement is reported, not silently
+    /// resolved, because which of the two runs told the truth is not ours to decide.
+    /// </para>
+    /// </remarks>
+    private async Task ReVerifyKillsAsync(
+        ProjectCompilation compilation,
+        TestSandbox sandbox,
+        IReadOnlyList<Mutant> mutants,
+        MutantResult[] results,
+        CoverageMap? coverage,
+        TimeSpan budget,
+        CancellationToken cancellationToken)
+    {
+        if (_verifyKills <= 0)
+        {
+            return;
+        }
+
+        // Spread across the run rather than taken from the front, so a sample says something about
+        // the whole of it. Deterministic, so two runs of one commit sample the same mutants.
+        int[] killed = [.. Enumerable
+            .Range(0, results.Length)
+            .Where(index => results[index].Status == MutantStatus.Killed)];
+
+        int wanted = Math.Min(_verifyKills, killed.Length);
+
+        for (int taken = 0; taken < wanted; taken++)
+        {
+            int index = killed[(int)((long)taken * killed.Length / wanted)];
+
+            _progress?.Report(new MutationTestProgress(
+                MutationTestPhase.ReVerifyingKills, taken, wanted, mutants[index].Id.ToString()));
+
+            MutantResult again = await TestMutantAsync(
+                    compilation, sandbox, mutants[index], coverage, budget, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (again.Status != MutantStatus.Killed)
+            {
+                results[index] = results[index] with
+                {
+                    Disagreement =
+                        $"reported {MutantStatus.Killed} and then {again.Status} when tested again " +
+                        "on its own. One of the two runs is wrong, and this tool cannot tell which.",
+                };
+            }
+        }
+    }
+
+    /// <summary>The xUnit the test applications will run on, read from what was built.</summary>
+    /// <remarks>
+    /// Already known: discovery refuses anything but xUnit 4, and reads the version from the
+    /// assembly in the output directory to do it. Reporting it costs nothing and makes two runs
+    /// comparable - a runner and a laptop resolving different SDKs is exactly the difference nobody
+    /// notices until it has cost a day.
+    /// </remarks>
+    private static string? TestFrameworkOf(IEnumerable<MutationTestTarget> targets)
+    {
+        string[] versions =
+        [
+            .. targets
+                .SelectMany(target => target.TestProjects)
+                .Select(test => XUnitVersion.In(Path.GetDirectoryName(test.AssemblyPath)!))
+                .Where(version => version is not null)
+                .Select(version => $"xUnit {version!.ToString(3)}")
+                .Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal),
+        ];
+
+        return versions.Length == 0 ? null : string.Join(", ", versions);
     }
 
     private async Task<ProjectCompilation> BuildCompilationAsync(

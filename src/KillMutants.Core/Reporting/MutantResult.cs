@@ -10,12 +10,27 @@ namespace KillMutants.Reporting;
 /// <param name="KilledBy">
 /// The tests that failed against this mutant, empty unless it was killed by one.
 /// </param>
+/// <param name="Disagreement">
+/// Why this verdict is not to be trusted, when testing the mutant again did not reproduce it.
+/// </param>
 public sealed record MutantResult(
     Mutant Mutant,
     MutantStatus Status,
     string? Detail = null,
-    IReadOnlyList<TestName>? KilledBy = null)
+    IReadOnlyList<TestName>? KilledBy = null,
+    string? Disagreement = null)
 {
+    /// <summary>
+    /// Set when a re-run of this mutant reached a different verdict, and null when it did not or was
+    /// never attempted.
+    /// </summary>
+    /// <remarks>
+    /// Recorded beside the status rather than replacing it. Which of the two runs told the truth is
+    /// not something this tool can decide, and quietly picking one would be the exact failure the
+    /// re-run exists to catch.
+    /// </remarks>
+    public string? Disagreement { get; init; } = Disagreement;
+
     /// <summary>The tests that failed against this mutant, named so they can be run again.</summary>
     /// <remarks>
     /// <para>

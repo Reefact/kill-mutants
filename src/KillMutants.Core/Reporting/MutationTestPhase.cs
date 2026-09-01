@@ -25,4 +25,7 @@ public enum MutationTestPhase
     /// Re-running the mutants that timed out, on their own, before believing the timeout.
     /// </summary>
     ConfirmingTimeouts,
+
+    /// <summary>Testing a sample of the mutants reported killed a second time.</summary>
+    ReVerifyingKills,
 }

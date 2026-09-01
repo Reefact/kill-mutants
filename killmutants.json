@@ -8,7 +8,11 @@
     // at the cost of reporting most of the discovery, analysis and execution code as uncovered:
     // that suite is what exercises it. The score below is about the unit tests, not the tests.
     "tests/KillMutants.EndToEnd.Tests/*"
-  ]
+  ],
+
+  // Ten of our own kills are tested a second time, on their own, every run. A verdict that does
+  // not survive its own repetition was never a measurement, and the only way to know is to look.
+  "verifyKills": 10
 
   // No "without" on purpose. StringLiteral and BooleanLiteral carry the least signal here - error
   // messages nothing asserts on - but they are true findings, and hiding them from ourselves is
