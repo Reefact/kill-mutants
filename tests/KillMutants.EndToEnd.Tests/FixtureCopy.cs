@@ -156,6 +156,45 @@ internal sealed class FixtureCopy : IDisposable
             """);
     }
 
+    /// <summary>
+    /// Adds a method whose tests are real but incomplete, so the run scores below 100% with genuine
+    /// survivors rather than with mutants that could not be tested.
+    /// </summary>
+    public void AddPartlyTestedCode()
+    {
+        File.WriteAllText(
+            Path.Combine(Root, "Sample.Library", "Discounts.cs"),
+            """
+            namespace Sample.Library;
+
+            public static class Discounts
+            {
+                public static bool Applies(int quantity, bool member)
+                {
+                    return quantity >= 10 && member;
+                }
+            }
+
+            """);
+
+        File.AppendAllText(
+            TestSourceFile,
+            """
+
+            public class DiscountsTests
+            {
+                // Only the comfortable case: neither the boundary nor the member flag is probed, so
+                // several mutants of Applies survive.
+                [Fact]
+                public void A_large_order_from_a_member_gets_the_discount()
+                {
+                    Assert.True(Discounts.Applies(50, true));
+                }
+            }
+
+            """);
+    }
+
     /// <summary>Adds a method to the library that no test exercises.</summary>
     public void AddCodeNoTestReaches()
     {

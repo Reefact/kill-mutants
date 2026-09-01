@@ -6,8 +6,16 @@ namespace KillMutants.Cli;
 /// <param name="WorkerCount">How many mutants to test at once, or null for the default.</param>
 /// <param name="MeasureCoverage">Run only the tests that reach each mutant.</param>
 /// <param name="JsonReportPath">Where to write the machine-readable report, or null for none.</param>
+/// <param name="Threshold">
+/// The mutation score the run must reach, as a percentage, or null when the run only reports.
+/// </param>
 internal sealed record CommandLineOptions(
-    string Directory, string Configuration, int? WorkerCount, bool MeasureCoverage, string? JsonReportPath)
+    string Directory,
+    string Configuration,
+    int? WorkerCount,
+    bool MeasureCoverage,
+    string? JsonReportPath,
+    double? Threshold)
 {
     /// <summary>
     /// Parses the command line. The defaults are chosen so that <c>dotnet killmutants</c> with no
@@ -23,6 +31,7 @@ internal sealed record CommandLineOptions(
         int? workerCount = null;
         bool measureCoverage = true;
         string? jsonReportPath = null;
+        double? threshold = null;
 
         for (int index = 0; index < args.Count; index++)
         {
@@ -65,6 +74,27 @@ internal sealed record CommandLineOptions(
 
                     break;
 
+                case "--break-at":
+                    index++;
+
+                    if (index >= args.Count)
+                    {
+                        throw new ArgumentException($"'{argument}' needs a percentage.");
+                    }
+
+                    if (!double.TryParse(
+                            args[index], System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out double percentage) ||
+                        percentage < 0 || percentage > 100)
+                    {
+                        throw new ArgumentException(
+                            $"'{args[index]}' is not a percentage between 0 and 100.");
+                    }
+
+                    threshold = percentage;
+
+                    break;
+
                 case "--report-json":
                     index++;
 
@@ -99,6 +129,7 @@ internal sealed record CommandLineOptions(
             configuration,
             workerCount,
             measureCoverage,
-            jsonReportPath);
+            jsonReportPath,
+            threshold);
     }
 }

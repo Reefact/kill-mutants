@@ -19,6 +19,13 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/KillMutants.Core/KillMutants.Core.csproj" />
+    <!--
+      The exit codes are a public contract, so they are tested by running the real command-line tool
+      rather than the policy behind it. Referenced only to have it built first; the tests launch it
+      as a process.
+    -->
+    <ProjectReference Include="../../src/KillMutants.Cli/KillMutants.Cli.csproj"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 
 </Project>

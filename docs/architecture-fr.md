@@ -92,7 +92,7 @@ namespace sont déjà placées là où passeraient les frontières d'assembly.
 | Association tests ↔ mutants | `KillMutants.Coverage` | Sonde préservant le type, une exécution par test (ADR-0007) |
 | Orchestration | `KillMutants.Execution` | La liste de phases, courte et linéaire |
 | Résultats | `KillMutants.Reporting` | `MutationTestReport`, écritures console et JSON, progression |
-| CLI | `KillMutants.Cli` | `dotnet killmutants` |
+| CLI | `KillMutants.Cli` | `dotnet killmutants`, seuils et codes de sortie (ADR-0009) |
 
 **L'instrumentation n'a aucun code propre, et c'est voulu.** Parce que chaque mutant reçoit sa propre
 compilation ([ADR-0002](adr/0002-one-compilation-per-mutant-fr.md)), « instrumenter » un mutant se
@@ -163,7 +163,9 @@ transitivement, et un framework épinglé par projet. M6 teste les mutants en pa
 répertoire de sortie des tests. M4 et M5 découvrent les tests et mesurent lesquels atteignent quels
 mutants : les mutants non couverts ne sont jamais exécutés, et les autres n'exécutent que ce qui peut
 les tuer. M7 rapporte : progression en direct, constats groupés par fichier, et un rapport JSON pour
-tout ce qui n'est pas un humain. Restent devant : M8 la CI ; M9 les mutations avancées.
+tout ce qui n'est pas un humain. M8 en fait une barrière de qualité utilisable : un seuil optionnel
+`--break-at` et des codes de sortie qui séparent une suite de tests faible d'un run cassé. Reste
+devant : M9 les mutations avancées.
 
 **Deux flux de sortie, délibérément.** La progression part sur la sortie d'erreur et le rapport sur la
 sortie standard : `killmutants > rapport.txt` capture donc le rapport sans y mêler la ligne de

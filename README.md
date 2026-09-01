@@ -52,6 +52,23 @@ The few choices that are expensive to reverse. Each is recorded in [docs/adr](do
 | ADR-0006 — Identify tests by name, not by unique id | [en](docs/adr/0006-identify-tests-by-name-not-by-unique-id-en.md) | [fr](docs/adr/0006-identify-tests-by-name-not-by-unique-id-fr.md) |
 | ADR-0007 — Measure coverage with a type-preserving probe | [en](docs/adr/0007-measure-coverage-with-a-type-preserving-probe-en.md) | [fr](docs/adr/0007-measure-coverage-with-a-type-preserving-probe-fr.md) |
 | ADR-0008 — Never reuse a test host between mutants | [en](docs/adr/0008-never-reuse-a-test-host-between-mutants-en.md) | [fr](docs/adr/0008-never-reuse-a-test-host-between-mutants-fr.md) |
+| ADR-0009 — Exit codes are a public contract | [en](docs/adr/0009-exit-codes-are-a-public-contract-en.md) | [fr](docs/adr/0009-exit-codes-are-a-public-contract-fr.md) |
+
+## Using it in CI
+
+```bash
+dotnet killmutants --break-at 80 --report-json artifacts/mutation.json
+```
+
+| exit code | meaning |
+|---|---|
+| 0 | Ran, and met the threshold if one was given |
+| 1 | Ran, but the score is below `--break-at` |
+| 2 | Could not run; the reason is on standard error |
+| 64 | The command line was not understood |
+
+Progress is written to standard error and the report to standard output, so redirecting the report
+does not drag the progress line along with it.
 
 ## Licence
 
