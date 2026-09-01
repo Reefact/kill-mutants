@@ -79,6 +79,7 @@ public static class JsonReportWriter
         // The three inputs, not just the answer: a budget nobody can recompute is a number a reader
         // has to take on trust, and a timeout cannot be explained after the fact without it.
         baselineSecondsAlone = environment.BaselineSecondsAlone,
+        killsReVerifiedAlone = environment.KillsReVerified,
         timeoutBaselineFactor = environment.TimeoutBudgets.Select(b => b.Factor).Distinct(),
         timeoutMarginSeconds = environment.TimeoutBudgets.Select(b => b.Margin.TotalSeconds).Distinct(),
     };

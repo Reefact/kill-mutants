@@ -10,6 +10,7 @@ namespace KillMutants.Reporting;
 /// <param name="WorkerCount">How many mutants were tested at once.</param>
 /// <param name="TestFramework">The xUnit the test applications ran on, or null when unknown.</param>
 /// <param name="TimeoutBudgets">The per-mutant time budget, and what it was derived from, one entry per project mutated.</param>
+/// <param name="KillsReVerified">How many mutants reported killed were tested a second time, alone.</param>
 /// <remarks>
 /// <para>
 /// Two reports without this are not comparable, and nobody notices. The case that earned it: the
@@ -30,20 +31,23 @@ public sealed record RunEnvironment(
     int ProcessorCount,
     int WorkerCount,
     string? TestFramework,
-    IReadOnlyList<TimeBudget> TimeoutBudgets)
+    IReadOnlyList<TimeBudget> TimeoutBudgets,
+    int KillsReVerified)
 {
     /// <summary>Reads what can be read from the machine, given what the run decided.</summary>
     internal static RunEnvironment Describe(
         int workerCount,
         string? testFramework,
-        IReadOnlyList<TimeBudget> timeoutBudgets) =>
+        IReadOnlyList<TimeBudget> timeoutBudgets,
+        int killsReVerified) =>
         new(
             RuntimeInformation.FrameworkDescription,
             RuntimeInformation.OSDescription,
             Environment.ProcessorCount,
             workerCount,
             testFramework,
-            timeoutBudgets);
+            timeoutBudgets,
+            killsReVerified);
 
     /// <summary>The budgets as they are written in a report.</summary>
     public IReadOnlyList<double> TimeoutBudgetsInSeconds =>
@@ -68,9 +72,16 @@ public sealed record RunEnvironment(
             ? "none"
             : string.Join(", ", TimeoutBudgets.Select(budget => budget.ToString()));
 
+        // The sample size is here rather than left implicit because the check is a sample: a run
+        // that verified none of its kills and a run that verified all of them both report "no
+        // disagreements", and only one of those means anything.
+        string verified = KillsReVerified == 0
+            ? "no kills re-verified"
+            : $"{KillsReVerified.ToString(culture)} kill(s) re-verified alone";
+
         return
             $"{Runtime} on {OperatingSystem}, " +
             $"{WorkerCount.ToString(culture)} of {ProcessorCount.ToString(culture)} processors, " +
-            $"{TestFramework ?? "test framework unknown"}, timeout budget {budgets}";
+            $"{TestFramework ?? "test framework unknown"}, timeout budget {budgets}, {verified}";
     }
 }

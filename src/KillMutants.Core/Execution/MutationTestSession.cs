@@ -104,16 +104,22 @@ internal sealed class MutationTestSession
         // it cannot explain a timeout afterwards.
         List<TimeBudget> budgets = [];
 
+        // How many kills were actually re-verified, so the report can say how strong that check was
+        // rather than leaving "no disagreements" to mean either everything or nothing.
+        List<int> verified = [];
+
         foreach ((MutationTestTarget target, ProjectCompilation compilation) in targets.Zip(compilations))
         {
-            results.AddRange(await TestTargetAsync(target, compilation, generator, budgets, cancellationToken)
+            results.AddRange(await TestTargetAsync(
+                    target, compilation, generator, budgets, verified, cancellationToken)
                 .ConfigureAwait(false));
         }
 
         return new MutationTestReport(
             results,
             stopwatch.Elapsed,
-            RunEnvironment.Describe(_workerCount, TestFrameworkOf(targets), budgets));
+            RunEnvironment.Describe(
+                _workerCount, TestFrameworkOf(targets), budgets, verified.Sum()));
     }
 
     private async Task<IReadOnlyList<MutantResult>> TestTargetAsync(
@@ -121,6 +127,7 @@ internal sealed class MutationTestSession
         ProjectCompilation compilation,
         MutantGenerator generator,
         List<TimeBudget> budgets,
+        List<int> verified,
         CancellationToken cancellationToken)
     {
         IReadOnlyList<Mutant> mutants = generator.Generate(compilation.Compilation);
@@ -165,9 +172,9 @@ internal sealed class MutationTestSession
                     compilation, sandboxes[0], mutants, results, coverage, budget, cancellationToken)
                 .ConfigureAwait(false);
 
-            await ReVerifyKillsAsync(
+            verified.Add(await ReVerifyKillsAsync(
                     compilation, sandboxes[0], mutants, results, coverage, budget, cancellationToken)
-                .ConfigureAwait(false);
+                .ConfigureAwait(false));
 
             return results;
         }
@@ -307,7 +314,7 @@ internal sealed class MutationTestSession
     /// resolved, because which of the two runs told the truth is not ours to decide.
     /// </para>
     /// </remarks>
-    private async Task ReVerifyKillsAsync(
+    private async Task<int> ReVerifyKillsAsync(
         ProjectCompilation compilation,
         TestSandbox sandbox,
         IReadOnlyList<Mutant> mutants,
@@ -318,7 +325,7 @@ internal sealed class MutationTestSession
     {
         if (_verifyKills <= 0)
         {
-            return;
+            return 0;
         }
 
         // Spread across the run rather than taken from the front, so a sample says something about
@@ -350,6 +357,8 @@ internal sealed class MutationTestSession
                 };
             }
         }
+
+        return wanted;
     }
 
     /// <summary>The xUnit the test applications will run on, read from what was built.</summary>
