@@ -81,10 +81,11 @@ Cet avis a été écarté pour trois raisons.
    la couverture, et parallélisation — sont indifférents à la manière dont le mutant est arrivé dans
    l'assembly. Ils sont même plus simples ici, puisque chaque mutant est un assembly isolé dans un
    processus isolé.
-3. **La même étude fournit un argument contre sa propre recommandation.** Elle rapporte que la
-   réutilisation à chaud des hôtes de test chez Stryker — que les schemata rendent attrayante — fait
-   fuir de l'état global de processus entre mutants et gonfle les scores (issue #3742). Un modèle
-   processus-par-mutant ne peut pas produire cette classe de bug.
+3. **La même étude fournit un argument contre sa propre recommandation.** La réutilisation à chaud
+   des hôtes de test — que les schemata rendent attrayante — exige des points explicites où ces
+   processus de longue durée sont réinitialisés (`MicrosoftTestPlatformRunnerPool.cs:96,140`). Un
+   modèle processus-par-mutant ne peut tout simplement pas produire cette classe de bug — voir
+   ADR-0008.
 
 Une autre étude, qui a réellement mesuré les coûts de compilation et de test sur cette machine au
 lieu de raisonner par précédent, est parvenue indépendamment à la même conclusion que cet ADR.

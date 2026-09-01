@@ -75,8 +75,9 @@ It was rejected for three reasons.
    parallelism — are unaffected by how the mutant got into the assembly. If anything they are easier
    here, because each mutant is an isolated assembly and an isolated process.
 3. **The same study supplies evidence against its own recommendation.** It reports that Stryker's
-   warm-test-host reuse, which schemata makes attractive, leaks process-global state across mutants
-   and inflates scores (issue #3742). Process-per-mutant cannot exhibit that class of bug.
+   warm-test-host reuse, which schemata makes attractive, requires explicit points at which those
+   long-lived processes are reset (`MicrosoftTestPlatformRunnerPool.cs:96,140`). Process-per-mutant
+   cannot exhibit that class of bug at all - see ADR-0008.
 
 A separate study, which actually measured compile and test costs on this machine rather than
 reasoning from precedent, independently reached the same conclusion as this ADR.

@@ -155,9 +155,10 @@ Three details from this part of the study are worth carrying forward:
 - **Bail-out on the first failing test is implemented only for Stryker's legacy VSTest runner and is
   explicitly absent from its MTP runner** (open issue #3655). KillMutants gets it for free from the
   xUnit console runner's `-stopOnFail`, and already uses it for mutant runs.
-- **Warm test-host reuse is Stryker's biggest reported correctness problem**: reusing a process
-  across mutants leaks process-global state and inflates scores (issue #3742). This is a direct
-  argument for our process-per-mutant model, which cannot exhibit it.
+- **Warm test-host reuse needs explicit reset points.** Stryker returns runners to a pool after each
+  piece of work (`VsTestRunnerPool.cs:95-111`) and must force those long-lived processes back to a
+  clean state at phase boundaries (`MicrosoftTestPlatformRunnerPool.cs:96,140`). That discipline is
+  a direct argument for our process-per-mutant model, which needs none of it - see ADR-0008.
 - **MTP's own `--timeout` does not reliably stop a spinning test.** The timeout must be owned by the
   tool, with `Process.Kill(entireProcessTree: true)` on expiry. KillMutants does exactly that.
 
