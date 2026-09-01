@@ -2,23 +2,27 @@ using KillMutants.Mutations;
 
 namespace KillMutants.Cli;
 
-/// <summary>How this run was invoked.</summary>
+/// <summary>What the command line asked for, and only that.</summary>
 /// <param name="Directory">Where to look for projects.</param>
-/// <param name="Configuration">The build configuration to analyse and run.</param>
-/// <param name="WorkerCount">How many mutants to test at once, or null for the default.</param>
-/// <param name="MeasureCoverage">Run only the tests that reach each mutant.</param>
-/// <param name="Exclude">Patterns for projects and source files to leave alone.</param>
-/// <param name="Mutators">The only mutator families to run, or empty for all of them.</param>
-/// <param name="WithoutMutators">Families to leave out, applied after <paramref name="Mutators"/>.</param>
-/// <param name="JsonReportPath">Where to write the machine-readable report, or null for none.</param>
-/// <param name="Threshold">
-/// The mutation score the run must reach, as a percentage, or null when the run only reports.
-/// </param>
+/// <param name="Configuration">The build configuration, or null when it was not given.</param>
+/// <param name="WorkerCount">How many mutants to test at once, or null when it was not given.</param>
+/// <param name="MeasureCoverage">Whether to select tests by coverage, or null when it was not given.</param>
+/// <param name="Exclude">Patterns to leave alone. Empty means the option was not given.</param>
+/// <param name="Mutators">The only families to run. Empty means the option was not given.</param>
+/// <param name="WithoutMutators">Families to leave out. Empty means the option was not given.</param>
+/// <param name="JsonReportPath">Where to write the JSON report, or null when it was not given.</param>
+/// <param name="Threshold">The score the run must reach, or null when it was not given.</param>
+/// <remarks>
+/// Every setting is nullable, and that is the point: <c>--configuration Release</c> and saying
+/// nothing must be told apart, because a project's <c>killmutants.json</c> sits between them.
+/// Baking the defaults in here would let the command line silently override a file it never
+/// mentioned. <see cref="RunSettings"/> is what a run actually uses.
+/// </remarks>
 internal sealed record CommandLineOptions(
     string Directory,
-    string Configuration,
+    string? Configuration,
     int? WorkerCount,
-    bool MeasureCoverage,
+    bool? MeasureCoverage,
     IReadOnlyList<string> Exclude,
     IReadOnlyList<MutatorName> Mutators,
     IReadOnlyList<MutatorName> WithoutMutators,
@@ -35,9 +39,9 @@ internal sealed record CommandLineOptions(
         ArgumentNullException.ThrowIfNull(args);
 
         string? directory = null;
-        string configuration = "Release";
+        string? configuration = null;
         int? workerCount = null;
-        bool measureCoverage = true;
+        bool? measureCoverage = null;
         List<string> exclude = [];
         List<MutatorName> mutators = [];
         List<MutatorName> withoutMutators = [];
@@ -173,12 +177,11 @@ internal sealed record CommandLineOptions(
 
     /// <summary>Parses a comma-separated list of mutator family names.</summary>
     /// <remarks>
-    /// Names are checked here rather than left to the catalog, so a typo is a command line that was
-    /// not understood - exit 64 - and not a run that quietly went ahead with a smaller catalogue.
-    /// Reporting a score for a set of families the user did not ask for would be worse than
-    /// reporting none.
+    /// Only the shape is checked here. Whether a name is a real family is settled once, in
+    /// <see cref="RunSettings"/>, so the same rule and the same message cover the file as well as
+    /// the command line.
     /// </remarks>
-    /// <exception cref="ArgumentException">The list is missing, empty, or names no family.</exception>
+    /// <exception cref="ArgumentException">The list is missing or empty.</exception>
     private static MutatorName[] Families(string option, string? value)
     {
         string[] names = value is null
@@ -187,18 +190,11 @@ internal sealed record CommandLineOptions(
 
         if (names.Length == 0)
         {
-            throw new ArgumentException($"'{option}' needs a comma-separated list. {Known()}");
+            throw new ArgumentException(
+                $"'{option}' needs a comma-separated list. " +
+                $"The families are: {string.Join(", ", MutationTesting.MutatorFamilies)}.");
         }
 
-        MutatorName[] families = [.. names.Select(MutatorName.Create)];
-        MutatorName[] unknown = [.. families.Except(MutationTesting.MutatorFamilies)];
-
-        return unknown.Length == 0
-            ? families
-            : throw new ArgumentException(
-                $"No mutator is called {string.Join(", ", unknown.Select(name => $"'{name}'"))}. {Known()}");
+        return [.. names.Select(MutatorName.Create)];
     }
-
-    private static string Known() =>
-        $"The families are: {string.Join(", ", MutationTesting.MutatorFamilies)}.";
 }

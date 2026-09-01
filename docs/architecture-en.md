@@ -217,7 +217,9 @@ omissions listed above decided rather than overlooked. M10 makes it a tool rathe
 `dotnet killmutants`, given the `--exclude` a real repository needs, and — the point of the milestone
 — run against KillMutants' own source, which found RB-016 within seconds. M11 makes its output
 actionable: what each mutator family cost and caught, the `--mutators` and `--without` that act on
-that, and `[ExcludeFromCodeCoverage]` respected.
+that, and `[ExcludeFromCodeCoverage]` respected. M12 lets a project keep those choices in
+`killmutants.json` rather than in a shell command, so the catalogue behind a score is versioned with
+the code it scored.
 
 **What running it on itself measures.** 384 mutants over `KillMutants.Core`, 6.8 minutes on four
 cores: 106 killed, 111 survived, one killed by timeout, 166 uncovered, none failing to compile — a
@@ -272,6 +274,18 @@ M11 also stops mutating anything marked `[ExcludeFromCodeCoverage]`. The attribu
 intent — this code is not part of what the tests are expected to cover — and since uncovered and
 surviving mutants both weigh on the score, ignoring it did not merely clutter the report, it moved
 the number.
+
+**Where a project's habits live.** M12 reads `killmutants.json` from the directory the run was
+pointed at. Every setting mirrors a command-line option and anything given on the command line wins,
+so the file states the habit and the command line states the exception. The reason it exists is the
+paragraph above: a score only means something against the families that produced it, so a job that
+picks its catalogue in a shell command has put a number nobody can reproduce into its logs. Keeping
+it beside the code versions the question along with the answer.
+
+Two rules earn their place. A misspelt key stops the run rather than being ignored — the same refusal
+the command line makes for a misspelt mutator family, and for the same reason. And every command-line
+option is parsed as *nullable*: `--configuration Release` and saying nothing have to be told apart,
+or the defaults would silently outrank a file that never mentioned them.
 
 **Two output streams, on purpose.** Progress goes to standard error and the report to standard
 output, so `killmutants > report.txt` captures the report without the progress line threaded through

@@ -233,7 +233,9 @@ ci-dessus étant décidées et non oubliées. M10 en fait un outil et non plus u
 `dotnet killmutants`, doté du `--exclude` qu'exige un vrai dépôt, et — c'est le cœur du milestone —
 exécuté sur le code source de KillMutants lui-même, ce qui a fait apparaître RB-016 en quelques
 secondes. M11 rend sa sortie exploitable : ce que chaque famille de mutateurs a coûté et attrapé, les
-`--mutators` et `--without` qui agissent dessus, et `[ExcludeFromCodeCoverage]` respecté.
+`--mutators` et `--without` qui agissent dessus, et `[ExcludeFromCodeCoverage]` respecté. M12 permet à
+un projet de garder ces choix dans `killmutants.json` plutôt que dans une commande shell : le
+catalogue derrière un score est ainsi versionné avec le code qu'il a noté.
 
 **Ce que mesure l'exécution sur lui-même.** 384 mutants sur `KillMutants.Core`, 6,8 minutes sur
 quatre cœurs : 106 tués, 111 survivants, un tué par timeout, 166 non couverts, aucun en échec de
@@ -292,6 +294,20 @@ M11 cesse également de muter tout ce qui porte `[ExcludeFromCodeCoverage]`. L'a
 déclaration d'intention — ce code ne fait pas partie de ce que les tests sont censés couvrir — et
 comme les mutants non couverts comme survivants pèsent tous deux sur le score, l'ignorer n'encombrait
 pas seulement le rapport : cela déplaçait le chiffre.
+
+**Où vivent les habitudes d'un projet.** M12 lit `killmutants.json` dans le répertoire visé par le
+run. Chaque réglage a son équivalent en option de ligne de commande, et tout ce qui est donné en ligne
+de commande l'emporte : le fichier énonce l'habitude, la ligne de commande énonce l'exception. Sa
+raison d'être est le paragraphe ci-dessus : un score ne signifie quelque chose que rapporté aux
+familles qui l'ont produit, donc un job qui choisit son catalogue dans une commande shell a inscrit
+dans ses logs un chiffre que personne ne peut reproduire. Le garder à côté du code versionne la
+question en même temps que la réponse.
+
+Deux règles gagnent leur place. Une clé mal orthographiée arrête le run au lieu d'être ignorée — le
+même refus que la ligne de commande oppose à une famille de mutateurs mal orthographiée, et pour la
+même raison. Et chaque option de ligne de commande est analysée comme *nullable* :
+`--configuration Release` et ne rien dire doivent être distingués, sinon les valeurs par défaut
+l'emporteraient silencieusement sur un fichier qu'elles n'ont jamais mentionné.
 
 **Deux flux de sortie, délibérément.** La progression part sur la sortie d'erreur et le rapport sur la
 sortie standard : `killmutants > rapport.txt` capture donc le rapport sans y mêler la ligne de

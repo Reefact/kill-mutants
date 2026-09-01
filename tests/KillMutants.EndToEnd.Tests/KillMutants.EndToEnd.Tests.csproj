@@ -21,11 +21,11 @@
     <ProjectReference Include="../../src/KillMutants.Core/KillMutants.Core.csproj" />
     <!--
       The exit codes are a public contract, so they are tested by running the real command-line tool
-      rather than the policy behind it. Referenced only to have it built first; the tests launch it
-      as a process.
+      rather than the policy behind it. The reference also gives the settings-resolution tests the
+      types they need: how the command line and killmutants.json combine is eight settings times
+      three sources, which wants fast tests rather than a process launch each.
     -->
-    <ProjectReference Include="../../src/KillMutants.Cli/KillMutants.Cli.csproj"
-                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="../../src/KillMutants.Cli/KillMutants.Cli.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,0 +1,123 @@
+using KillMutants.Cli;
+using KillMutants.Mutations;
+
+namespace KillMutants.EndToEnd.Tests;
+
+/// <summary>
+/// One rule, in one direction: the command line wins, otherwise the file, otherwise the default. So
+/// the file states a project's habits and the command line states the exception.
+/// </summary>
+public class RunSettingsTests
+{
+    private static readonly MutatorName Comparison = MutatorName.Create("Comparison");
+    private static readonly MutatorName StringLiteral = MutatorName.Create("StringLiteral");
+
+    private static CommandLineOptions Asked(params string[] arguments) =>
+        CommandLineOptions.Parse(["/work", .. arguments]);
+
+    [Fact]
+    public void With_no_file_and_no_options_the_defaults_stand()
+    {
+        RunSettings settings = RunSettings.From(Asked(), file: null);
+
+        Assert.Equal("Release", settings.Configuration);
+        Assert.True(settings.MeasureCoverage);
+        Assert.Null(settings.WorkerCount);
+        Assert.Null(settings.Threshold);
+        Assert.Null(settings.JsonReportPath);
+        Assert.Empty(settings.Exclude);
+        Assert.Empty(settings.Mutators);
+    }
+
+    [Fact]
+    public void The_file_supplies_what_the_command_line_did_not()
+    {
+        var file = new ConfigurationFile(
+            Configuration: "Debug",
+            Exclude: ["tests/fixtures/*"],
+            Without: ["StringLiteral"],
+            Parallel: 3,
+            Coverage: false,
+            BreakAt: 70);
+
+        RunSettings settings = RunSettings.From(Asked(), file);
+
+        Assert.Equal("Debug", settings.Configuration);
+        Assert.Equal(["tests/fixtures/*"], settings.Exclude);
+        Assert.Equal([StringLiteral], settings.WithoutMutators);
+        Assert.Equal(3, settings.WorkerCount);
+        Assert.False(settings.MeasureCoverage);
+        Assert.Equal(70, settings.Threshold);
+    }
+
+    [Fact]
+    public void Anything_given_on_the_command_line_wins()
+    {
+        var file = new ConfigurationFile(
+            Configuration: "Debug", Parallel: 3, Coverage: true, BreakAt: 70);
+
+        RunSettings settings = RunSettings.From(
+            Asked("-c", "Release", "-p", "8", "--no-coverage", "--break-at", "90"), file);
+
+        Assert.Equal("Release", settings.Configuration);
+        Assert.Equal(8, settings.WorkerCount);
+        Assert.False(settings.MeasureCoverage);
+        Assert.Equal(90, settings.Threshold);
+    }
+
+    /// <summary>
+    /// The reason every option on the command line is nullable. `--configuration Release` and saying
+    /// nothing have to be told apart, or the defaults would silently outrank a file they never
+    /// mentioned - here, by turning a project's `"configuration": "Debug"` back into Release.
+    /// </summary>
+    [Fact]
+    public void Saying_nothing_is_not_the_same_as_asking_for_the_default()
+    {
+        var file = new ConfigurationFile(Configuration: "Debug", Coverage: false);
+
+        Assert.Equal("Debug", RunSettings.From(Asked(), file).Configuration);
+        Assert.False(RunSettings.From(Asked(), file).MeasureCoverage);
+    }
+
+    /// <summary>
+    /// A list on the command line replaces the file's rather than adding to it, so there is a way to
+    /// run without an exclusion the file states.
+    /// </summary>
+    [Fact]
+    public void A_list_given_on_the_command_line_replaces_the_files()
+    {
+        var file = new ConfigurationFile(Exclude: ["a/*", "b/*"], Mutators: ["StringLiteral"]);
+
+        RunSettings settings = RunSettings.From(Asked("-e", "c/*", "-m", "Comparison"), file);
+
+        Assert.Equal(["c/*"], settings.Exclude);
+        Assert.Equal([Comparison], settings.Mutators);
+    }
+
+    /// <summary>
+    /// A path in the file means a place in that project, not wherever the shell happened to be.
+    /// </summary>
+    [Fact]
+    public void A_report_path_in_the_file_is_relative_to_the_file()
+    {
+        var file = new ConfigurationFile(ReportJson: "artifacts/mutation.json") { Directory = "/work/repo" };
+
+        RunSettings settings = RunSettings.From(Asked(), file);
+
+        Assert.Equal(Path.GetFullPath("/work/repo/artifacts/mutation.json"), settings.JsonReportPath);
+    }
+
+    /// <summary>
+    /// Checked once for both sources: a typo must not silently narrow a run, because a score only
+    /// means something against the families that produced it.
+    /// </summary>
+    [Fact]
+    public void An_unknown_family_in_the_file_is_refused_like_one_on_the_command_line()
+    {
+        ArgumentException error = Assert.Throws<ArgumentException>(
+            () => RunSettings.From(Asked(), new ConfigurationFile(Without: ["StringLiterals"])));
+
+        Assert.Contains("StringLiterals", error.Message, StringComparison.Ordinal);
+        Assert.Contains("Comparison", error.Message, StringComparison.Ordinal);
+    }
+}
