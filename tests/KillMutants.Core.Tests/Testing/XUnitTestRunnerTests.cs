@@ -105,4 +105,82 @@ public class XUnitTestRunnerTests
             File.Delete(path);
         }
     }
+
+    /// <summary>
+    /// A kill nobody can reproduce is not a kill, and the name in the report is what makes it
+    /// reproducible. The runner writes both a label and an identity; only one of them can be handed
+    /// back as a filter.
+    /// </summary>
+    [Fact]
+    public void A_failing_test_is_named_by_its_identity_not_by_its_display_name()
+    {
+        TestRunOutcome outcome = Read(
+            """
+            <?xml version="1.0" encoding="utf-8"?>
+            <assemblies>
+              <assembly total="1" failed="1" errors="0">
+                <collection>
+                  <test name="a customer over eighteen is an adult"
+                        type="Sample.Library.Tests.AgesTests"
+                        method="An_adult_is_an_adult"
+                        result="Fail" />
+                </collection>
+              </assembly>
+            </assemblies>
+            """);
+
+        Assert.Equal(
+            ["Sample.Library.Tests.AgesTests.An_adult_is_an_adult"],
+            outcome.FailedTests.Select(name => name.ToString()));
+    }
+
+    /// <summary>
+    /// Two cases of one theory are one test to re-run, and the identity says so directly - where the
+    /// display name had to be cut at its first parenthesis to get there.
+    /// </summary>
+    [Fact]
+    public void The_cases_of_one_theory_collapse_to_the_method()
+    {
+        TestRunOutcome outcome = Read(
+            """
+            <?xml version="1.0" encoding="utf-8"?>
+            <assemblies>
+              <assembly total="2" failed="2" errors="0">
+                <collection>
+                  <test name="Sample.Library.Tests.AgesTests.Minor(age: 17)"
+                        type="Sample.Library.Tests.AgesTests" method="Minor" result="Fail" />
+                  <test name="Sample.Library.Tests.AgesTests.Minor(age: 16)"
+                        type="Sample.Library.Tests.AgesTests" method="Minor" result="Fail" />
+                </collection>
+              </assembly>
+            </assemblies>
+            """);
+
+        Assert.Equal(
+            ["Sample.Library.Tests.AgesTests.Minor"],
+            outcome.FailedTests.Select(name => name.ToString()));
+    }
+
+    /// <summary>
+    /// And a writer that gives only a name still gets the old treatment, rather than nothing.
+    /// </summary>
+    [Fact]
+    public void A_result_without_an_identity_falls_back_to_its_name()
+    {
+        TestRunOutcome outcome = Read(
+            """
+            <?xml version="1.0" encoding="utf-8"?>
+            <assemblies>
+              <assembly total="1" failed="1" errors="0">
+                <collection>
+                  <test name="Sample.Library.Tests.AgesTests.Minor(age: 17)" result="Fail" />
+                </collection>
+              </assembly>
+            </assemblies>
+            """);
+
+        Assert.Equal(
+            ["Sample.Library.Tests.AgesTests.Minor"],
+            outcome.FailedTests.Select(name => name.ToString()));
+    }
 }

@@ -221,24 +221,49 @@ internal sealed class XUnitTestRunner : ITestRunner
 
     /// <summary>Names the tests that did not pass, in the form <c>-method</c> accepts.</summary>
     /// <remarks>
-    /// The runner writes a test's full case name, arguments included -
-    /// <c>Class.Method(age: 18)</c> - and that form matches nothing when handed back as a filter,
-    /// measured against xUnit 4. Everything up to the first parenthesis is the method, which does
-    /// match; a C# method name cannot contain one, so the cut is unambiguous.
+    /// <para>
+    /// Built from the result's <c>type</c> and <c>method</c>, which is the test's identity, rather
+    /// than from its <c>name</c>, which is a label. The two agree until somebody writes
+    /// <c>[Fact(DisplayName = "a customer over eighteen")]</c> - and then the name is that sentence,
+    /// handing it to <c>-method</c> matches nothing, and the report claims a kill that can be
+    /// reproduced by a filter that selects no test at all. The whole point of naming the killer is
+    /// that a sceptical reader can re-run it.
+    /// </para>
+    /// <para>
+    /// The name is still the fallback, for a writer that omits the pair. There it keeps its old
+    /// treatment: the runner writes the full case name with arguments - <c>Class.Method(age: 18)</c>
+    /// - which matches nothing as a filter, measured against xUnit 4, and everything up to the first
+    /// parenthesis does. A C# method name cannot contain one, so the cut is unambiguous.
+    /// </para>
     /// </remarks>
     private static IReadOnlyList<TestName> ReadFailures(XElement assembly) =>
     [
         .. assembly
             .Descendants("test")
             .Where(test => test.Attribute("result")?.Value is not ("Pass" or "Skip"))
-            .Select(test => test.Attribute("name")?.Value)
+            .Select(Identify)
             .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Select(name => name![..IndexOfArguments(name!)].TrimEnd())
-            .Where(name => name.Length > 0)
+            .Select(name => name!)
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)
             .Select(TestName.Create),
     ];
+
+    /// <summary>The identity of one result, preferring what the runner can be handed back.</summary>
+    private static string? Identify(XElement test)
+    {
+        string? type = test.Attribute("type")?.Value;
+        string? method = test.Attribute("method")?.Value;
+
+        if (!string.IsNullOrWhiteSpace(type) && !string.IsNullOrWhiteSpace(method))
+        {
+            return $"{type}.{method}";
+        }
+
+        string? name = test.Attribute("name")?.Value;
+
+        return string.IsNullOrWhiteSpace(name) ? null : name[..IndexOfArguments(name)].TrimEnd();
+    }
 
     private static int IndexOfArguments(string name) =>
         name.IndexOf('(', StringComparison.Ordinal) is var index && index >= 0 ? index : name.Length;

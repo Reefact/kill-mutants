@@ -141,9 +141,15 @@ internal sealed record CommandLineOptions(
                         throw new ArgumentException($"'{argument}' needs a percentage.");
                     }
 
+                    // IsFinite first, and not as an afterthought: TryParse accepts "NaN", and every
+                    // comparison with NaN is false - including the range check here and the one the
+                    // verdict makes at the end. A threshold of NaN therefore passes every gate and
+                    // disarms the build break silently, which is the one thing a quality gate must
+                    // never do.
                     if (!double.TryParse(
                             args[index], System.Globalization.NumberStyles.Float,
                             System.Globalization.CultureInfo.InvariantCulture, out double percentage) ||
+                        !double.IsFinite(percentage) ||
                         percentage < 0 || percentage > 100)
                     {
                         throw new ArgumentException(
