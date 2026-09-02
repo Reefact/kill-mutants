@@ -920,3 +920,45 @@ qu'il n'a pas.
 relevés pendant ce travail, y compris celui qui nous avait d'abord orientés vers RB-020. RB-020 reste
 réelle et reste ouverte — elle a été mesurée séparément, dans notre propre processus — mais elle
 n'était pas la cause des échecs de compilation.
+
+## RB-025 — Le support de test hors d'un projet de test est invisible pour `--since` · OUVERT
+
+**Comment elle a été trouvée.** Une revue de l'ADR-0010, au cinquième passage sur la même règle.
+Chaque passage précédent avait trouvé le correctif appuyé sur une donnée que le changement pouvait
+effacer ; celui-ci l'a trouvé appuyé sur une classification que l'outil ne fait pas.
+
+**Le mécanisme.** `--since` élargit sa sélection quand un changement touche un projet de test, parce
+qu'un test modifié peut cesser d'atteindre un mutant qu'il tuait. Or le support de test vit
+couramment dans une bibliothèque ordinaire à côté des tests :
+
+```text
+Tests -> TestSupport -> ProjectA        (ProjectA contient le mutant M)
+```
+
+`ProjectDiscovery` ne classe les projets que par `IsTestProject`, et traite tout projet non-test
+qu'un projet de test atteint comme une cible mutable. `TestSupport` est donc une cible exactement
+comme `ProjectA` — rien ne sépare une bibliothèque de constructeurs du code sous test. Modifier
+`TestSupport` ne touche donc aucun projet de test, l'élargissement ne se déclenche pas, et `T` peut
+cesser d'atteindre `M` sans que ni `Tests` ni `ProjectA` ne figurent au diff. Il en va de même pour
+une configuration partagée hors du répertoire du projet de test.
+
+**Ce que cela coûte.** Une exécution partielle qui ne rapporte aucun constat là où une exécution
+complète en aurait trouvé un. C'est borné : le changement sélectionne bien les mutants propres à
+`TestSupport`, puisqu'il est une cible — l'exécution n'est donc pas muette sur le code modifié, mais
+seulement sur `M`.
+
+**Pourquoi elle est ouverte plutôt que corrigée.** Les deux correctifs disponibles sont plus gros que
+l'entrée. Élargir sur tout projet modifié joignable depuis un projet de test fait que chaque
+changement de production réexécute tout, ce qui supprime `--since` au lieu de le nuancer. Lire la
+couverture de la révision de base est la réponse précise et exige les résultats stockés d'une
+exécution précédente — la fonctionnalité de base de référence. Une troisième possibilité est plus
+petite et mérite d'être pesée d'abord : laisser un projet se déclarer support de test, pour que la
+découverte cesse de le traiter en sujet et traite une modification qui le touche comme une
+modification des tests.
+
+**Ce qui est écrit en attendant.** L'ADR-0010 énonce sa garantie pour les modifications à l'intérieur
+des projets de test reconnus et ne revendique aucun absolu au-delà. C'est toute la raison d'être de
+cette entrée : le document disait auparavant « jamais un faux vert ».
+
+**Nos tests.** Aucun ; `--since` n'existe pas encore. Cette entrée existe pour que M13 implémente une
+promesse bornée plutôt que celle du premier jet.

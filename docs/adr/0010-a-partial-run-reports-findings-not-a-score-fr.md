@@ -58,11 +58,29 @@ test neuf ne peut pas retirer une arête qui lui préexiste, donc l'attribution 
 et la règle précise s'applique toujours. Modifier un fichier existant n'est pas le même cas : rien de
 peu coûteux ne distingue une modification qui ajoute un test d'une qui supprime une assertion.
 
-Plus lent, parfois beaucoup, et jamais un faux vert — le même arbitrage que l'exécution fait déjà
-quand la couverture est inconnue, et quand un filtre est trop long pour une ligne de commande. Lire
-la couverture de la révision de base serait la réponse précise plutôt que prudente, et elle exige les
-résultats stockés d'une exécution précédente : c'est la fonctionnalité de base de référence, et ce
-n'est délibérément pas celle-ci.
+Plus lent, parfois beaucoup — le même arbitrage que l'exécution fait déjà quand la couverture est
+inconnue, et quand un filtre est trop long pour une ligne de commande.
+
+**Et la garantie s'arrête au bord d'un projet de test, ce qu'il vaut mieux dire que sous-entendre.**
+Le support de test vit souvent dans une bibliothèque ordinaire à côté des tests — constructeurs,
+doublures, horloges, entrées engendrées — et `ProjectDiscovery` ne classe les projets que par
+`IsTestProject` : une telle bibliothèque est donc une *cible mutable*, exactement comme le code sous
+test. Modifiez-la et `T` peut cesser d'atteindre `M` sans que ni le projet de test ni celui de `M`
+n'apparaissent dans le diff. Le changement sélectionne bien les mutants de cette bibliothèque,
+puisqu'elle est une cible ; il ne peut pas sélectionner `M`.
+
+Rien de disponible aujourd'hui ne comble cela. Élargir sur tout projet modifié joignable depuis un
+projet de test reviendrait à ce que chaque changement de production réexécute tout, c'est-à-dire à
+supprimer `--since` plutôt qu'à le nuancer, et aucun fait structurel ne sépare une bibliothèque de
+support d'un sujet. La garantie de la règle est donc énoncée pour ce qu'elle couvre — les
+modifications à l'intérieur des projets de test reconnus, et la configuration de build partagée que
+la découverte lit déjà — et ce document ne revendique pas un absolu qu'il ne peut pas établir. RB-025
+consigne la faille ; la couverture de référence est ce qui la comble, ou un moyen explicite de
+déclarer un projet comme support de test.
+
+Lire la couverture de la révision de base serait la réponse précise plutôt que prudente, et elle
+exige les résultats stockés d'une exécution précédente : c'est la fonctionnalité de base de
+référence, et ce n'est délibérément pas celle-ci.
 
 Stryker.NET sélectionne sur les deux mêmes fondements — leur
 documentation de configuration, texto : *« For changes on test project files all mutants covered by
