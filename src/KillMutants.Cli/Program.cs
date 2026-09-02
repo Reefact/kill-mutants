@@ -68,6 +68,17 @@ internal static class Program
 
             return ExitCode.CouldNotRun;
         }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // The run itself finished; writing the report is what failed - an unwritable directory,
+            // a path that is a directory, a full disk. That is still a tool failure and belongs on
+            // the documented exit code, not in an unhandled exception: exit codes are this tool's
+            // contract with CI, and a stack trace tells a build script nothing it can act on.
+            Console.Error.WriteLine(
+                $"The mutation run finished, but its report could not be written: {exception.Message}");
+
+            return ExitCode.CouldNotRun;
+        }
     }
 
     private static async Task<MutationTestReport> RunAsync(RunSettings settings)
@@ -161,6 +172,8 @@ internal static class Program
                                         covers everything beneath 'tests'.
               -m, --mutators <list>     Only run these mutator families, comma separated.
                   --without <list>      Leave these families out. Applied after --mutators.
+                                        Pass 'none' to run every family even when the file
+                                        excludes some.
               -p, --parallel <n>        Mutants to test at once. Defaults to half the processors.
                   --break-at <percent>  Exit with 1 if the mutation score falls below this.
                   --no-coverage         Run every test for every mutant, instead of only the ones

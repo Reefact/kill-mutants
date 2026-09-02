@@ -274,4 +274,30 @@ public class CommandLineTests
         Assert.Contains("Exit codes:", output, StringComparison.Ordinal);
         Assert.Contains("--break-at", output, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// The run finished; writing its report is what failed. That is still a tool failure and belongs
+    /// on the documented exit code - a build script can act on 2, and can do nothing at all with an
+    /// unhandled exception and a stack trace.
+    /// </summary>
+    [Fact]
+    public async Task A_report_that_cannot_be_written_exits_as_a_run_that_could_not_complete()
+    {
+        using var fixture = FixtureCopy.Create();
+
+        // A directory where the report file should be: creating it succeeds, opening it for writing
+        // does not. Chosen over an unwritable path because it behaves the same as any user.
+        string reportPath = Path.Combine(fixture.Root, "report.json");
+
+        Directory.CreateDirectory(reportPath);
+
+        (int exitCode, _, string error) = await RunAsync(
+            fixture.Root, "--mutators", "Comparison", "--report-json", reportPath);
+
+        Assert.Equal(CouldNotRun, exitCode);
+        Assert.Contains("could not be written", error, StringComparison.Ordinal);
+
+        // And it says the measuring part worked, so nobody re-runs a sweep they already have.
+        Assert.Contains("The mutation run finished", error, StringComparison.Ordinal);
+    }
 }

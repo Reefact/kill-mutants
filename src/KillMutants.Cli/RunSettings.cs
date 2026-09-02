@@ -112,10 +112,18 @@ internal sealed record RunSettings(
         }
     }
 
+    /// <summary>
+    /// What was asked for, or what the file says when nothing was asked.
+    /// </summary>
+    /// <remarks>
+    /// Null and empty are not the same thing here, and treating them as one is what left a
+    /// <c>without</c> in the file impossible to switch off: any list on the command line replaces
+    /// the file's, including a deliberately empty one - <c>--without none</c>.
+    /// </remarks>
     private static IReadOnlyList<MutatorName> Families(
-        IReadOnlyList<MutatorName> given,
+        IReadOnlyList<MutatorName>? given,
         IReadOnlyList<string>? configured) =>
-        given.Count > 0 ? given : [.. (configured ?? []).Select(MutatorName.Create)];
+        given ?? [.. (configured ?? []).Select(MutatorName.Create)];
 
     /// <summary>
     /// Resolves a path from the file against the file's own directory rather than the shell's.

@@ -170,4 +170,45 @@ public class RunSettingsTests
         Assert.Equal(0, settings.VerifyKills);
         Assert.Equal(0, settings.Threshold);
     }
+
+    /// <summary>
+    /// The documented rule is that a list on the command line replaces the file's. There was one
+    /// list nobody could replace: an omitted option and an explicitly empty one both arrived as
+    /// nothing, and an empty value was refused, so a `without` in the file applied to every run.
+    /// Naming every family with --mutators did not help either - the exclusions came after.
+    /// </summary>
+    [Fact]
+    public void The_command_line_can_clear_a_configured_exclusion_list()
+    {
+        var file = new ConfigurationFile(Without: ["StringLiteral", "BooleanLiteral"]);
+
+        Assert.Equal(
+            [StringLiteral, MutatorName.Create("BooleanLiteral")],
+            RunSettings.From(Asked(), file).WithoutMutators);
+
+        Assert.Empty(RunSettings.From(Asked("--without", "none"), file).WithoutMutators);
+    }
+
+    /// <summary>And it can clear a configured catalogue the same way, for the same reason.</summary>
+    [Fact]
+    public void The_command_line_can_clear_a_configured_catalogue()
+    {
+        var file = new ConfigurationFile(Mutators: ["Comparison"]);
+
+        Assert.Equal([Comparison], RunSettings.From(Asked(), file).Mutators);
+        Assert.Empty(RunSettings.From(Asked("--mutators", "none"), file).Mutators);
+    }
+
+    /// <summary>
+    /// An empty value is still refused, and the message now says what to write instead - the option
+    /// exists to be discoverable from its own error.
+    /// </summary>
+    [Fact]
+    public void An_empty_list_is_still_refused_and_says_what_to_write()
+    {
+        ArgumentException refusal = Assert.Throws<ArgumentException>(
+            () => Asked("--without", ""));
+
+        Assert.Contains("'none' for no families at all", refusal.Message, StringComparison.Ordinal);
+    }
 }
