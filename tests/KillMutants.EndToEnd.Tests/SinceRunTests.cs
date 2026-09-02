@@ -994,6 +994,13 @@ public class SinceRunTests
     {
         using var fixture = FixtureCopy.CreateGeneratorProject();
 
+        // Before the base commit, and not cosmetic: this is the third test in the process to use
+        // this fixture, and generators are cached by assembly identity in a load context nothing
+        // unloads. Without a name of its own the run compiles against an earlier test's generator -
+        // measured, and it fails the baseline with CS0103 on the very type the generator
+        // contributes. RB-020.
+        fixture.RenameTheGeneratorAssembly("Sample.Generator.Since");
+
         FixtureRepository.InitialiseAt(fixture.Root);
         Touch(fixture, "Sample.Generator", "LimitsGenerator.cs");
 
