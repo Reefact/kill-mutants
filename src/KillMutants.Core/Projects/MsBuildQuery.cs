@@ -107,6 +107,11 @@ internal sealed class MsBuildQuery
                 "ProjectReference",
                 identity => Path.GetFullPath(Path.Combine(directory, identity)),
                 RunsAtRunTime),
+            AnalyzerProjects: ReadItems(
+                root,
+                "ProjectReference",
+                identity => Path.GetFullPath(Path.Combine(directory, identity)),
+                reference => !RunsAtRunTime(reference)),
             InputFiles: [.. InputItemNames.SelectMany(item => ReadFullPaths(root, item))]);
     }
 

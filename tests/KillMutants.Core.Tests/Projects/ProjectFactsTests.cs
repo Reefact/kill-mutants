@@ -161,5 +161,6 @@ public class ProjectFactsTests
             DeclaredTestSupport: declaredTestSupport,
             PackageReferences: [package],
             ProjectReferences: [],
+            AnalyzerProjects: [],
             InputFiles: []);
 }

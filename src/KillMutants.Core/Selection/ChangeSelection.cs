@@ -148,7 +148,7 @@ internal sealed class ChangeSelection
             .ChangesSinceAsync(baseRevision, cancellationToken)
             .ConfigureAwait(false);
 
-        RefuseIfTheGateItselfChanged(changes);
+        RefuseIfTheGateItselfChanged(changes, Path.GetFullPath(searchDirectory));
 
         var scope = new RunScope(
             baseRevision,
@@ -185,10 +185,17 @@ internal sealed class ChangeSelection
     /// is a thing this tool is allowed to do; answering as though the question were unchanged is not.
     /// </para>
     /// </remarks>
-    private static void RefuseIfTheGateItselfChanged(IReadOnlyList<FileChange> changes)
+    private static void RefuseIfTheGateItselfChanged(
+        IReadOnlyList<FileChange> changes,
+        string searchDirectory)
     {
+        // The file this run actually reads, not any file of that name in the repository. Review
+        // found the difference: a monorepo measured one component at a time had every partial run
+        // refused by a change to a sibling component's settings, which decide nothing here.
+        string settings = Path.Combine(searchDirectory, "killmutants.json");
+
         FileChange? configuration = changes.FirstOrDefault(change =>
-            Path.GetFileName(change.Path).Equals("killmutants.json", StringComparison.OrdinalIgnoreCase));
+            ProjectPaths.Comparer.Equals(Path.GetFullPath(change.Path), settings));
 
         if (configuration is not null)
         {
@@ -359,6 +366,27 @@ internal sealed class ChangeSelection
                 return true;
             }
 
+            // A generator: referenced as an analyzer, so it runs at build time and never at run
+            // time. It is neither a target nor anything a target links, and review found the
+            // consequence - changing a generator's source changes what its consumers compile, while
+            // the diff holds no line of their code, so the run selected nothing and passed. The
+            // change is attributed to each consumer instead, which gives it whatever role that
+            // project has.
+            if (discovered.AnalyzerConsumers.TryGetValue(project, out IReadOnlyList<string>? consumers))
+            {
+                bool reached = false;
+
+                foreach (string consumer in consumers)
+                {
+                    reached |= AttributeToConsumer(change, consumer, widened, touchedTestProjects);
+                }
+
+                if (reached)
+                {
+                    return true;
+                }
+            }
+
             if (!discovered.TargetPaths.Contains(project))
             {
                 return false;
@@ -368,6 +396,53 @@ internal sealed class ChangeSelection
             {
                 widened.Add(project);
             }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Gives a change to a generator the role its consumer has, whole rather than file by file.
+        /// </summary>
+        /// <remarks>
+        /// A generator's own file is never in a consumer's compilation - the trees it contributes
+        /// carry generated paths - so there is no precise selection to make here. What a changed
+        /// generator can do is change every one of those trees, which is the whole project.
+        /// </remarks>
+        private bool AttributeToConsumer(
+            FileChange change,
+            string consumer,
+            HashSet<string> widened,
+            HashSet<string> touchedTestProjects)
+        {
+            if (discovered.TestProjectPaths.Contains(consumer))
+            {
+                if (change.Kind != ChangeKind.Added)
+                {
+                    touchedTestProjects.Add(consumer);
+                }
+
+                return true;
+            }
+
+            if (discovered.LeftOut.TryGetValue(consumer, out IReadOnlyList<string>? reachedBy))
+            {
+                if (change.Kind != ChangeKind.Added)
+                {
+                    foreach (string testProject in reachedBy)
+                    {
+                        touchedTestProjects.Add(testProject);
+                    }
+                }
+
+                return true;
+            }
+
+            if (!discovered.TargetPaths.Contains(consumer))
+            {
+                return false;
+            }
+
+            widened.Add(consumer);
 
             return true;
         }
@@ -448,30 +523,43 @@ internal sealed class ChangeSelection
                 .ExportAsync(repository, baseRevision, configuration, filesAtBase, cancellationToken)
                 .ConfigureAwait(false);
 
-            List<string> atBase =
-            [
-                .. touchedTestProjects.Concat(tracedAtBase).Select(RepositoryPathOf).OfType<string>(),
-            ];
+            // Two kinds of root, and review found that treating them alike undid the point of
+            // separating them in the first place. A suite the change touched, or one that stopped
+            // being a suite, widens what it reached: the change may have altered what it kills. A
+            // suite read only because a project it reaches had its project file changed widens
+            // nothing - the change says nothing about the rest of what that suite exercises, and
+            // adding it would fail a change confined to A on an old survivor in B.
+            List<string> widening = [.. touchedTestProjects.Select(RepositoryPathOf).OfType<string>()];
 
             foreach (string candidate in formerTestProjects)
             {
                 if (await graph.IsTestProjectAsync(candidate, cancellationToken).ConfigureAwait(false))
                 {
-                    atBase.Add(candidate);
+                    widening.Add(candidate);
                 }
             }
 
+            HashSet<string> wideningRoots = new(widening, RepositoryPath.Comparer);
             SortedSet<string> coverageLost = new(StringComparer.Ordinal);
 
-            foreach (string testProject in atBase.Distinct(RepositoryPath.Comparer))
+            IEnumerable<string> roots = widening
+                .Concat(tracedAtBase.Select(RepositoryPathOf).OfType<string>())
+                .Distinct(RepositoryPath.Comparer);
+
+            foreach (string testProject in roots)
             {
+                bool widens = wideningRoots.Contains(testProject);
+
                 foreach (string reached in await graph
                              .ProductionProjectsReachedFromAsync(testProject, cancellationToken)
                              .ConfigureAwait(false))
                 {
                     if (HeadTargetAt(reached) is { } target)
                     {
-                        widened.Add(target);
+                        if (widens)
+                        {
+                            widened.Add(target);
+                        }
 
                         continue;
                     }
@@ -513,7 +601,7 @@ internal sealed class ChangeSelection
             string absolute = RepositoryPath.In(repository.Root, repositoryPath);
 
             return File.Exists(absolute) &&
-                   IsUnder(Path.GetDirectoryName(absolute), searchDirectory) &&
+                   InScope(repositoryPath) &&
                    !discovered.LeftOut.ContainsKey(absolute) &&
                    !discovered.TestProjectPaths.Contains(absolute);
         }
@@ -541,9 +629,15 @@ internal sealed class ChangeSelection
                 discovered.TestProjectPaths.Select(RepositoryPathOf).OfType<string>(),
                 RepositoryPath.Comparer);
 
+            // Inside the run's scope, like the coverage-loss check above. Review found the same
+            // omission here: a changed project file in a sibling directory was read as a former
+            // test project purely because HEAD discovery, pointed elsewhere, had never seen it -
+            // and if it reached an in-scope target at the base revision, an unrelated change next
+            // door widened that target and could fail the gate on its existing mutants.
             string[] candidates = [.. (await repository
                     .ListFilesAsync(baseRevision, cancellationToken).ConfigureAwait(false))
                 .Where(path => path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+                .Where(InScope)
                 .Where(path => !testProjectsAtHead.Contains(path))];
 
             if (candidates.Length == 0)
@@ -571,6 +665,12 @@ internal sealed class ChangeSelection
 
             return [.. owning];
         }
+
+        /// <summary>True when a repository path is under the directory the run was pointed at.</summary>
+        private bool InScope(string repositoryPath) =>
+            IsUnder(
+                Path.GetDirectoryName(RepositoryPath.In(repository.Root, repositoryPath)),
+                searchDirectory);
 
         private string? HeadTargetAt(string repositoryPath)
         {

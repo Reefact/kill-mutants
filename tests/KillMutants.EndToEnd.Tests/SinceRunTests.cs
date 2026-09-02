@@ -979,6 +979,132 @@ public class SinceRunTests
         Assert.False(report.LostCoverage);
     }
 
+    /// <summary>
+    /// A changed source generator widens the projects it generates code into.
+    /// </summary>
+    /// <remarks>
+    /// A generator is referenced as an analyzer, so it runs at build time and nothing links it: it is
+    /// neither a target nor anything a target references, and review found the consequence. Its own
+    /// file is never in a consumer's compilation either — the trees it contributes carry generated
+    /// paths — so the precise rule had nothing to select, and the run reported a clean pass over an
+    /// assembly the change had altered.
+    /// </remarks>
+    [Fact]
+    public async Task A_changed_source_generator_widens_the_projects_it_generates_into()
+    {
+        using var fixture = FixtureCopy.CreateGeneratorProject();
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+        Touch(fixture, "Sample.Generator", "LimitsGenerator.cs");
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        Assert.Contains("Ages.cs", MutatedFiles(report));
+    }
+
+    /// <summary>
+    /// Tracing a suite at the base revision does not widen the targets it also exercises.
+    /// </summary>
+    /// <remarks>
+    /// The correction to a correction. Reading the base graph for a changed production project file
+    /// was added so that a removed reference could not go unnoticed; review then found that the
+    /// traversal widened every target it walked past, so one suite reaching independent projects had
+    /// a change confined to one of them failing on an old survivor in the other. The base-side root
+    /// exists to find lost coverage, and widens nothing by itself.
+    /// </remarks>
+    [Fact]
+    public async Task Reading_the_base_graph_for_a_changed_project_does_not_widen_its_siblings()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+
+        // The project file alone: no source, no test, nothing else in the diff.
+        File.AppendAllText(
+            Path.Combine(fixture.Root, "Domain", "Domain.csproj"),
+            $"{Environment.NewLine}<!-- touched -->{Environment.NewLine}");
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        // Domain is widened, since its own build changed.
+        Assert.Contains("Basket.cs", MutatedFiles(report));
+
+        // Core is not. Domain.Tests reaches it too, and the base graph walks through it, but nothing
+        // about this change touches what Core compiles.
+        Assert.DoesNotContain("Money.cs", MutatedFiles(report));
+    }
+
+    /// <summary>
+    /// Only the settings file this run reads refuses it; another one in the repository does not.
+    /// </summary>
+    /// <remarks>
+    /// A partial run declines to judge a change to its own configuration, because `exclude` there
+    /// takes effect before any selection exists. Review found the predicate matched the file name
+    /// anywhere in the repository, so a monorepo measured one component at a time had every partial
+    /// run refused by a change to a sibling's settings, which decide nothing here.
+    /// </remarks>
+    [Fact]
+    public async Task A_settings_file_this_run_does_not_read_does_not_refuse_it()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        // Outside every project directory, so that it widens nothing by ordinary attribution and the
+        // assertion is about the refusal alone. Inside one it would widen that project, correctly:
+        // a file in a project's folder is one of its inputs whatever it is called.
+        Directory.CreateDirectory(Path.Combine(fixture.Root, "tools"));
+
+        string settings = Path.Combine(fixture.Root, "tools", "killmutants.json");
+
+        File.WriteAllText(settings, """{ "breakAt": 50 }""");
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+
+        File.WriteAllText(settings, """{ "breakAt": 60 }""");
+        Touch(fixture, "Core", "Money.cs");
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        Assert.Equal(["Money.cs"], MutatedFiles(report));
+    }
+
+    /// <summary>
+    /// A changed project file outside the run's scope is not read as a suite this run ever had.
+    /// </summary>
+    /// <remarks>
+    /// The same omission as the coverage-loss check, at a second site. Candidates for "was a test
+    /// project at the base revision" came from the whole repository, and a project outside the run's
+    /// scope qualifies trivially — HEAD discovery, pointed elsewhere, never saw it. An unrelated
+    /// change next door then widened whatever that sibling reached in scope.
+    /// </remarks>
+    [Fact]
+    public async Task A_changed_project_outside_the_scope_of_the_run_widens_nothing_inside_it()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        MoveUnder(fixture, "app", "Domain");
+        MoveUnder(fixture, "app", "Domain.Tests");
+
+        string domain = Path.Combine(fixture.Root, "app", "Domain", "Domain.csproj");
+
+        File.WriteAllText(
+            domain,
+            File.ReadAllText(domain).Replace("\"../Core/", "\"../../Core/", StringComparison.Ordinal));
+
+        // The sibling suite reaches into the scope, which is what makes it able to widen anything.
+        Reference(fixture, "Core.Tests", "Core.Tests.csproj", "../app/Domain/Domain.csproj");
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+        Touch(fixture, "Core.Tests", "Core.Tests.csproj");
+
+        MutationTestReport report = await MutationTesting.RunAsync(
+            Path.Combine(fixture.Root, "app"),
+            mutators: Families,
+            since: "HEAD",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Empty(MutatedFiles(report));
+    }
+
     private static Task<MutationTestReport> RunSinceHeadAsync(FixtureCopy fixture) =>
         MutationTesting.RunAsync(
             fixture.Root,
