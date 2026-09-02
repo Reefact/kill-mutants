@@ -71,7 +71,7 @@ internal sealed class ProjectCompilation
 
         foreach (CommandLineSourceFile sourceFile in arguments.SourceFiles)
         {
-            SourceText text = ReadSource(sourceFile.Path);
+            SourceText text = ReadSource(sourceFile.Path, arguments);
 
             syntaxTrees.Add(CSharpSyntaxTree.ParseText(text, parseOptions, sourceFile.Path));
         }
@@ -231,11 +231,30 @@ internal sealed class ProjectCompilation
                "implementation, one of them did not contribute what the build expects.";
     }
 
-    private static SourceText ReadSource(string path)
+    /// <summary>Reads one source file the way the compiler was going to read it.</summary>
+    /// <remarks>
+    /// <para>
+    /// The encoding is not a detail. A project can set <c>/codepage</c>, and a file without a byte
+    /// order mark carries no clue about its own encoding, so decoding it with a different one is
+    /// silent: non-ASCII identifiers and string literals come back as different characters, or as
+    /// replacement characters, and the file still parses.
+    /// </para>
+    /// <para>
+    /// That is a wrong answer rather than a failure. If the changed value is not something the
+    /// selected tests assert on, the mutant compiles, the tests pass, and the verdict describes an
+    /// assembly whose string constants differ from the ones the real build produces.
+    /// </para>
+    /// <para>
+    /// The checksum algorithm travels with it for the same reason: it is what the PDB records, and
+    /// reconstructing a compilation means reconstructing that too.
+    /// </para>
+    /// </remarks>
+    private static SourceText ReadSource(string path, CSharpCommandLineArguments arguments)
     {
         using FileStream stream = File.OpenRead(path);
 
-        return SourceText.From(stream, canBeEmbedded: false);
+        return SourceText.From(
+            stream, arguments.Encoding, arguments.ChecksumAlgorithm, canBeEmbedded: false);
     }
 
     private static List<MetadataReference> ResolveReferences(
