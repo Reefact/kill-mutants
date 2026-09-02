@@ -156,7 +156,13 @@ internal sealed class ChangeSelection
             await repository.HasUncommittedChangesAsync(cancellationToken).ConfigureAwait(false),
             changes.Count);
 
-        var resolver = new Resolver(repository, baseRevision, configuration, discovered, progress);
+        var resolver = new Resolver(
+            repository,
+            baseRevision,
+            configuration,
+            Path.GetFullPath(searchDirectory),
+            discovered,
+            progress);
 
         return await resolver.ResolveAsync(scope, changes, cancellationToken).ConfigureAwait(false);
     }
@@ -201,6 +207,7 @@ internal sealed class ChangeSelection
         GitRepository repository,
         string baseRevision,
         string configuration,
+        string searchDirectory,
         DiscoveredProjects discovered,
         IProgress<MutationTestProgress>? progress)
     {
@@ -280,8 +287,19 @@ internal sealed class ChangeSelection
                 }
             }
 
+            // Everything in `widened` at this point was widened by a change to something other than
+            // a source file - a project file, a resource, a shared build file - because a changed
+            // `.cs` file goes to the selected set instead. Those are exactly the changes that can
+            // delete a project reference, so the suites reaching them are read at the base revision
+            // as well. Review found the hole: `Tests -> Facade -> Core` becoming `Tests -> Facade`
+            // puts only `Facade.csproj` in the diff, no test project is touched, the base graph is
+            // never consulted, and `Core` leaves the targets without anyone noticing.
             IReadOnlyList<string> coverageLost = await WidenForTestsAsync(
-                    widened, touchedTestProjects, unattributed, cancellationToken)
+                    widened,
+                    touchedTestProjects,
+                    SuitesReaching(widened),
+                    unattributed,
+                    cancellationToken)
                 .ConfigureAwait(false);
 
             return new ChangeSelection(
@@ -355,11 +373,44 @@ internal sealed class ChangeSelection
         }
 
         /// <summary>
+        /// The test projects that exercise any of these production projects at HEAD.
+        /// </summary>
+        /// <remarks>
+        /// Read from the targets rather than from the project graph, because a target already pairs
+        /// a project under test with the suites measuring it, and that pairing is what the base-side
+        /// traversal needs a root for.
+        /// </remarks>
+        private List<string> SuitesReaching(IReadOnlyCollection<string> projects)
+        {
+            List<string> suites = [];
+
+            foreach (MutationTestTarget target in discovered.Targets.Where(target =>
+                         projects.Contains(target.ProjectUnderTest.ProjectPath, ProjectPaths.Comparer)))
+            {
+                suites.AddRange(target.TestProjects.Select(test => test.ProjectPath));
+            }
+
+            return [.. suites.Distinct(ProjectPaths.Comparer)];
+        }
+
+        /// <summary>
         /// Widens to every project the touched test projects exercise, at both revisions.
         /// </summary>
+        /// <param name="widened">The projects taken whole, added to as the base graph is read.</param>
+        /// <param name="touchedTestProjects">
+        /// Suites a change touched. Each widens what it exercises at HEAD, and is read at the base.
+        /// </param>
+        /// <param name="tracedAtBase">
+        /// Suites read at the base revision only. A change to a target's project file can delete a
+        /// reference the suite still has - so the old graph has to be asked - without changing
+        /// anything about the rest of what that suite exercises, which is why these do not widen.
+        /// </param>
+        /// <param name="unattributed">Changes no project claimed, which may name a former suite.</param>
+        /// <param name="cancellationToken">Cancels the traversal.</param>
         private async Task<IReadOnlyList<string>> WidenForTestsAsync(
             HashSet<string> widened,
             HashSet<string> touchedTestProjects,
+            List<string> tracedAtBase,
             IReadOnlyList<FileChange> unattributed,
             CancellationToken cancellationToken)
         {
@@ -379,7 +430,9 @@ internal sealed class ChangeSelection
                     unattributed, cancellationToken)
                 .ConfigureAwait(false);
 
-            if (touchedTestProjects.Count == 0 && formerTestProjects.Count == 0)
+            if (touchedTestProjects.Count == 0 &&
+                formerTestProjects.Count == 0 &&
+                tracedAtBase.Count == 0)
             {
                 return [];
             }
@@ -395,7 +448,10 @@ internal sealed class ChangeSelection
                 .ExportAsync(repository, baseRevision, configuration, filesAtBase, cancellationToken)
                 .ConfigureAwait(false);
 
-            List<string> atBase = [.. touchedTestProjects.Select(RepositoryPathOf).OfType<string>()];
+            List<string> atBase =
+            [
+                .. touchedTestProjects.Concat(tracedAtBase).Select(RepositoryPathOf).OfType<string>(),
+            ];
 
             foreach (string candidate in formerTestProjects)
             {
@@ -435,18 +491,29 @@ internal sealed class ChangeSelection
         /// measured by anything.
         /// </summary>
         /// <remarks>
-        /// Four questions, and each excludes a different innocent case. Gone from disk: the change
+        /// <para>
+        /// Five questions, and each excludes a different innocent case. Gone from disk: the change
         /// deleted it, and there is nothing left to cover. A target at HEAD: still measured. A test
         /// project at HEAD: it became the yardstick rather than the subject. Left out on purpose:
         /// excluded, or declaring itself test support, which is the user saying not to measure it.
         /// What remains is a project that still exists, that nothing was told to ignore, and that no
         /// suite reaches any more.
+        /// </para>
+        /// <para>
+        /// The fifth is the run's own scope, and review found it missing. A repository is not
+        /// always measured whole: point the run at one directory and a suite inside it may reference
+        /// a project outside, which the base graph returns and discovery never saw. Absent from the
+        /// targets and from what was left out on purpose, it read as newly uncovered - and since
+        /// nothing about it changes between runs, every partial run in such a repository failed.
+        /// Out of scope is not uncovered; it was never this run's to measure.
+        /// </para>
         /// </remarks>
         private bool StoppedBeingCovered(string repositoryPath)
         {
             string absolute = RepositoryPath.In(repository.Root, repositoryPath);
 
             return File.Exists(absolute) &&
+                   IsUnder(Path.GetDirectoryName(absolute), searchDirectory) &&
                    !discovered.LeftOut.ContainsKey(absolute) &&
                    !discovered.TestProjectPaths.Contains(absolute);
         }

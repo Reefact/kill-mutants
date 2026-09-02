@@ -112,8 +112,10 @@ Changed production code is selected precisely, file by file. Anything touching a
 a test project widens instead, to every mutable project that test project exercises: what a change to
 a test removes is a coverage edge, and there is no asking `HEAD` about an edge that is no longer
 there. That relation is read at both revisions, so removing a project reference in the very change
-being judged does not delete the answer along with the question. A file the change *adds* to a test
-project widens nothing — a new test cannot have removed an edge that predates it.
+being judged does not delete the answer along with the question. A C# file the change *adds* to a
+test project widens nothing — a new test cannot have removed an edge that predates it — while an
+added fixture, case list or settings file widens like any other change, because that argument was
+never about those.
 
 **A partial run prints no mutation score, and that is deliberate.** Its population is the change
 itself, chosen against a base revision that differs every run, so a percentage over it answers
