@@ -18,13 +18,22 @@ by a test in a changed test file**.
 That second half only works while the test is still there to be asked about. Delete or rename a test
 - or a fixture or helper the tests lean on - and the coverage relation that named the mutants it used
 to kill is gone from HEAD along with it, so nothing selects them and the run is green again for
-exactly the reason the rule was added. **Where a change to a test project cannot be mapped onto
-current coverage, the selection widens to every mutant that test project covers**, and if even that
-cannot be established the run is inconclusive. Slower, occasionally much slower, and never a false
-green - the same trade the run already makes when coverage is unknown, and when a filter is too long
-for a command line. Reading coverage from the base revision would be the precise answer instead of
-the conservative one, and it needs stored results from a previous run: that is the baseline feature,
-and it is deliberately not this one. Stryker.NET selects on the same two grounds - their configuration
+exactly the reason the rule was added. And the obvious widening is not enough, which is worth
+spelling out because it looks sufficient: "every mutant that test project covers" is itself computed
+from HEAD coverage, and if `T` was the *only* test covering `M`, then `M` left that set the moment
+`T` did. Widening along the axis that already lost the information changes nothing.
+
+**So where a change to a test project cannot be attributed from HEAD coverage, the selection widens
+to every mutant in the production projects that test project exercises** - a relation
+`MutationTestTarget` holds structurally, from project references, so it survives the deletion of any
+number of tests. If even that cannot be established, the run is inconclusive.
+
+Slower, occasionally much slower, and never a false green - the same trade the run already makes when
+coverage is unknown, and when a filter is too long for a command line. Reading coverage from the base
+revision would be the precise answer instead of the conservative one, and it needs stored results
+from a previous run: that is the baseline feature, and it is deliberately not this one.
+
+Stryker.NET selects on the same two grounds - their configuration
 documentation, verbatim: *"For changes on test project files all mutants covered by tests in that
 file will be seen as changed."* Two tools arriving at the same rule is weak evidence on its own, but
 it does say the second half is not a theoretical worry.
@@ -112,7 +121,8 @@ two. Both are named in the output, and both fail the verdict.
 `CompileError` stays outside it, for the reason it stays outside the score: the suite was never asked
 about a mutant the tool could not build.
 
-**But a run that could test nothing has not passed** - and it exits `1`, like its full-run twin. Excluding untestable mutants one at a time is
+**But a run that could test nothing has not passed** - and it exits `1`, like its full-run twin.
+Excluding untestable mutants one at a time is
 right; letting a change whose mutants were *all* untestable report success is not, and the two are
 one line apart. ADR-0009 already settled the full-run version of this - an undefined score fails a
 threshold, because a run that demonstrated nothing must not let a misconfigured job stay green - and
