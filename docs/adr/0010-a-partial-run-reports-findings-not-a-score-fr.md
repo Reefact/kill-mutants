@@ -14,22 +14,28 @@ terminent par un score de mutation. L'évidence serait d'en afficher un ici auss
 
 ### Ce que voudrait dire un score partiel
 
-Le score vaut `détectés / valides`. Dans une exécution complète, le dénominateur est *ce dépôt*, et
-c'est ce qui rend deux exécutions comparables : la population est la même, donc un mouvement du
-nombre est un mouvement de la suite de tests.
+Le score vaut `détectés / valides`. Ce qui rend deux exécutions complètes comparables, ce n'est pas
+qu'elles jugent les mêmes mutants — elles ne le font pas, puisque le code lui-même change d'un commit
+à l'autre — mais qu'elles appliquent la même *règle de portée* : tout site mutable du code
+sélectionné. La population bouge ; la question à laquelle le nombre répond, elle, ne bouge pas, si
+bien qu'un mouvement du nombre est une affirmation sur la suite de tests.
 
-Dans une exécution partielle, le dénominateur est *les mutants de ce diff*. Cette population change à
-chaque fois. Six mutants mardi, quatre-vingt-dix mercredi. Une exécution qui affiche 72 % puis 40 %
-n'a pas mesuré une dégradation : elle a mesuré deux choses sans rapport et leur a donné le même nom,
-la même formule et la même place dans le rapport.
+Une exécution partielle n'a pas de règle de ce genre. Son dénominateur est *les mutants de ce diff*,
+et un diff n'est pas une portée : c'est l'accident de ce que quelqu'un a touché. Six mutants mardi,
+quatre-vingt-dix mercredi, et rien de commun entre les deux. Une exécution qui affiche 72 % puis 40 %
+n'a pas mesuré une dégradation : elle a répondu à deux questions différentes et donné aux deux
+réponses le même nom, la même formule et la même place dans le rapport.
 
-Deux conséquences plus petites le rendent nuisible plutôt que seulement imprécis :
+Et le nombre serait mal fabriqué autant que mal nommé. **Un petit dénominateur revendique une
+précision qu'il n'a pas** : un diff de trois mutants dont un survit s'affiche « 66,7 % », trois
+chiffres significatifs sur une mesure qui n'en porte aucun.
 
-- **Un petit dénominateur revendique une précision qu'il n'a pas.** Un diff de trois mutants dont un
-  survit donne « 66,7 % » — trois chiffres significatifs sur une mesure qui n'en porte aucun.
-- **Le diff vide est le cas le plus bruyant.** Un changement sans mutant, ou dont tous les mutants
-  sont hors du code testé, produit le nombre le plus rassurant disponible. C'est exactement la forme
-  de mensonge que ce projet existe pour refuser : le titre est au mieux là où la preuve est au pire.
+Un piège que nous n'avons *pas*, et qu'il vaut la peine d'écrire parce que la version évidente de cet
+argument s'y trompe. Un diff vide ne produit pas ici de titre rassurant :
+`MutationScore.IsUndefined` est vrai quand rien n'a été jugé, `ToString` rend `n/a`, et l'ADR-0009
+fait déjà échouer un seuil sur un score indéfini. Invoquer « l'exécution vide affiche 100 % » aurait
+été emprunter la défaillance d'un autre outil sans vérifier la nôtre — précisément l'erreur dont ce
+document entier parle.
 
 ### Ce que fait Stryker.NET, et ce que ça leur a coûté
 
@@ -64,20 +70,44 @@ deux cas — mais c'est à l'affirmation la plus faible que nous avons droit.
 
 **Une exécution partielle n'affiche aucun score de mutation.**
 
-Elle affiche le décompte de chaque statut, pour que rien ne soit caché ; les nouveaux survivants,
+Elle affiche le décompte de chaque statut, pour que rien ne soit caché ; les nouveaux constats,
 nommés, avec de quoi reproduire chacun d'eux ; et un verdict binaire, parce que la question à
 laquelle répond une exécution partielle est binaire. Une exécution complète demande *cette suite de
 tests vaut-elle quelque chose ?* Une exécution partielle demande *ce changement introduit-il du
 comportement non testé ?* Seule la première a un pourcentage pour réponse.
+
+**Le verdict échoue sur tout nouveau mutant *non détecté*, pas seulement sur un survivant.** Un
+mutant qu'aucun test n'atteint est `NoCoverage`, pas `Survived` — et un changement qui ajoute du code
+que rien ne teste produit exactement ceux-là. Un portillon ne lisant que les survivants laisserait
+passer le cas le plus flagrant de comportement non testé nouvellement introduit, c'est-à-dire la
+seule chose que cette exécution existe pour attraper. `MutationScore` compte déjà les deux comme non
+détectés, et l'ADR-0007 tient l'absence de couverture pour le plus urgent des deux constats. Les deux
+sont nommés dans la sortie, et les deux font échouer le verdict.
+
+`CompileError` en reste dehors, pour la raison qui l'exclut déjà du score : la suite n'a jamais été
+interrogée sur un mutant que l'outil n'a pas su construire.
 
 **Aucun statut ne signifie « hors du diff ».** Les mutants qu'une exécution partielle n'a pas
 considérés ne sont pas engendrés, pas comptés, et pas rapportés avec un état à eux. Ajouter un statut
 qui quitte silencieusement le dénominateur, c'est exactement la couture décrite plus haut, et nous
 l'importerions délibérément.
 
-**`--break-at` est refusé avec `--since`**, par son nom, en disant pourquoi — ni accepté puis ignoré
-en silence, ni réinterprété tacitement contre le diff. Un seuil suppose un score, et il n'y en a pas
-ici. Le refus nomme l'option et le drapeau, à la manière de tous les autres refus de cet outil.
+**Le rapport consigne la portée de l'exécution en métadonnée.** Un rapport partiel dont les mutants
+hors diff sont simplement absents est indiscernable d'une exécution complète qui aurait eu ce
+nombre-là de mutants — un tableau de bord, ou un lecteur six mois plus tard, ne peut donc ni savoir
+quelle population a été inspectée ni reproduire la sélection. `--report-json` porte donc le mode
+d'exécution et les révisions de base et de tête *résolues*, au niveau du rapport, à côté de
+l'environnement et des budgets de temps qui y figurent déjà. C'est la même règle qu'eux : un rapport
+qu'on ne peut pas interpréter n'est pas un rapport. C'est une métadonnée, pas un statut de mutant :
+le paragraphe précédent tient.
+
+**Un seuil est refusé avec `--since`, d'où qu'il vienne.** Un seuil suppose un score, et il n'y en a
+pas ici. Le refus nomme l'option — et quand la valeur vient de `killmutants.json`, il nomme le
+fichier et la clé, comme tous les autres refus qui lisent ce fichier. Ce dernier point n'est pas un
+détail : `RunSettings` résout `options.Threshold ?? file?.BreakAt`, donc un projet qui suit le README
+et range `breakAt` dans sa configuration verrait sinon toutes ses exécutions partielles refusées,
+sans autre issue que d'éditer un fichier versionné. L'issue est `--break-at none`, qui l'efface pour
+cette exécution — même forme que `--without none`, et pour la même raison.
 
 **Un score comparable issu d'une exécution rapide est une autre fonctionnalité, pour plus tard.**
 Garder le dénominateur du dépôt entier et réutiliser les verdicts des mutants inchangés — un *calcul*
@@ -88,12 +118,19 @@ ne doivent pas être confondues.
 ## Conséquences
 
 - `--since` ne peut pas servir de barrière en pourcentage. C'est le but, pas une limitation à
-  contourner plus tard : la barrière qu'il offre à la place — aucun nouveau survivant — est une
-  affirmation plus forte sur un changement que n'importe quel seuil sur six mutants.
-- Le contrat de codes de sortie de [ADR-0009](0009-exit-codes-are-a-public-contract-fr.md) reste
-  valable : `1` quand l'exécution a trouvé ce sur quoi l'utilisateur a demandé d'échouer, `2` quand
-  elle n'a pas pu s'exécuter.
+  contourner plus tard : la barrière qu'il offre à la place — aucun nouveau mutant non détecté — est
+  une affirmation plus forte sur un changement que n'importe quel seuil sur six mutants.
+- **Cela élargit le code de sortie `1`, et le dit.**
+  L'[ADR-0009](0009-exit-codes-are-a-public-contract-fr.md) définissait `1` comme *le score de
+  mutation est inférieur à `--break-at`*, or une exécution partielle n'a pas de score. Plutôt que de
+  laisser le tableau et le comportement se contredire, `1` signifie désormais ce que le raisonnement
+  de cet ADR disait déjà — *ce que vous m'avez demandé de vérifier n'est pas assez bon* — avec pour
+  deux cas le score sous un seuil et le nouveau mutant non détecté. L'ADR-0009 est amendé dans le
+  même changement ; une automatisation qui lit `1` apprend toujours « des constats », ce sur quoi
+  elle agit. `2` est inchangé.
 - Deux rapports ne peuvent plus être comparés en lisant un nombre de chacun, puisque nous n'affichons
   plus le nombre qui y invite. Les décomptes par statut sont comparables et disent ce qu'ils disent.
+- Un rapport partiel se distingue d'un rapport complet, et sa sélection se reproduit, parce que le
+  mode d'exécution et les révisions résolues y figurent.
 - Si la fonctionnalité de base de référence est construite plus tard, cet ADR est l'endroit où son
   dénominateur est déjà argumenté.
