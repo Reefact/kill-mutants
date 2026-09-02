@@ -31,9 +31,21 @@ disappearance needs the run before, which is exactly what we do not have.
 
 **So any change that touches an existing test, fixture, helper or configuration file in a test
 project widens the selection to every mutant in the production projects that test project
-exercises** - a relation `MutationTestTarget` holds structurally, from project references, so no
-amount of deleting, renaming or rewiring tests can take it away. If even that cannot be established,
-the run is inconclusive.
+exercises** - the relation `MutationTestTarget` holds, from project references rather than from
+observed coverage.
+
+And that relation has to be read at **both** revisions, `targets(base) ∪ targets(head)`, or the same
+hole reappears one layer down. Remove the `ProjectReference` from `Tests` to `ProjectA` in the very
+change being judged, and the HEAD graph no longer says `Tests` exercises `ProjectA`: the fallback
+asks a question whose answer the change has already deleted. First the vanishing relation was
+`T -> M`; here it is `Tests -> ProjectA`.
+
+The difference from coverage is what makes this fixable now rather than deferred, and it is worth
+stating plainly. Coverage history needs a previous *run* - that is the baseline feature, and its
+absence is why the widening above is conservative rather than precise. Structural history needs only
+the two *revisions*, and git has both. There is no equivalent excuse, so the base-side graph is
+resolved rather than assumed. If it cannot be resolved, the run is inconclusive: not trusted to HEAD
+alone.
 
 A test *added* by the change is the exception, and a principled one rather than a concession: a new
 test cannot remove an edge that predates it, so HEAD attribution is sound there and the precise rule

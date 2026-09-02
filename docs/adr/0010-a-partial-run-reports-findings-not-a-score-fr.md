@@ -36,10 +36,22 @@ l'exécution d'avant, précisément ce dont nous ne disposons pas.
 
 **Donc toute modification qui touche un test, un fixture, un utilitaire ou un fichier de
 configuration existant d'un projet de test élargit la sélection à tout mutant des projets de
-production que ce projet de test exerce** — une relation que `MutationTestTarget` porte
-structurellement, par les références de projet, qu'aucune suppression, aucun renommage et aucun
-recâblage de tests ne peut donc lui retirer. Si même cela ne peut être établi, l'exécution est non
-concluante.
+production que ce projet de test exerce** — la relation que porte `MutationTestTarget`, issue des
+références de projet et non de la couverture observée.
+
+Et cette relation doit être lue aux **deux** révisions, `targets(base) ∪ targets(head)`, sans quoi le
+même trou reparaît une couche plus bas. Supprimez la `ProjectReference` de `Tests` vers `ProjectA`
+dans le changement même qu'on juge, et le graphe HEAD ne dit plus que `Tests` exerce `ProjectA` : le
+repli pose une question dont le changement a déjà effacé la réponse. La relation qui s'évanouissait
+était `T -> M` ; ici c'est `Tests -> ProjectA`.
+
+Ce qui distingue ce cas de la couverture est ce qui le rend réparable maintenant plutôt que reporté,
+et il vaut la peine de le dire franchement. L'histoire de la couverture exige une *exécution*
+précédente — c'est la fonctionnalité de base de référence, et son absence est la raison pour laquelle
+l'élargissement ci-dessus est prudent et non précis. L'histoire structurelle n'exige que les deux
+*révisions*, et git les a toutes les deux. Il n'y a pas d'excuse équivalente : le graphe côté base est
+donc résolu, pas supposé. S'il ne peut pas l'être, l'exécution est non concluante — et non confiée au
+seul graphe HEAD.
 
 Un test *ajouté* par le changement fait exception, et par principe plutôt que par concession : un
 test neuf ne peut pas retirer une arête qui lui préexiste, donc l'attribution depuis HEAD y est saine
