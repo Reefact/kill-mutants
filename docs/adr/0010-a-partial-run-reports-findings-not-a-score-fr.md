@@ -165,9 +165,16 @@ deux cas — mais c'est à l'affirmation la plus faible que nous avons droit.
 
 Elle affiche le décompte de chaque statut, pour que rien ne soit caché ; les nouveaux constats,
 nommés, avec de quoi reproduire chacun d'eux ; et un verdict binaire, parce que la question à
-laquelle répond une exécution partielle est binaire. Une exécution complète demande *cette suite de
-tests vaut-elle quelque chose ?* Une exécution partielle demande *ce changement introduit-il du
-comportement non testé ?* Seule la première a un pourcentage pour réponse.
+laquelle répond une exécution partielle est binaire.
+
+Une exécution complète demande *cette suite de tests vaut-elle quelque chose ?* Une exécution
+partielle demande *la portée sélectionnée a-t-elle produit un mutant non détecté ?* — la portée étant
+le code de production modifié plus l'élargissement côté tests décrit plus haut, et non, malgré la
+tentation de le dire, toute manière dont un changement pourrait introduire du comportement non
+testé. RB-025 nomme une forme qu'elle ne voit pas. La question la plus étroite est celle à laquelle
+l'exécution sait réellement répondre, et un document sur le fait de ne pas surpromettre doit la poser
+dans les termes qu'il peut défendre. Aucune des deux n'a un pourcentage pour réponse, mais seule la
+première y aurait droit.
 
 **Le verdict échoue sur tout nouveau mutant *non détecté*, pas seulement sur un survivant.** Un
 mutant qu'aucun test n'atteint est `NoCoverage`, pas `Survived` — et un changement qui ajoute du code
