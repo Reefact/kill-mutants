@@ -86,7 +86,8 @@ internal sealed class BaseProjectGraph : IDisposable
     public async Task<bool> IsTestProjectAsync(
         string repositoryPath,
         CancellationToken cancellationToken = default) =>
-        await FactsOfAsync(repositoryPath, cancellationToken).ConfigureAwait(false) is { IsTestProject: true };
+        await FactsOfAsync(repositoryPath, cancellationToken).ConfigureAwait(false)
+            is { IsTestProject: true };
 
     /// <summary>
     /// Every mutable project a test project reached at the base revision, by repository path.

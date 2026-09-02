@@ -42,7 +42,9 @@ internal static class RepositoryPath
         return slash < 0 ? string.Empty : relative[..slash];
     }
 
-    /// <summary>True when <paramref name="path"/> sits in <paramref name="directory"/> or beneath it.</summary>
+    /// <summary>
+    /// True when <paramref name="path"/> sits in <paramref name="directory"/> or beneath it.
+    /// </summary>
     /// <remarks>
     /// Whole segments only. A prefix comparison would put <c>src/CoreTests/Thing.cs</c> inside
     /// <c>src/Core</c>, which is how a change to one project comes to be attributed to another.
