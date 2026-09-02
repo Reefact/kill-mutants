@@ -64,6 +64,70 @@ jobs:
           }
           "$(go env GOPATH)/bin/actionlint"
 
+  # Decides whether anything worth compiling changed, so a documentation-only pull request does not
+  # spend fifteen minutes of Windows proving that Markdown still parses.
+  #
+  # This is a job rather than a `paths-ignore:` on the workflow, and the difference is the whole
+  # design. A workflow held back by a path filter does not run, so it publishes no status at all -
+  # not "skipped", nothing - and a *required* check that never reports leaves a pull request blocked
+  # for good. Filtering the workflow would therefore block exactly the documentation-only pull
+  # requests it was added to speed up. Filtering inside it keeps `CI` reporting on every pull
+  # request, whatever it contains.
+  #
+  # The rule is one-sided on purpose: build unless *every* changed file is documentation. Getting it
+  # wrong the safe way costs fifteen minutes; getting it wrong the other way merges code nothing
+  # compiled. Only pull requests are ever held back - a push to `main` always builds, because that is
+  # the branch everything else is measured against.
+  changes:
+    name: Decide what needs building
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.decide.outputs.code }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The whole history, so the merge base with the target branch is actually present.
+          fetch-depth: 0
+
+      - name: Decide
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          build() {
+            echo "$1"
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+
+          [ "$EVENT" = pull_request ] || build "Not a pull request; building."
+
+          # Three dots: what this branch changed since it left the target, rather than every
+          # difference between two commits - which would include whatever landed on main meanwhile.
+          changed="$(git diff --name-only "$BASE...$HEAD")"
+
+          [ -n "$changed" ] || build "No files changed; building anyway."
+
+          echo "Changed files:"
+          echo "$changed"
+
+          # Anything not on this list builds, including .github/workflows and every build file.
+          while IFS= read -r file; do
+            case "$file" in
+              docs/*|*.md) ;;
+              *) build "'$file' is not documentation; building." ;;
+            esac
+          done <<< "$changed"
+
+          echo "Documentation only; the build is not needed."
+          echo "code=false" >> "$GITHUB_OUTPUT"
+
   # Runs on all three platforms, because this tool's whole claim is that a verdict describes the code
   # rather than the machine it was measured on - and until now that claim was only ever checked on
   # Linux. Two things it touches are decided by the operating system and cannot be tested anywhere
@@ -77,6 +141,8 @@ jobs:
   test:
     name: Build and test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -166,22 +232,45 @@ jobs:
     timeout-minutes: 5
     needs:
       - workflows
+      - changes
       - test
     if: always()
     steps:
       - name: Every job this gate stands for
         env:
           LINT: ${{ needs.workflows.result }}
+          DECIDE: ${{ needs.changes.result }}
           TEST: ${{ needs.test.result }}
+          CODE: ${{ needs.changes.outputs.code }}
         run: |
           set -euo pipefail
 
-          echo "Lint the workflows: $LINT"
-          echo "Build and test:     $TEST"
+          echo "Lint the workflows:    $LINT"
+          echo "Decide what to build:  $DECIDE (code=$CODE)"
+          echo "Build and test:        $TEST"
+
+          refuse() {
+            echo "::error::$1"
+            exit 1
+          }
+
+          # These two always run, so anything but success is a failure whatever its shape.
+          [ "$LINT" = success ]   || refuse "Linting the workflows did not succeed."
+          [ "$DECIDE" = success ] || refuse "Deciding what to build did not succeed."
 
           # A matrix job's result is 'success' only when every leg succeeded, so one red platform
           # arrives here as one red gate without this having to know how many there are.
-          if [ "$LINT" != success ] || [ "$TEST" != success ]; then
-            echo "::error::A job this gate stands for did not succeed."
-            exit 1
+          if [ "$TEST" = success ]; then
+            exit 0
           fi
+
+          # The one acceptable non-success, and it is narrow on purpose. 'skipped' has two causes
+          # that must never be confused: a build deliberately not needed, and a build that did not
+          # happen for some other reason. Only the first is a pass, and only when the job that
+          # decides said so itself - which is why its own result is checked above.
+          if [ "$TEST" = skipped ] && [ "$CODE" = false ]; then
+            echo "Documentation only; there was nothing to build."
+            exit 0
+          fi
+
+          refuse "Build and test did not succeed (result: $TEST)."
