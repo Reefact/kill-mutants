@@ -140,22 +140,38 @@ internal sealed class ChangeSelection
         IReadOnlyList<TestProject> testProjects,
         IProgress<MutationTestProgress>? progress)
     {
-        // From every test project discovery recognised, not from the targets. A test project that
-        // exercises nothing at HEAD is in no target, and a change removing its last project
-        // reference is precisely the case the base revision exists to answer.
-        private readonly Dictionary<string, string> _testProjectByDirectory =
-            testProjects
-                .DistinctBy(test => test.ProjectPath, ProjectPaths.Comparer)
-                .ToDictionary(
-                    test => Path.GetDirectoryName(test.ProjectPath)!,
-                    test => test.ProjectPath,
-                    ProjectPaths.Comparer);
+        /// <summary>
+        /// Test projects by the directory they sit in, all of them, and from every test project
+        /// discovery recognised rather than from the targets.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A list per directory, not one project: two projects in one folder is unusual and legal,
+        /// and review found that assuming otherwise threw a duplicate-key exception before a single
+        /// change had been classified - so every partial run in such a repository died where a full
+        /// run works, which is the worst shape a limitation can take.
+        /// </para>
+        /// <para>
+        /// From <see cref="ProjectDiscovery.TestProjects"/>, because a test project that exercises
+        /// nothing at HEAD is in no target - and a change that emptied it is exactly the case the
+        /// base revision exists to answer.
+        /// </para>
+        /// </remarks>
+        private readonly Dictionary<string, List<string>> _testProjectsByDirectory =
+            Grouped(testProjects.DistinctBy(test => test.ProjectPath, ProjectPaths.Comparer),
+                test => Path.GetDirectoryName(test.ProjectPath)!,
+                test => test.ProjectPath);
 
-        private readonly Dictionary<string, ProjectUnderTest> _mutableByDirectory =
-            targets.ToDictionary(
+        private readonly Dictionary<string, List<ProjectUnderTest>> _mutableProjectsByDirectory =
+            Grouped(
+                targets,
                 target => target.ProjectUnderTest.ProjectDirectory,
-                target => target.ProjectUnderTest,
-                ProjectPaths.Comparer);
+                target => target.ProjectUnderTest);
+
+        /// <summary>
+        /// Every file each test project compiles or carries, or null until a change needs asking.
+        /// </summary>
+        private Dictionary<string, HashSet<string>>? _testProjectInputs;
 
         public async Task<ChangeSelection> ResolveAsync(
             RunScope scope,
@@ -172,14 +188,37 @@ internal sealed class ChangeSelection
 
             foreach (FileChange change in changes)
             {
-                if (TestProjectOwning(change.Path) is { } testProject)
+                // A directory, not a file: git reports a submodule bump as its gitlink path alone -
+                // measured, `M libs/Core` and nothing beneath it. Everything after this reads the
+                // path's parent directory, which for a directory is the wrong project entirely, so
+                // the whole subtree is taken conservatively before anything else looks at it.
+                if (Directory.Exists(change.Path))
+                {
+                    WidenBeneath(widened, change.Path);
+
+                    foreach (string testProject in TestProjectsBeneath(change.Path))
+                    {
+                        touchedTestProjects.Add(testProject);
+                    }
+
+                    continue;
+                }
+
+                IReadOnlyList<string> owningTests = await TestProjectsOwningAsync(
+                        change.Path, cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (owningTests.Count > 0)
                 {
                     // An added file cannot have removed a coverage edge that predates it, so it
                     // widens nothing. See DEC0011, and the note there on what this implementation
                     // deliberately does not do in that case.
                     if (change.Kind != ChangeKind.Added)
                     {
-                        touchedTestProjects.Add(testProject);
+                        foreach (string testProject in owningTests)
+                        {
+                            touchedTestProjects.Add(testProject);
+                        }
                     }
 
                     continue;
@@ -192,12 +231,17 @@ internal sealed class ChangeSelection
                     continue;
                 }
 
-                if (MutableProjectOwning(change.Path) is { } mutable)
+                List<ProjectUnderTest> mutable = MutableProjectsOwning(change.Path);
+
+                if (mutable.Count > 0)
                 {
                     // Not a source file, but inside a project: a project file, a resource, an input
                     // the code reads. Any of them can change what the assembly does or what it is
                     // built from, and none of them says which lines.
-                    widened.Add(mutable.ProjectPath);
+                    foreach (ProjectUnderTest project in mutable)
+                    {
+                        widened.Add(project.ProjectPath);
+                    }
 
                     continue;
                 }
@@ -238,13 +282,13 @@ internal sealed class ChangeSelection
                 }
             }
 
-            // Files that belong to no project at HEAD may belong to one that the change deleted -
-            // including a whole test project, which is the coverage edge vanishing one layer further
-            // out again.
-            IReadOnlyList<string> orphaned = await OrphanedProjectsAsync(unattributed, cancellationToken)
+            // Files that belong to no test project at HEAD may belong to one at the base revision -
+            // which is the coverage edge vanishing one layer further out again.
+            IReadOnlyList<string> formerTestProjects = await FormerTestProjectsAsync(
+                    unattributed, cancellationToken)
                 .ConfigureAwait(false);
 
-            if (touchedTestProjects.Count == 0 && orphaned.Count == 0)
+            if (touchedTestProjects.Count == 0 && formerTestProjects.Count == 0)
             {
                 return;
             }
@@ -258,7 +302,7 @@ internal sealed class ChangeSelection
 
             List<string> atBase = [.. touchedTestProjects.Select(RepositoryPathOf).OfType<string>()];
 
-            foreach (string candidate in orphaned)
+            foreach (string candidate in formerTestProjects)
             {
                 if (await graph.IsTestProjectAsync(candidate, cancellationToken).ConfigureAwait(false))
                 {
@@ -283,9 +327,19 @@ internal sealed class ChangeSelection
         }
 
         /// <summary>
-        /// Projects that existed at the base revision, own one of these files, and are gone at HEAD.
+        /// Projects that existed at the base revision, own one of these files, and are not test
+        /// projects at HEAD.
         /// </summary>
-        private async Task<IReadOnlyList<string>> OrphanedProjectsAsync(
+        /// <remarks>
+        /// Not "and no longer exist", which is what this asked at first and what review corrected. A
+        /// change can leave a test project's file exactly where it is and stop it being a test
+        /// project - flip its <c>OutputType</c>, declare it test support, drop the package - and the
+        /// suite is just as disabled as if it had been deleted. Asking about existence missed that
+        /// entirely: the file was still there, so the project was not a candidate, and if another
+        /// suite still reached the same production code the run went green over a suite that had
+        /// been switched off.
+        /// </remarks>
+        private async Task<IReadOnlyList<string>> FormerTestProjectsAsync(
             IReadOnlyList<FileChange> unattributed,
             CancellationToken cancellationToken)
         {
@@ -294,12 +348,16 @@ internal sealed class ChangeSelection
                 return [];
             }
 
-            string[] projectsAtBase = [.. (await repository
+            HashSet<string> testProjectsAtHead = new(
+                testProjects.Select(test => RepositoryPathOf(test.ProjectPath)).OfType<string>(),
+                RepositoryPath.Comparer);
+
+            string[] candidates = [.. (await repository
                     .ListFilesAsync(baseRevision, cancellationToken).ConfigureAwait(false))
                 .Where(path => path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
-                .Where(path => !File.Exists(RepositoryPath.In(repository.Root, path)))];
+                .Where(path => !testProjectsAtHead.Contains(path))];
 
-            if (projectsAtBase.Length == 0)
+            if (candidates.Length == 0)
             {
                 return [];
             }
@@ -313,7 +371,7 @@ internal sealed class ChangeSelection
                     continue;
                 }
 
-                foreach (string project in projectsAtBase)
+                foreach (string project in candidates)
                 {
                     if (RepositoryPath.IsUnder(relative, RepositoryPath.DirectoryOf(project)))
                     {
@@ -336,34 +394,132 @@ internal sealed class ChangeSelection
 
         private string? RepositoryPathOf(string path) => RepositoryPath.Of(repository.Root, path);
 
-        private string? TestProjectOwning(string path) => Owning(_testProjectByDirectory, path);
+        /// <summary>
+        /// Every test project that owns <paramref name="path"/>: by what it compiles, or failing
+        /// that by where it sits.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Two rules in a union, because each covers what the other cannot. Evaluated membership is
+        /// exact and catches a file the project reaches out of its own folder for - review found
+        /// that a test project including <c>../SharedTests/Assertions.cs</c> had that change read as
+        /// production code, so deleting an assertion from it produced an empty, passing run.
+        /// </para>
+        /// <para>
+        /// The directory rule catches what evaluation cannot see: a file the change deleted is no
+        /// longer in HEAD's item list, and a deleted test file is the case the widening rule was
+        /// written for in the first place.
+        /// </para>
+        /// <para>
+        /// What neither covers is a file both deleted and linked from outside every test project's
+        /// directory. Recorded rather than pretended away.
+        /// </para>
+        /// </remarks>
+        private async Task<IReadOnlyList<string>> TestProjectsOwningAsync(
+            string path,
+            CancellationToken cancellationToken)
+        {
+            List<string> byDirectory = Owning(_testProjectsByDirectory, path);
 
-        private ProjectUnderTest? MutableProjectOwning(string path) =>
-            Owning(_mutableByDirectory, path);
+            if (byDirectory.Count > 0)
+            {
+                return byDirectory;
+            }
+
+            Dictionary<string, HashSet<string>> inputs = await TestProjectInputsAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            string full = Path.GetFullPath(path);
+
+            return [.. inputs.Where(entry => entry.Value.Contains(full)).Select(entry => entry.Key)];
+        }
 
         /// <summary>
-        /// The nearest enclosing project, by directory, or null when the file is under none.
+        /// What each test project compiles or carries, read once and only when a change needs it.
+        /// </summary>
+        /// <remarks>
+        /// One MSBuild evaluation per test project, on a partial run only, and only once a change
+        /// has landed outside every test project's directory. A full run never pays it, and neither
+        /// does a partial run whose files all sit where their projects do.
+        /// </remarks>
+        private async Task<Dictionary<string, HashSet<string>>> TestProjectInputsAsync(
+            CancellationToken cancellationToken)
+        {
+            if (_testProjectInputs is not null)
+            {
+                return _testProjectInputs;
+            }
+
+            var msBuild = new MsBuildQuery(configuration);
+            Dictionary<string, HashSet<string>> inputs = new(ProjectPaths.Comparer);
+
+            foreach (TestProject testProject in testProjects.DistinctBy(
+                         test => test.ProjectPath, ProjectPaths.Comparer))
+            {
+                inputs[testProject.ProjectPath] = new HashSet<string>(
+                    await msBuild
+                        .GetInputFilesAsync(testProject.ProjectPath, cancellationToken: cancellationToken)
+                        .ConfigureAwait(false),
+                    ProjectPaths.Comparer);
+            }
+
+            return _testProjectInputs = inputs;
+        }
+
+        private List<ProjectUnderTest> MutableProjectsOwning(string path) =>
+            Owning(_mutableProjectsByDirectory, path);
+
+        private IEnumerable<string> TestProjectsBeneath(string directory) =>
+            testProjects
+                .Where(test => IsUnder(Path.GetDirectoryName(test.ProjectPath), directory))
+                .Select(test => test.ProjectPath);
+
+        /// <summary>
+        /// The projects of the nearest enclosing directory, or none when the file is under none.
         /// </summary>
         /// <remarks>
         /// The longest match wins, because projects nest: a file under <c>src/Core/Sub</c> belongs to
-        /// <c>src/Core/Sub</c> if there is a project there, and to <c>src/Core</c> otherwise.
+        /// <c>src/Core/Sub</c> if there is a project there, and to <c>src/Core</c> otherwise. All the
+        /// projects at that depth are returned, since a directory may hold more than one.
         /// </remarks>
-        private static T? Owning<T>(Dictionary<string, T> byDirectory, string path)
+        private static List<T> Owning<T>(Dictionary<string, List<T>> byDirectory, string path)
         {
             string? directory = Path.GetDirectoryName(Path.GetFullPath(path));
-            T? found = default;
+            List<T> found = [];
             int longest = -1;
 
-            foreach ((string candidate, T value) in byDirectory)
+            foreach ((string candidate, List<T> values) in byDirectory)
             {
                 if (candidate.Length > longest && IsUnder(directory, candidate))
                 {
-                    found = value;
+                    found = values;
                     longest = candidate.Length;
                 }
             }
 
             return found;
+        }
+
+        private static Dictionary<string, List<TValue>> Grouped<TSource, TValue>(
+            IEnumerable<TSource> source,
+            Func<TSource, string> directory,
+            Func<TSource, TValue> value)
+        {
+            Dictionary<string, List<TValue>> grouped = new(ProjectPaths.Comparer);
+
+            foreach (TSource item in source)
+            {
+                string key = directory(item);
+
+                if (!grouped.TryGetValue(key, out List<TValue>? values))
+                {
+                    grouped[key] = values = [];
+                }
+
+                values.Add(value(item));
+            }
+
+            return grouped;
         }
 
         private void WidenBeneath(HashSet<string> widened, string directory)

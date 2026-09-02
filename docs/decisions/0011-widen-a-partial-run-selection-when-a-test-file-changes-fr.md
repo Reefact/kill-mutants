@@ -182,6 +182,11 @@ dû être rouge.
 
 ### Risques
 
+* Un fichier qu'un changement **supprime** et qu'un projet de test atteignait depuis l'extérieur de
+  son propre répertoire n'est attribué à rien. L'appartenance se lit dans l'évaluation de HEAD, où un
+  fichier supprimé n'apparaît plus, et la règle du répertoire qui couvre les suppressions ordinaires
+  ne l'atteint pas davantage. Les deux règles sont nécessaires et aucune ne couvre l'angle mort de
+  l'autre ici.
 * La garantie s'arrête au bord d'un projet de test. Le support de test rangé dans une bibliothèque
   ordinaire est une cible mutable et non un projet de test : la modifier peut faire cesser `T`
   d'atteindre `M` sans que ni le projet de test ni celui de `M` n'apparaisse dans le diff, et

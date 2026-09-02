@@ -144,6 +144,175 @@ public class SinceRunTests
     }
 
     /// <summary>
+    /// A suite can be switched off without being deleted, and that is just as much a loss of
+    /// coverage.
+    /// </summary>
+    /// <remarks>
+    /// Review found this. The base side used to be consulted only for projects whose file no longer
+    /// exists at HEAD, so flipping a test project's <c>OutputType</c> - which stops it being a test
+    /// project without moving a single file - left its changed project file attributed to nothing.
+    /// With another suite still reaching the same production code, discovery succeeds and the run
+    /// goes green over a suite that has been disabled.
+    /// </remarks>
+    [Fact]
+    public async Task A_test_project_that_stopped_being_one_is_still_read_at_the_base()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+
+        string project = Path.Combine(fixture.Root, "Domain.Tests", "Domain.Tests.csproj");
+
+        File.WriteAllText(
+            project,
+            File.ReadAllText(project).Replace(
+                "<OutputType>Exe</OutputType>", "<OutputType>Library</OutputType>",
+                StringComparison.Ordinal));
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        Assert.Contains("Money.cs", MutatedFiles(report));
+    }
+
+    /// <summary>
+    /// A test project reaches out of its own folder for a file, and a change to it is still
+    /// test-side.
+    /// </summary>
+    /// <remarks>
+    /// Review found this too. Attribution was by directory alone, so a file included with a
+    /// <c>Link</c> from outside the project read as production code - and since a test project's
+    /// compilation is never mutated, deleting an assertion from it would have produced an empty,
+    /// passing run. Evaluated membership is the authoritative answer, and it is asked when the
+    /// directory has none.
+    /// </remarks>
+    [Fact]
+    public async Task A_changed_file_a_test_project_links_in_from_elsewhere_widens_too()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        Directory.CreateDirectory(Path.Combine(fixture.Root, "SharedTests"));
+
+        string linked = Path.Combine(fixture.Root, "SharedTests", "Assertions.cs");
+
+        File.WriteAllText(
+            linked,
+            """
+            namespace Domain.Tests;
+
+            public static class Assertions
+            {
+                public static void IsTwelve(int value) => Assert.Equal(12, value);
+            }
+            """);
+
+        string project = Path.Combine(fixture.Root, "Domain.Tests", "Domain.Tests.csproj");
+
+        File.WriteAllText(
+            project,
+            File.ReadAllText(project).Replace(
+                "</Project>",
+                """
+                  <ItemGroup>
+                    <Compile Include="../SharedTests/Assertions.cs" Link="Assertions.cs" />
+                  </ItemGroup>
+                </Project>
+                """,
+                StringComparison.Ordinal));
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+
+        File.AppendAllText(linked, $"{Environment.NewLine}// touched{Environment.NewLine}");
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        Assert.Contains("Basket.cs", MutatedFiles(report));
+    }
+
+    /// <summary>
+    /// A submodule bump changes what gets built, and git reports it as one directory.
+    /// </summary>
+    /// <remarks>
+    /// Measured before it was fixed: <c>git diff --name-status</c> emits <c>M libs/Core</c> - the
+    /// gitlink path, with nothing beneath it - so every rule that reads a file's parent directory
+    /// looked at the wrong project, the change was attributed to nothing, and a submodule-only code
+    /// update produced an empty, passing run over the code it had just replaced.
+    /// </remarks>
+    [Fact]
+    public async Task A_changed_submodule_widens_every_project_beneath_it()
+    {
+        using var outer = FixtureCopy.CreateMultiProject();
+        using var inner = FixtureCopy.Create();
+
+        FixtureRepository.InitialiseAt(inner.Root);
+        FixtureRepository.InitialiseAt(outer.Root);
+        FixtureRepository.AddSubmodule(outer.Root, inner.Root, "libs/Sample");
+
+        // The bump: the submodule's own history moves on, and the outer repository records the new
+        // commit. Nothing inside libs/Sample appears in the outer diff.
+        File.AppendAllText(
+            Path.Combine(inner.Root, "Sample.Library", "Ages.cs"),
+            $"{Environment.NewLine}// moved on{Environment.NewLine}");
+
+        FixtureRepository.CommitAll(inner.Root, "the submodule moves on");
+        FixtureRepository.BumpSubmodule(outer.Root, "libs/Sample");
+
+        MutationTestReport report = await RunSinceHeadAsync(outer);
+
+        Assert.Contains("Ages.cs", MutatedFiles(report));
+    }
+
+    /// <summary>
+    /// Two projects can share a directory, and a partial run has to survive it.
+    /// </summary>
+    /// <remarks>
+    /// Review found this. Ownership was a dictionary keyed by directory, so two mutable projects in
+    /// one folder threw a duplicate-key exception before a single change had been classified: every
+    /// partial run in such a repository died where a full run works, which is the worst shape a
+    /// limitation can take. A directory now holds all its projects.
+    /// </remarks>
+    [Fact]
+    public async Task Two_projects_in_one_directory_do_not_stop_a_partial_run()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        File.WriteAllText(
+            Path.Combine(fixture.Root, "Core", "Extra.cs"),
+            """
+            namespace Core.Extra;
+
+            public static class Rounding
+            {
+                public static bool IsWhole(int cents) => cents % 100 == 0;
+            }
+            """);
+
+        // Two projects in one folder, each compiling its own file: the default glob would otherwise
+        // have both of them compile both files, which is a different situation entirely.
+        File.WriteAllText(
+            Path.Combine(fixture.Root, "Core", "Extra.csproj"),
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <AssemblyName>Core.Extra</AssemblyName>
+                <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+              </PropertyGroup>
+              <ItemGroup><Compile Include="Extra.cs" /></ItemGroup>
+            </Project>
+            """);
+
+        Exclude(fixture, "Core", "Core.csproj", "Extra.cs");
+        Reference(fixture, "Core.Tests", "Core.Tests.csproj", "../Core/Extra.csproj");
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+        Touch(fixture, "Core", "Money.cs");
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        Assert.Equal(["Money.cs"], MutatedFiles(report));
+    }
+
+    /// <summary>
     /// A test the change <em>added</em> cannot have removed an edge that predates it, so it widens
     /// nothing.
     /// </summary>
@@ -256,6 +425,31 @@ public class SinceRunTests
             mutators: Families,
             since: "HEAD",
             cancellationToken: TestContext.Current.CancellationToken);
+
+    private static void Exclude(FixtureCopy fixture, string directory, string project, string file)
+    {
+        string path = Path.Combine(fixture.Root, directory, project);
+
+        File.WriteAllText(
+            path,
+            File.ReadAllText(path).Replace(
+                "</Project>",
+                $"  <ItemGroup><Compile Remove=\"{file}\" /></ItemGroup>{Environment.NewLine}</Project>",
+                StringComparison.Ordinal));
+    }
+
+    private static void Reference(FixtureCopy fixture, string directory, string project, string reference)
+    {
+        string path = Path.Combine(fixture.Root, directory, project);
+
+        File.WriteAllText(
+            path,
+            File.ReadAllText(path).Replace(
+                "</Project>",
+                $"  <ItemGroup><ProjectReference Include=\"{reference}\" /></ItemGroup>" +
+                $"{Environment.NewLine}</Project>",
+                StringComparison.Ordinal));
+    }
 
     private static void Touch(FixtureCopy fixture, params string[] parts)
     {

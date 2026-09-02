@@ -82,6 +82,43 @@ public class SinceSettingsTests
         Assert.Null(settings.Since);
     }
 
+    /// <summary>
+    /// A scalar option is last-one-wins, and clearing it must not outlive the value that follows.
+    /// </summary>
+    /// <remarks>
+    /// Review found this. <c>--break-at none --break-at 80</c> kept the clear marker and resolved to
+    /// no threshold at all, so a job that asked for a gate twice would have had none - and would have
+    /// been allowed to combine it with <c>--since</c> besides. A quality gate that disarms itself in
+    /// silence is the one failure this must not have.
+    /// </remarks>
+    [Fact]
+    public void A_later_threshold_undoes_an_earlier_clear()
+    {
+        RunSettings settings = RunSettings.From(
+            Asked("--break-at", "none", "--break-at", "80"), file: null);
+
+        Assert.Equal(80, settings.Threshold);
+    }
+
+    /// <summary>And the restored threshold is refused with <c>--since</c> like any other.</summary>
+    [Fact]
+    public void A_threshold_restored_after_a_clear_is_still_refused_with_since()
+    {
+        Assert.Throws<ArgumentException>(
+            () => RunSettings.From(
+                Asked("--since", "main", "--break-at", "none", "--break-at", "80"), file: null));
+    }
+
+    /// <summary>Clearing last still clears, which is the order that means it.</summary>
+    [Fact]
+    public void A_clear_after_a_threshold_still_clears()
+    {
+        RunSettings settings = RunSettings.From(
+            Asked("--break-at", "80", "--break-at", "none"), file: null);
+
+        Assert.Null(settings.Threshold);
+    }
+
     [Fact]
     public void A_threshold_still_reaches_a_full_run_from_either_source()
     {

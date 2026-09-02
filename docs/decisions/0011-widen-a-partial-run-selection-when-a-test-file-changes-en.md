@@ -164,6 +164,10 @@ precise and wrong when the failure mode is a green run that should have been red
 
 ### Risks
 
+* A file that a change both **deletes** and that a test project reached from outside its own
+  directory is attributed to nothing. Membership is read from HEAD's evaluation, where a deleted file
+  no longer appears, and the directory rule that covers ordinary deletions does not reach it either.
+  Both rules are needed and neither covers the other's blind spot here.
 * The guarantee stops at the edge of a test project. Test support in a plain class library is a mutable
   target rather than a test project, so changing it can stop `T` reaching `M` while neither the test
   project nor `M`'s project appears in the diff, and the run passes without having asked about `M`.

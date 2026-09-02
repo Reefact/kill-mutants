@@ -41,6 +41,34 @@ internal static class FixtureRepository
             "commit", "-q", "--allow-empty", "-m", message);
     }
 
+    /// <summary>Adds <paramref name="source"/> as a submodule at <paramref name="path"/>.</summary>
+    /// <remarks>
+    /// <c>protocol.file.allow=always</c> is required: git has refused the file transport for
+    /// submodules by default since 2.38 (CVE-2022-39253), and a fixture repository beside another on
+    /// the same disk is exactly that transport. It is passed per command rather than configured, so
+    /// nothing outside this process is loosened.
+    /// </remarks>
+    public static void AddSubmodule(string root, string source, string path)
+    {
+        Run(root, "-c", "protocol.file.allow=always", "submodule", "add", "-q", source, path);
+        CommitAll(root, $"add {path} as a submodule");
+    }
+
+    /// <summary>
+    /// Moves the submodule's checkout on, leaving the outer repository's gitlink uncommitted.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not committed. The first version of this committed the bump, which left nothing
+    /// between the outer repository's HEAD and its working tree - so the test measured an empty diff
+    /// rather than a submodule change, and failed for a reason that had nothing to do with what it
+    /// was written to check.
+    /// </remarks>
+    public static void BumpSubmodule(string root, string path)
+    {
+        Run(Path.Combine(root, path), "-c", "protocol.file.allow=always", "fetch", "-q", "origin");
+        Run(Path.Combine(root, path), "checkout", "-q", "origin/main");
+    }
+
     private static void Run(string root, params string[] arguments)
     {
         var startInfo = new ProcessStartInfo
