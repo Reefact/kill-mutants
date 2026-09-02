@@ -155,9 +155,17 @@ score, which is the point.
 | exit code | meaning |
 |---|---|
 | 0 | Ran, and met the threshold if one was given |
-| 1 | Ran, but the score is below `--break-at` |
+| 1 | Ran, but the gate did not pass; standard error says which case |
 | 2 | Could not run; the reason is on standard error |
 | 64 | The command line was not understood |
+
+`1` is named for the gate rather than for one of its causes, because it has more than one: a score
+below `--break-at`, and a score that is **undefined** because no mutant could be tested — a run that
+demonstrated nothing cannot be shown to have met a threshold, and reporting success would let a
+misconfigured job stay green for ever. A build script branches on *findings* either way; standard
+error says which case it was. The mapping is fixed
+([DEC0009](docs/decisions/0009-exit-codes-are-a-public-contract-en.md)): a code is never renumbered,
+and a new cause of an outcome a code already names joins it rather than taking a code of its own.
 
 Progress is written to standard error and the report to standard output, so redirecting the report
 does not drag the progress line along with it.
