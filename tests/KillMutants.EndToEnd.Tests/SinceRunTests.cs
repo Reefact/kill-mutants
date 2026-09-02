@@ -4,7 +4,7 @@ using KillMutants.Reporting;
 namespace KillMutants.EndToEnd.Tests;
 
 /// <summary>
-/// What a partial run selects, and what it refuses to print. ADR-0010.
+/// What a partial run selects (DEC0011), and what it refuses to print (DEC0010).
 /// </summary>
 /// <remarks>
 /// Every one of these runs against a real git repository created inside the throwaway fixture, so

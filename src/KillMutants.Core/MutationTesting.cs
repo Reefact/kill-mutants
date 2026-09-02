@@ -49,7 +49,7 @@ public static class MutationTesting
     /// A git revision to measure a change from - a branch, a tag, a sha - or null to mutate the whole
     /// codebase. The change is taken from the merge base of that revision and <c>HEAD</c> to the
     /// working tree, since the working tree is what gets built. Such a run reports findings and a
-    /// binary verdict rather than a mutation score: see ADR-0010, and
+    /// binary verdict rather than a mutation score: see DEC0010, and
     /// <see cref="Reporting.MutationTestReport.Scope"/>.
     /// </param>
     /// <param name="progress">Told where the run has got to, so a caller can show it.</param>

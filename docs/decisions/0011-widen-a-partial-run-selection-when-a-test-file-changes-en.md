@@ -141,13 +141,24 @@ precise and wrong when the failure mode is a green run that should have been red
   diff — is selected rather than silently passed.
 * The widening runs along a relation the change cannot erase without the tool noticing, and it is
   resolved at both revisions rather than assumed from one.
-* A test *added* by a change still gets the precise selection, because the imprecise case cannot arise
-  there.
+* A test *added* by a change widens nothing, because the imprecise case cannot arise there: a test
+  that did not exist at the base revision cannot have removed a coverage edge.
 
 ### Negative
 
 * Runs are slower, occasionally much slower: touching one test file can re-run every mutant in the
-  production projects that test project exercises.
+  production projects that test project exercises. Measured when `--since` was built, on this
+  repository against `main`: 33 files changed, 364 mutants selected, 7.0 minutes — against 384 mutants
+  in 6.8 minutes for a full run of the same project. The partial run inspected 95 % of the population
+  and took the same time, because the change touched files in `KillMutants.Core.Tests`. Nothing went
+  wrong; the rule did what it says.
+* The *precise* half of the rule is not implemented for an added test file, which therefore selects
+  nothing rather than the mutants its new tests cover. "Covered by a test in that file" needs a map
+  from a test method to the source file it is written in: xUnit's discovery answers with names alone,
+  and the compilation that would resolve one is the test project's, which this tool never builds. The
+  narrowing cannot hide a finding — see the positive consequence above — so what is lost is
+  informative rather than protective: after a commit that only adds tests, the run reports that there
+  was nothing to judge.
 * The widening is conservative rather than precise, and stays that way until a previous run's coverage
   is available to consult.
 

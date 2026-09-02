@@ -41,7 +41,7 @@ public static class JsonReportWriter
         // could be tested, or this was a partial run, which has no score by design. A consumer can
         // tell them apart from `scope`, and neither can be mistaken for a zero that was measured.
         // Emitting the ratio for a partial run would put a percentage over a population defined by
-        // the diff into a field named like the one over a codebase - the exact seam ADR-0010 refuses.
+        // the diff into a field named like the one over a codebase - the exact seam DEC0010 refuses.
         score = report.Scope.IsPartial || report.Score.IsUndefined
             ? null
             : (double?)Math.Round(report.Score.Value, 4),

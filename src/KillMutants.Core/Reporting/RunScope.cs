@@ -11,10 +11,10 @@ namespace KillMutants.Reporting;
 /// that happened to have that many mutants. A dashboard, or a reader six months later, cannot tell
 /// which population was inspected or reproduce the selection - so the run mode and the resolved
 /// revisions are recorded beside the environment and the time budgets, for the same reason those are:
-/// a report that cannot be interpreted is not a report. See ADR-0010.
+/// a report that cannot be interpreted is not a report. See DEC0010.
 /// </para>
 /// <para>
-/// This is metadata about the run, not a status a mutant can carry. ADR-0010 refuses the latter: a
+/// This is metadata about the run, not a status a mutant can carry. DEC0010 refuses the latter: a
 /// state meaning "outside the diff" is a way for the denominator to change without the label
 /// changing, which is the seam that document is about.
 /// </para>

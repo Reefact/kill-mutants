@@ -78,7 +78,7 @@ internal sealed record RunSettings(
     /// </summary>
     /// <remarks>
     /// <para>
-    /// A threshold means a score, and a partial run has none - see ADR-0010. Refusing is the only
+    /// A threshold means a score, and a partial run has none - see DEC0010. Refusing is the only
     /// honest option: silently ignoring the threshold would leave a job that believes it has a
     /// quality gate with none at all, which is the failure that document exists to prevent.
     /// </para>

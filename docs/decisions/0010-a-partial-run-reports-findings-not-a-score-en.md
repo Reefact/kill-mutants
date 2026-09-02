@@ -181,6 +181,13 @@ the first one readable, the problem is in the design and not in the documentatio
   this record keeps correcting: on a non-empty population it fails under exactly the same condition as
   a 100 % threshold. What it has over a percentage is that it stays meaningful when the denominator is
   six, where a threshold is arithmetic about nothing.
+* The verdict inherits DEC0011's widening, and on a change that touches an existing test it reports on
+  the whole project rather than on the change. Measured when `--since` was built, on this repository
+  against `main`: 292 undetected mutants, exit 1, of which the change introduced a handful. So on any
+  repository that does not already detect every mutant, `--since` is a usable gate for changes that do
+  not touch existing tests and a usable *report* for the rest. One caveat carried over from the full
+  run's own: 231 of the 292 were uncovered rather than survived, largely because this repository's run
+  configuration excludes the end-to-end suite — uncovered by the suite that was run, not untested.
 * Two reports can no longer be compared by reading one number each. The status counts are not offered
   as a cross-run quality metric either: `Killed 5 / Survived 1` beside `Killed 80 / Survived 2` is no
   more a trend than the percentages would have been.
@@ -197,6 +204,9 @@ the first one readable, the problem is in the design and not in the documentatio
 
 ### Follow-up actions
 
+* Build the baseline feature, which the consequence above wants as much as the denominator does: with
+  a previous run's stored results the verdict would fail on mutants that are *newly* undetected rather
+  than on every undetected mutant in the widened scope.
 * DEC0009 is amended in the same change, so the contract and the behaviour do not disagree, and the
   constant is renamed `GateNotPassed` — `ScoreBelowThreshold` was already wrong for the undefined-score
   path before this record existed.

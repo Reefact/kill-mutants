@@ -221,8 +221,8 @@ that, and `[ExcludeFromCodeCoverage]` respected. M12 lets a project keep those c
 `killmutants.json` rather than in a shell command, so the catalogue behind a score is versioned with
 the code it scored. M13 makes it usable on a pull request rather than nightly: `--since` judges only
 what a change touched, and — because a population defined by a diff has no percentage worth printing
-— reports findings and a binary verdict instead of a score. ADR-0010 argues that, and the selection
-it settles on is the interesting part: changed production code precisely, changed *tests*
+— reports findings and a binary verdict instead of a score. DEC0010 argues that; DEC0011 settles the
+selection, which is the interesting part: changed production code precisely, changed *tests*
 conservatively, and the project graph read at both revisions so that removing a project reference in
 the change being judged does not delete the answer along with the question.
 

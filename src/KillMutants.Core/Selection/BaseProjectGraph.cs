@@ -7,7 +7,7 @@ namespace KillMutants.Selection;
 /// </summary>
 /// <remarks>
 /// <para>
-/// ADR-0010 requires the widening relation to be read at both revisions, <c>targets(base) ∪
+/// DEC0011 requires the widening relation to be read at both revisions, <c>targets(base) ∪
 /// targets(head)</c>, and this is the base half. Remove the <c>ProjectReference</c> from
 /// <c>Tests</c> to <c>ProjectA</c> in the very change being judged and the HEAD graph no longer says
 /// <c>Tests</c> exercises <c>ProjectA</c>: asking HEAD alone is asking a question whose answer the
@@ -169,7 +169,7 @@ internal sealed class BaseProjectGraph : IDisposable
             {
                 // Not falling back to HEAD, which is the whole point: a partial run whose base graph
                 // could not be read would widen too little, and would look exactly like a run that
-                // had nothing to widen. ADR-0010 says such a run is not to be trusted.
+                // had nothing to widen. DEC0011 says such a run is not to be trusted.
                 throw new ChangeSelectionException(
                     $"KillMutants could not read '{repositoryPath}' as it was at {Short(_revision)}, " +
                     "so it cannot tell which projects that revision's tests exercised. A partial run " +

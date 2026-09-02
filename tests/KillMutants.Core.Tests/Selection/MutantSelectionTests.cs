@@ -3,7 +3,7 @@ using KillMutants.Selection;
 namespace KillMutants.Core.Tests.Selection;
 
 /// <summary>
-/// Two shapes, and the difference between them is the whole of ADR-0010's selection rule: a project
+/// Two shapes, and the difference between them is the whole of DEC0011's selection rule: a project
 /// the change widened to, or a project only the changed lines of which are being judged.
 /// </summary>
 public class MutantSelectionTests

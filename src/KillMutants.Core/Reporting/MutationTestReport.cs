@@ -105,7 +105,7 @@ public sealed class MutationTestReport
     /// Computed whatever the scope, and <em>reported</em> only for a full run. A partial run's
     /// population is defined against a base revision chosen per run, so a percentage over it answers
     /// "how well did the suite do on this change?" and no question at all that spans two runs.
-    /// ADR-0010 decides that such a number is not printed; it is not hidden from a caller holding
+    /// DEC0010 decides that such a number is not printed; it is not hidden from a caller holding
     /// this object, which knows from <see cref="Scope"/> what it is looking at.
     /// </remarks>
     public MutationScore Score { get; }
@@ -117,7 +117,7 @@ public sealed class MutationTestReport
     /// True when the run answered "did the selected scope produce an undetected mutant?" with yes.
     /// </summary>
     /// <remarks>
-    /// The gate a partial run offers in place of a threshold, per ADR-0010. Both undetected statuses
+    /// The gate a partial run offers in place of a threshold, per DEC0010. Both undetected statuses
     /// count: a change that adds code nothing tests at all produces <c>NoCoverage</c> and not
     /// <c>Survived</c>, and a gate reading only survivors would wave through the clearest case of
     /// newly introduced untested behaviour there is.

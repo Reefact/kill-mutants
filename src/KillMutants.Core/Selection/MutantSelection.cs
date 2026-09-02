@@ -5,7 +5,7 @@ namespace KillMutants.Selection;
 /// <summary>Which of a project's source files a run generates mutants from.</summary>
 /// <remarks>
 /// <para>
-/// Two shapes, and the difference between them is the whole of ADR-0010's selection rule.
+/// Two shapes, and the difference between them is the whole of DEC0011's selection rule.
 /// <see cref="Everything"/> is a full run, and also a project the change widened to; a file list is
 /// a project only the changed lines of which are being judged.
 /// </para>

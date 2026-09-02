@@ -6,7 +6,7 @@ namespace KillMutants.Selection;
 /// </summary>
 /// <remarks>
 /// Always a refusal to start, never a finding. A partial run rests on two revisions being readable,
-/// and ADR-0010 is explicit that when the base side cannot be resolved the run is not to be trusted
+/// and DEC0011 is explicit that when the base side cannot be resolved the run is not to be trusted
 /// to HEAD alone. Falling back to HEAD would produce a green run for exactly the reason the base
 /// side exists, so the run stops instead and says what to fix.
 /// </remarks>

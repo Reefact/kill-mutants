@@ -147,7 +147,7 @@ internal static class Program
     /// <para>
     /// Always a gate, with no threshold to ask for: a partial run is asked for in order to judge a
     /// change, and a run that judged one and found untested behaviour has to say so with the code
-    /// that means it. See ADR-0010.
+    /// that means it. See DEC0010.
     /// </para>
     /// <para>
     /// Both undetected statuses fail it. A change that adds code nothing tests at all produces

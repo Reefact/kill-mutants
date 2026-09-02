@@ -198,6 +198,14 @@ la documentation.
   exactement dans les mêmes conditions qu'un seuil à 100 %. Ce qu'elle a de plus qu'un pourcentage,
   c'est de rester sensée quand le dénominateur vaut six, là où un seuil n'est plus que de
   l'arithmétique sur rien.
+* Le verdict hérite de l'élargissement du DEC0011 : sur un changement qui touche un test existant, il
+  rapporte sur le projet entier plutôt que sur le changement. Mesuré à la construction de `--since`,
+  sur ce dépôt contre `main` : 292 mutants non détectés, sortie 1, dont le changement en a introduit
+  une poignée. Sur tout dépôt qui ne détecte pas déjà tous ses mutants, `--since` est donc une
+  barrière utilisable pour les changements qui ne touchent pas de test existant, et un *rapport*
+  utilisable pour les autres. Une réserve reprise de l'exécution complète : 231 des 292 étaient non
+  couverts et non survivants, largement parce que la configuration d'exécution de ce dépôt exclut la
+  suite de bout en bout — non couverts par la suite exécutée, pas non testés.
 * Deux rapports ne peuvent plus être comparés en lisant un nombre de chacun. Les décomptes par statut
   ne sont pas davantage offerts comme métrique de qualité d'une exécution à l'autre : « Killed 5 /
   Survived 1 » à côté de « Killed 80 / Survived 2 » n'est pas plus une tendance que ne l'auraient été
@@ -217,6 +225,9 @@ la documentation.
 
 ### Actions de suivi
 
+* Construire la fonctionnalité de base de référence, que la conséquence ci-dessus réclame autant que
+  le dénominateur : avec les résultats stockés d'une exécution précédente, le verdict échouerait sur
+  les mutants *nouvellement* non détectés plutôt que sur tous ceux de la portée élargie.
 * Le DEC0009 est amendé dans le même changement, pour que le contrat et le comportement ne se
   contredisent pas, et la constante est renommée `GateNotPassed` — `ScoreBelowThreshold` était déjà
   faux pour le chemin du score indéfini avant que cet enregistrement n'existe.

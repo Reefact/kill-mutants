@@ -157,13 +157,26 @@ dû être rouge.
   aucun code de production dans le diff — est sélectionné plutôt que laissé passer en silence.
 * L'élargissement court le long d'une relation que le changement ne peut pas effacer sans que l'outil
   s'en aperçoive, et il est résolu aux deux révisions plutôt que supposé depuis une seule.
-* Un test *ajouté* par un changement conserve la sélection précise, puisque le cas imprécis ne peut pas
-  s'y produire.
+* Un test *ajouté* par un changement n'élargit rien, puisque le cas imprécis ne peut pas s'y produire :
+  un test qui n'existait pas à la révision de base ne peut pas avoir retiré une arête de couverture.
 
 ### Négatives
 
 * Les exécutions sont plus lentes, parfois beaucoup : toucher un seul fichier de test peut réexécuter
-  tous les mutants des projets de production que ce projet de test exerce.
+  tous les mutants des projets de production que ce projet de test exerce. Mesuré à la construction de
+  `--since`, sur ce dépôt contre `main` : 33 fichiers modifiés, 364 mutants sélectionnés,
+  7,0 minutes — contre 384 mutants en 6,8 minutes pour une exécution complète du même projet.
+  L'exécution partielle a inspecté 95 % de la population pour le même temps, parce que le changement
+  touchait des fichiers de `KillMutants.Core.Tests`. Rien n'a mal fonctionné ; la règle a fait ce
+  qu'elle dit.
+* La moitié *précise* de la règle n'est pas implémentée pour un fichier de test ajouté, qui ne
+  sélectionne donc rien plutôt que les mutants que ses nouveaux tests couvrent. « Couvert par un test
+  de ce fichier » exige une correspondance entre une méthode de test et le fichier source où elle est
+  écrite : la découverte de xUnit répond par des noms seuls, et la compilation qui la résoudrait est
+  celle du projet de test, que cet outil ne construit jamais. La restriction ne peut cacher aucun
+  constat — voir la conséquence positive ci-dessus — si bien que ce qui est perdu est informatif et
+  non protecteur : après un commit qui n'ajoute que des tests, l'exécution rapporte qu'il n'y avait
+  rien à juger.
 * L'élargissement est prudent et non précis, et le reste tant que la couverture d'une exécution
   précédente n'est pas consultable.
 
