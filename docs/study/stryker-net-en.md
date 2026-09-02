@@ -67,7 +67,7 @@ removing the mutants whose injected branches broke the build. Supporting this ar
 "instrumentation engines" and `SyntaxAnnotation` bookkeeping.
 
 The cost this pays for is compilation. We measured that cost on the target platform and it is not
-worth paying — see [ADR-0002](../adr/0002-one-compilation-per-mutant-en.md). Compiling one mutant per
+worth paying — see [DEC0002](../decisions/0002-one-compilation-per-mutant-en.md). Compiling one mutant per
 assembly makes every one of these mechanisms unnecessary: schemata, `MutantControl`, the random
 helper namespace, the control-level stack, the annotation bookkeeping, the rollback loop, and the
 runtime activation channel all disappear. A failed emit becomes an unambiguous fact about one
@@ -86,7 +86,7 @@ a Mono.Cecil-based embedded-resource recovery subsystem, a hand-rolled analyzer-
 provider, a custom analyzer assembly loader, and a workaround for a long-fixed Roslyn bug.
 
 On .NET 10 none of it is necessary, because MSBuild will simply hand over the exact `csc` command
-line and Roslyn will parse it. That is [ADR-0003](../adr/0003-compilation-inputs-from-csc-command-line-en.md).
+line and Roslyn will parse it. That is [DEC0003](../decisions/0003-compilation-inputs-from-csc-command-line-en.md).
 
 The one thing Stryker gets exactly right here, and which we copy as a *decision* rather than as
 code, is where the mutant goes: the mutated bytes are written over the source project's assembly
@@ -113,7 +113,7 @@ the exit code. Second, and more usefully, MTP 2 has gained two capabilities that
 server-mode design predates and does not use: `--list-tests json` for machine-readable discovery,
 and platform-level `--filter-uid` to run exactly a named set of test UIDs. Together they provide
 discovery and per-test selection — the two things M4 and M5 need — **with no RPC code at all**,
-which is why [ADR-0004](../adr/0004-run-tests-by-launching-the-test-executable-en.md) does not treat
+which is why [DEC0004](../decisions/0004-run-tests-by-launching-the-test-executable-en.md) does not treat
 server mode as inevitable.
 
 ## 6. Coverage and test-to-mutant mapping
@@ -146,7 +146,7 @@ The naive cost is `N mutants x compile x full test suite`. Stryker attacks the f
 the first failing test), and the third (parallel test hosts, and a timeout derived from the
 baseline run so that a mutation which introduces an infinite loop does not hang the run).
 
-Our own measurements say the first factor is the wrong one to attack on modern .NET — see ADR-0002.
+Our own measurements say the first factor is the wrong one to attack on modern .NET — see DEC0002.
 Test execution dominates by two orders of magnitude, so test *selection* and *parallelism* are where
 the wins are, and both are additive to our design rather than requiring it to change.
 
@@ -158,7 +158,7 @@ Three details from this part of the study are worth carrying forward:
 - **Warm test-host reuse needs explicit reset points.** Stryker returns runners to a pool after each
   piece of work (`VsTestRunnerPool.cs:95-111`) and must force those long-lived processes back to a
   clean state at phase boundaries (`MicrosoftTestPlatformRunnerPool.cs:96,140`). That discipline is
-  a direct argument for our process-per-mutant model, which needs none of it - see ADR-0008.
+  a direct argument for our process-per-mutant model, which needs none of it - see DEC0008.
 - **MTP's own `--timeout` does not reliably stop a spinning test.** The timeout must be owned by the
   tool, with `Process.Kill(entireProcessTree: true)` on expiry. KillMutants does exactly that.
 

@@ -19,7 +19,7 @@ namespace KillMutants.Testing.XUnit;
 /// <para>
 /// The test application is launched directly rather than through <c>dotnet test</c>. That is both
 /// faster and necessary: <c>dotnet test</c> and <c>dotnet build</c> run MSBuild, which copies the
-/// pristine assembly back over an injected mutant. See ADR-0004.
+/// pristine assembly back over an injected mutant. See DEC0004.
 /// </para>
 /// <para>
 /// Every run passes <c>-automated</c>, which is what makes the launch work on any xUnit 4 project

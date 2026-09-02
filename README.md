@@ -44,20 +44,21 @@ their conventional names and are English only.
 
 ### Architecture decisions
 
-The few choices that are expensive to reverse. Each is recorded in [docs/adr](docs/adr).
+The few choices that are expensive to reverse. Each is recorded in [docs/decisions](docs/decisions).
 
 | | English | Français |
 |---|---|---|
-| ADR-0001 — Record architecture decisions | [en](docs/adr/0001-record-architecture-decisions-en.md) | [fr](docs/adr/0001-record-architecture-decisions-fr.md) |
-| ADR-0002 — One compilation per mutant | [en](docs/adr/0002-one-compilation-per-mutant-en.md) | [fr](docs/adr/0002-one-compilation-per-mutant-fr.md) |
-| ADR-0003 — Compilation inputs from the csc command line | [en](docs/adr/0003-compilation-inputs-from-csc-command-line-en.md) | [fr](docs/adr/0003-compilation-inputs-from-csc-command-line-fr.md) |
-| ADR-0004 — Run tests by launching the test executable | [en](docs/adr/0004-run-tests-by-launching-the-test-executable-en.md) | [fr](docs/adr/0004-run-tests-by-launching-the-test-executable-fr.md) |
-| ADR-0005 — Verify the baseline before mutating | [en](docs/adr/0005-verify-the-baseline-before-mutating-en.md) | [fr](docs/adr/0005-verify-the-baseline-before-mutating-fr.md) |
-| ADR-0006 — Identify tests by name, not by unique id | [en](docs/adr/0006-identify-tests-by-name-not-by-unique-id-en.md) | [fr](docs/adr/0006-identify-tests-by-name-not-by-unique-id-fr.md) |
-| ADR-0007 — Measure coverage with a type-preserving probe | [en](docs/adr/0007-measure-coverage-with-a-type-preserving-probe-en.md) | [fr](docs/adr/0007-measure-coverage-with-a-type-preserving-probe-fr.md) |
-| ADR-0008 — Never reuse a test host between mutants | [en](docs/adr/0008-never-reuse-a-test-host-between-mutants-en.md) | [fr](docs/adr/0008-never-reuse-a-test-host-between-mutants-fr.md) |
-| ADR-0009 — Exit codes are a public contract | [en](docs/adr/0009-exit-codes-are-a-public-contract-en.md) | [fr](docs/adr/0009-exit-codes-are-a-public-contract-fr.md) |
-| ADR-0010 — A partial run reports findings, not a score | [en](docs/adr/0010-a-partial-run-reports-findings-not-a-score-en.md) | [fr](docs/adr/0010-a-partial-run-reports-findings-not-a-score-fr.md) |
+| DEC0001 — Record architecture decisions | [en](docs/decisions/0001-record-architecture-decisions-en.md) | [fr](docs/decisions/0001-record-architecture-decisions-fr.md) |
+| DEC0002 — One compilation per mutant | [en](docs/decisions/0002-one-compilation-per-mutant-en.md) | [fr](docs/decisions/0002-one-compilation-per-mutant-fr.md) |
+| DEC0003 — Compilation inputs from the csc command line | [en](docs/decisions/0003-compilation-inputs-from-csc-command-line-en.md) | [fr](docs/decisions/0003-compilation-inputs-from-csc-command-line-fr.md) |
+| DEC0004 — Run tests by launching the test executable | [en](docs/decisions/0004-run-tests-by-launching-the-test-executable-en.md) | [fr](docs/decisions/0004-run-tests-by-launching-the-test-executable-fr.md) |
+| DEC0005 — Verify the baseline before mutating | [en](docs/decisions/0005-verify-the-baseline-before-mutating-en.md) | [fr](docs/decisions/0005-verify-the-baseline-before-mutating-fr.md) |
+| DEC0006 — Identify tests by name, not by unique id | [en](docs/decisions/0006-identify-tests-by-name-not-by-unique-id-en.md) | [fr](docs/decisions/0006-identify-tests-by-name-not-by-unique-id-fr.md) |
+| DEC0007 — Measure coverage with a type-preserving probe | [en](docs/decisions/0007-measure-coverage-with-a-type-preserving-probe-en.md) | [fr](docs/decisions/0007-measure-coverage-with-a-type-preserving-probe-fr.md) |
+| DEC0008 — Never reuse a test host between mutants | [en](docs/decisions/0008-never-reuse-a-test-host-between-mutants-en.md) | [fr](docs/decisions/0008-never-reuse-a-test-host-between-mutants-fr.md) |
+| DEC0009 — Exit codes are a public contract | [en](docs/decisions/0009-exit-codes-are-a-public-contract-en.md) | [fr](docs/decisions/0009-exit-codes-are-a-public-contract-fr.md) |
+| DEC0010 — A partial run reports findings, not a score | [en](docs/decisions/0010-a-partial-run-reports-findings-not-a-score-en.md) | [fr](docs/decisions/0010-a-partial-run-reports-findings-not-a-score-fr.md) |
+| DEC0011 — Widen a partial run's selection when a test file changes | [en](docs/decisions/0011-widen-a-partial-run-selection-when-a-test-file-changes-en.md) | [fr](docs/decisions/0011-widen-a-partial-run-selection-when-a-test-file-changes-fr.md) |
 
 ## Installing
 

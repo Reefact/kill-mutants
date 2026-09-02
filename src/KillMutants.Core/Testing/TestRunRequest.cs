@@ -11,7 +11,7 @@ namespace KillMutants.Testing;
 /// </param>
 /// <param name="TestNames">
 /// The tests to run, or null for all of them. Selection is by name rather than by unique id, which
-/// is what lets it survive being run from a sandbox copy (ADR-0006).
+/// is what lets it survive being run from a sandbox copy (DEC0006).
 /// </param>
 /// <param name="Environment">Extra environment variables for the test process.</param>
 internal sealed record TestRunRequest(

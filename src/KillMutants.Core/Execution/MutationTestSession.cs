@@ -413,7 +413,7 @@ internal sealed class MutationTestSession
     }
 
     /// <summary>
-    /// Emits the unmutated compilation, injects it, and requires every test project to pass (ADR-0005).
+    /// Emits the unmutated compilation, injects it, and requires every test project to pass (DEC0005).
     /// </summary>
     /// <remarks>
     /// This runs the baseline through exactly the path a mutant takes, which is the point:

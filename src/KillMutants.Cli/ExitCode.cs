@@ -22,9 +22,9 @@ internal static class ExitCode
     /// Named for the gate rather than for one of its causes, because it already had more than one
     /// before <c>--since</c> existed: a score below the threshold, and a score that is undefined
     /// because nothing could be tested - which cannot be shown to meet a threshold and so must not
-    /// report success. ADR-0010 adds a third, a partial run whose findings the caller asked to fail
+    /// report success. DEC0010 adds a third, a partial run whose findings the caller asked to fail
     /// on. All three are "what you asked me to check did not pass", which is what a build script
-    /// branches on; the reason is on standard error for whoever reads it. See ADR-0009.
+    /// branches on; the reason is on standard error for whoever reads it. See DEC0009.
     /// </remarks>
     public const int GateNotPassed = 1;
 

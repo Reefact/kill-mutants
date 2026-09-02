@@ -73,7 +73,7 @@ mutants dont les branches injectées ont cassé le build. S'y ajoutent huit « m
 d'instrumentation » réversibles et une comptabilité à base de `SyntaxAnnotation`.
 
 Ce que cela achète, c'est de la compilation. Nous avons mesuré ce coût sur la plateforme cible et il
-ne vaut pas la peine d'être payé — voir [ADR-0002](../adr/0002-one-compilation-per-mutant-fr.md).
+ne vaut pas la peine d'être payé — voir [DEC0002](../decisions/0002-one-compilation-per-mutant-fr.md).
 Compiler un mutant par assembly rend chacun de ces mécanismes inutile : les schemata, `MutantControl`,
 le namespace d'aide aléatoire, la pile de niveaux de contrôle, la comptabilité d'annotations, la
 boucle de rollback et le canal d'activation à l'exécution disparaissent tous. Un échec d'émission
@@ -95,7 +95,7 @@ mesure, et un contournement pour un bug Roslyn corrigé de longue date.
 
 Sur .NET 10, rien de tout cela n'est nécessaire, parce que MSBuild fournit simplement la ligne de
 commande `csc` exacte et que Roslyn sait l'analyser. C'est l'objet de
-[ADR-0003](../adr/0003-compilation-inputs-from-csc-command-line-fr.md).
+[DEC0003](../decisions/0003-compilation-inputs-from-csc-command-line-fr.md).
 
 La seule chose que Stryker fait exactement bien ici, et que nous reprenons comme *décision* et non
 comme code, est l'endroit où va le mutant : les octets mutés sont écrits par-dessus l'assembly du
@@ -127,7 +127,7 @@ capacités que la conception en mode serveur de Stryker précède et n'utilise p
 pour une découverte exploitable par machine, et `--filter-uid` au niveau de la plateforme pour
 exécuter exactement un ensemble donné d'UID de tests. Ensemble, elles fournissent la découverte et la
 sélection par test — les deux besoins de M4 et M5 — **sans aucun code RPC**, ce qui explique que
-[ADR-0004](../adr/0004-run-tests-by-launching-the-test-executable-fr.md) ne considère pas le mode
+[DEC0004](../decisions/0004-run-tests-by-launching-the-test-executable-fr.md) ne considère pas le mode
 serveur comme inévitable.
 
 ## 6. Couverture et association tests ↔ mutants
@@ -164,7 +164,7 @@ maximal dérivé de l'exécution de référence pour qu'une mutation introduisan
 bloque pas le run).
 
 Nos propres mesures indiquent que le premier facteur est le mauvais à attaquer sur .NET moderne —
-voir ADR-0002. L'exécution des tests domine de deux ordres de grandeur : c'est donc la *sélection*
+voir DEC0002. L'exécution des tests domine de deux ordres de grandeur : c'est donc la *sélection*
 des tests et la parallélisation qui rapportent, et toutes deux s'ajoutent à notre conception sans
 exiger qu'elle change.
 
@@ -177,7 +177,7 @@ Trois points de cette partie de l'étude méritent d'être retenus :
   Stryker remet ses runners dans un pool après chaque travail (`VsTestRunnerPool.cs:95-111`) et doit
   ramener de force ces processus de longue durée à un état propre aux frontières de phase
   (`MicrosoftTestPlatformRunnerPool.cs:96,140`). Cette discipline est un argument direct en faveur de
-  notre modèle processus-par-mutant, qui n'en a aucun besoin — voir ADR-0008.
+  notre modèle processus-par-mutant, qui n'en a aucun besoin — voir DEC0008.
 - **Le `--timeout` propre à MTP n'arrête pas de façon fiable un test qui tourne en boucle.** Le délai
   maximal doit être détenu par l'outil, avec `Process.Kill(entireProcessTree: true)` à l'expiration.
   C'est exactement ce que fait KillMutants.

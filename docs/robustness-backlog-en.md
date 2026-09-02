@@ -38,7 +38,7 @@ Reproduced independently during this project's design, at IL level: the token-sw
 
 **Why it is the worst failure mode we know of.** The mutant compiles, the report looks right, the
 tests pass, and it is recorded **Survived** — an invented gap in the user's test suite. Baseline
-verification (ADR-0005) cannot catch it, because that guards against false *kills*.
+verification (DEC0005) cannot catch it, because that guards against false *kills*.
 
 **What the guarantee actually says.** Not "the mutated syntax differs" — that is the very thing a
 token-only rewrite gets right — but *the emitted program differs*. The check compares the whole
@@ -559,7 +559,7 @@ is only the *measurement* that cannot be expressed.
 
 **Why the obvious repair is refused.** `where T : allows ref struct` fixes it in one word, and needs
 C# 13. The probe is compiled into the **user's** project, whose language version we do not control;
-[ADR-0007](adr/0007-measure-coverage-with-a-type-preserving-probe-en.md) keeps that source
+[DEC0007](decisions/0007-measure-coverage-with-a-type-preserving-probe-en.md) keeps that source
 deliberately conservative for exactly this reason. Buying coverage for spans at the price of refusing
 to run on an older language version is the wrong trade.
 
@@ -853,7 +853,7 @@ failures.
 
 ## RB-025 — Test support outside a test project is invisible to `--since` · OPEN
 
-**How it was found.** A review of ADR-0010, on the fifth pass over the same rule. Each earlier pass
+**How it was found.** A review of DEC0010, on the fifth pass over the same rule. Each earlier pass
 had found the fix resting on something the change itself could delete; this one found the fix resting
 on a classification the tool does not make.
 
@@ -883,7 +883,7 @@ precise answer and needs a previous run's stored results - the baseline feature.
 is smaller and worth weighing first: let a project declare itself test support, so discovery can stop
 treating it as a subject and start treating a change to it as a change to the tests.
 
-**What is written down meanwhile.** ADR-0010 states its guarantee for changes inside recognized test
+**What is written down meanwhile.** DEC0010 states its guarantee for changes inside recognized test
 projects and does not claim an absolute beyond them. That is the whole reason this entry exists: the
 document previously said "never a false green".
 
