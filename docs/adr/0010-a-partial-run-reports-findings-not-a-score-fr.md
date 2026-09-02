@@ -27,11 +27,24 @@ l'élargissement évident ne suffit pas, ce qu'il vaut la peine d'énoncer parce
 quitté.
 Élargir le long de l'axe qui a déjà perdu l'information ne change rien.
 
-**Donc, quand une modification dans un projet de test ne peut pas être attribuée depuis la couverture
-HEAD, la sélection s'élargit à tout mutant des projets de production que ce projet de test exerce** —
-une relation que `MutationTestTarget` porte structurellement, par les références de projet, et qui
-survit donc à la suppression de n'importe quel nombre de tests. Si même cela ne peut être établi,
-l'exécution est non concluante.
+Et le déclencheur n'est pas non plus « la modification n'est pas attribuable », qui est plus étroit
+que le problème. Ce qui disparaît est une *arête* de couverture, pas une *identité* de test : laissez
+`T` en place et modifiez un utilitaire, un fichier d'entrée ou un fixture sur lequel il s'appuie de
+sorte qu'il n'atteigne plus `M`, et `T` reste parfaitement attribuable pendant que `T -> M` a disparu.
+HEAD ne peut pas nous dire que cette arête a jamais existé — prouver une disparition exige
+l'exécution d'avant, précisément ce dont nous ne disposons pas.
+
+**Donc toute modification qui touche un test, un fixture, un utilitaire ou un fichier de
+configuration existant d'un projet de test élargit la sélection à tout mutant des projets de
+production que ce projet de test exerce** — une relation que `MutationTestTarget` porte
+structurellement, par les références de projet, qu'aucune suppression, aucun renommage et aucun
+recâblage de tests ne peut donc lui retirer. Si même cela ne peut être établi, l'exécution est non
+concluante.
+
+Un test *ajouté* par le changement fait exception, et par principe plutôt que par concession : un
+test neuf ne peut pas retirer une arête qui lui préexiste, donc l'attribution depuis HEAD y est saine
+et la règle précise s'applique toujours. Modifier un fichier existant n'est pas le même cas : rien de
+peu coûteux ne distingue une modification qui ajoute un test d'une qui supprime une assertion.
 
 Plus lent, parfois beaucoup, et jamais un faux vert — le même arbitrage que l'exécution fait déjà
 quand la couverture est inconnue, et quand un filtre est trop long pour une ligne de commande. Lire
@@ -41,9 +54,11 @@ n'est délibérément pas celle-ci.
 
 Stryker.NET sélectionne sur les deux mêmes fondements — leur
 documentation de configuration, texto : *« For changes on test project files all mutants covered by
-tests in that file will be seen as changed. »* Que deux outils aboutissent à la même règle ne prouve
-pas grand-chose à soi seul, mais cela dit au moins que la seconde moitié n'est pas une inquiétude
-théorique.
+tests in that file will be seen as changed. »* Que deux outils aboutissent à la même règle de départ
+ne prouve pas grand-chose à soi seul, mais cela dit au moins que la seconde moitié n'est pas une
+inquiétude théorique. Cela s'arrête aussi là : « all mutants covered by tests in that file » se lit
+depuis l'exécution courante, donc hérite de la même faille d'arête perdue, et l'élargissement
+ci-dessus est le nôtre et non le leur.
 
 La question tranchée ici est : qu'a le droit d'afficher une telle exécution ? Toutes les autres se
 terminent par un score de mutation. L'évidence serait d'en afficher un ici aussi.
@@ -198,7 +213,8 @@ ne doivent pas être confondues.
   mutation est inférieur à `--break-at`*, or une exécution partielle n'a pas de score. Plutôt que de
   laisser le tableau et le comportement se contredire, `1` signifie désormais ce que le raisonnement
   de cet ADR disait déjà — *ce que vous m'avez demandé de vérifier n'est pas assez bon* — avec pour
-  deux cas le score sous un seuil et le nouveau mutant non détecté. L'ADR-0009 est amendé dans le
+  trois cas le score sous un seuil, le score indéfini et le nouveau mutant non détecté — les trois
+  mêmes que l'ADR-0009 énumère. L'ADR-0009 est amendé dans le
   même changement ; une automatisation qui lit `1` apprend toujours « des constats », ce sur quoi
   elle agit. `2` est inchangé.
 - Deux rapports ne peuvent plus être comparés en lisant un nombre de chacun, puisque nous n'affichons

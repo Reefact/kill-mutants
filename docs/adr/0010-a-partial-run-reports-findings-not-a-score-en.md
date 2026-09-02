@@ -23,10 +23,22 @@ spelling out because it looks sufficient: "every mutant that test project covers
 from HEAD coverage, and if `T` was the *only* test covering `M`, then `M` left that set the moment
 `T` did. Widening along the axis that already lost the information changes nothing.
 
-**So where a change to a test project cannot be attributed from HEAD coverage, the selection widens
-to every mutant in the production projects that test project exercises** - a relation
-`MutationTestTarget` holds structurally, from project references, so it survives the deletion of any
-number of tests. If even that cannot be established, the run is inconclusive.
+And the trigger is not "the change cannot be attributed" either, which is a narrower thing than the
+problem. What goes missing is a coverage *edge*, not a test *identity*: leave `T` in place and change
+a fixture, an input file or a helper it leans on so that it no longer reaches `M`, and `T` is still
+perfectly attributable while `T -> M` is gone. HEAD cannot tell us that edge ever existed - proving a
+disappearance needs the run before, which is exactly what we do not have.
+
+**So any change that touches an existing test, fixture, helper or configuration file in a test
+project widens the selection to every mutant in the production projects that test project
+exercises** - a relation `MutationTestTarget` holds structurally, from project references, so no
+amount of deleting, renaming or rewiring tests can take it away. If even that cannot be established,
+the run is inconclusive.
+
+A test *added* by the change is the exception, and a principled one rather than a concession: a new
+test cannot remove an edge that predates it, so HEAD attribution is sound there and the precise rule
+still applies. Modifying an existing file is not the same case, because nothing cheap distinguishes a
+modification that adds a test from one that removes an assertion.
 
 Slower, occasionally much slower, and never a false green - the same trade the run already makes when
 coverage is unknown, and when a filter is too long for a command line. Reading coverage from the base
@@ -35,8 +47,10 @@ from a previous run: that is the baseline feature, and it is deliberately not th
 
 Stryker.NET selects on the same two grounds - their configuration
 documentation, verbatim: *"For changes on test project files all mutants covered by tests in that
-file will be seen as changed."* Two tools arriving at the same rule is weak evidence on its own, but
-it does say the second half is not a theoretical worry.
+file will be seen as changed."* That two tools reach the same starting rule is weak evidence on its
+own, but it does say the second half is not a theoretical worry. It also stops there: "all mutants
+covered by tests in that file" is read from the current run, so it inherits the same edge-loss hole,
+and the widening above is ours rather than theirs.
 
 The question this decides is what such a run may print. Every other run of this tool ends with a
 mutation score. The obvious thing is to print one here too.
@@ -177,7 +191,8 @@ run. That feature earns a percentage. `--since` does not, and the two must not b
   defined `1` as *the mutation score is below `--break-at`*, and a partial run has no score. Rather
   than let the table and the behaviour disagree, `1` now means what that ADR's own reasoning always
   said it meant — *the thing you asked me to check is not good enough* — with the score below a
-  threshold and the new undetected mutant as its two cases. ADR-0009 is amended in the same change;
+  threshold, the undefined score, and the new undetected mutant as its three cases - the same three
+  ADR-0009 lists. ADR-0009 is amended in the same change;
   automation reading `1` still learns "findings", which is what it acts on. `2` is unchanged.
 - Two reports can no longer be compared by reading one number each, because we no longer print a
   number that invites it. The status counts remain explicit and locally interpretable, and are not
