@@ -122,7 +122,8 @@ itself:
 ```
 
 The project is then left out of the run without hiding what it references: the code under test behind
-it is still found and still mutated. On the fixture this was measured against, declaring one support
+it is still found and still mutated. The declaration outranks everything else the project looks like,
+so a helper that happens to be a runnable test application is not launched as a suite either. On the fixture this was measured against, declaring one support
 library took the run from four mutants to two — dropping the two nobody had asked about — and the
 score from 25 % to 50 %.
 

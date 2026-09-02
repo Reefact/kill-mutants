@@ -976,6 +976,13 @@ structurel ne la sépare du code sous test : `<KillMutantsTestSupport>true</Kill
 supprime le projet comme cible sans cacher ce qui se trouve derrière — un trou dans le graphe, pas un
 mur, exactement comme une exclusion.
 
+Une seconde passe de revue a ajouté la préséance entre les deux, qui manquait : une déclaration
+l'emporte sur la détection, si bien que les deux réponses ne peuvent jamais être oui ensemble. Sans
+cela, la découverte atteint d'abord son test de projet de test et cesse d'y marcher : un utilitaire
+déclaré qui se trouve être une application de test exécutable serait lancé comme une suite et
+cacherait tout ce qu'il référence — la déclaration silencieusement ignorée, ce qu'une déclaration ne
+doit jamais être.
+
 **Ce que cela coûtait.** Mesuré sur `tests/fixtures/testsupport`, dont la bibliothèque de support
 porte une comparaison à elle :
 
