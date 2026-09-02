@@ -101,7 +101,9 @@ internal sealed class MutationTestSession
         ChangeSelection? selection = _since is null
             ? null
             : await ChangeSelection
-                .ResolveAsync(_since, searchDirectory, _configuration, targets, _progress, cancellationToken)
+                .ResolveAsync(
+                    _since, searchDirectory, _configuration, targets, discovery.TestProjects,
+                    _progress, cancellationToken)
                 .ConfigureAwait(false);
 
         RunScope scope = selection?.Scope ?? RunScope.WholeCodebase;
