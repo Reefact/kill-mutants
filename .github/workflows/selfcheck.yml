@@ -1,0 +1,130 @@
+name: selfcheck
+
+# Runs KillMutants over KillMutants.
+#
+# A mutation testing tool whose own tests are never mutation tested is asking to be taken on trust,
+# and this is the only place the tool is exercised end to end on real code: the end-to-end suite runs
+# it against fixtures of a few files each, which is enough to prove a mechanism and not enough to
+# prove it survives a repository.
+#
+# It does NOT gate. There is no --break-at, because a threshold picked to be passed is exactly the
+# kind of number this project refuses - the score is around 30%, and any bar drawn near it would
+# measure nothing but itself. What the run is for is the shape of the report over time: the score
+# moving, a warning appearing, a kill that stops reproducing. Those are read, not enforced.
+#
+# The job failing, on the other hand, is a real signal and is left to fail the workflow: without a
+# threshold the tool exits non-zero only when it could not complete a run at all.
+
+on:
+  schedule:
+    # Weekly, Monday morning UTC, after ci-preview so the two do not contend for runners.
+    - cron: '30 6 * * 1'
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: selfcheck-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+
+jobs:
+  mutate:
+    name: Mutation test this repository
+    runs-on: ubuntu-latest
+    # Measured on four cores: 16.7 minutes with one worker, 5.3 with four. A hosted runner has fewer
+    # cores and slower ones, so this is sized for the pessimistic case rather than the measured one.
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      # This repository legitimately has no tool to run until the branch carrying it lands, and a
+      # workflow that failed on that state would be red for a reason that is not a defect.
+      - name: Look for the tool
+        id: tool
+        run: |
+          set -euo pipefail
+          if [ -f src/KillMutants.Cli/KillMutants.Cli.csproj ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::KillMutants is not in this repository yet; there is nothing to run."
+          fi
+
+      - name: Build
+        if: steps.tool.outputs.present == 'true'
+        run: dotnet build KillMutants.slnx -c Release
+
+      # No arguments beyond the report: the run is configured by the repository's own
+      # killmutants.json, which is the point - what CI measures and what a developer measures at
+      # their desk have to be the same thing, or neither number means anything.
+      - name: Mutation test
+        if: steps.tool.outputs.present == 'true'
+        run: |
+          set -euo pipefail
+          dotnet run --project src/KillMutants.Cli -c Release --no-build -- . \
+            --report-json killmutants-report.json
+
+      # The console output scrolls past; the summary is what someone reads next Monday.
+      - name: Summarise
+        if: always() && steps.tool.outputs.present == 'true' && hashFiles('killmutants-report.json') != ''
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+
+          report = json.load(open("killmutants-report.json"))
+          totals = report.get("totals", {})
+          environment = report.get("environment", {})
+
+          # Every field is read with a default. A summary is a convenience, and a convenience that
+          # fails the run because the report gained or lost a key is worse than no summary at all -
+          # especially here, where this workflow reaches main before the tool it summarises does.
+          def field(source, key):
+              return source.get(key, "-")
+
+          print("## Mutation score: " + str(field(report, "scoreDisplay")))
+          print()
+          print("| | |")
+          print("| --- | --- |")
+          for key in ("mutants", "killed", "survived", "timedOut", "noCoverage", "compileErrors"):
+              print(f"| {key} | {field(totals, key)} |")
+          print(f"| workers | {field(environment, 'workerCount')} of {field(environment, 'processorCount')} |")
+          print(f"| timeout budget (s) | {field(environment, 'timeoutBudgetSeconds')} |")
+          print(f"| baseline alone (s) | {field(environment, 'baselineSecondsAlone')} |")
+          print(f"| kills re-verified | {field(environment, 'killsReVerifiedAlone')} |")
+          print()
+
+          warnings = report.get("warnings", [])
+          if warnings:
+              print("### Warnings")
+              print()
+              for warning in warnings:
+                  print(f"- {warning}")
+          else:
+              print("No warnings.")
+          PY
+
+      # Kept because a score is only worth something next to the one before it, and the console log
+      # expires long before the question "when did this start dropping?" gets asked.
+      - name: Upload the report
+        if: always() && steps.tool.outputs.present == 'true' && hashFiles('killmutants-report.json') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: killmutants-report
+          path: killmutants-report.json
+          retention-days: 90
