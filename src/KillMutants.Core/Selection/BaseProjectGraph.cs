@@ -108,8 +108,9 @@ internal sealed class BaseProjectGraph : IDisposable
     /// </summary>
     /// <remarks>
     /// The same traversal as <see cref="ProjectDiscovery"/>'s, deliberately: other test projects are
-    /// not targets, and a project that has since disappeared is simply not in the head graph to
-    /// select. What this cannot know is which projects the run excludes - that is a property of the
+    /// not targets, a declared test-support library is walked through rather than returned, and a
+    /// project that has since disappeared is simply not in the head graph to select. What this
+    /// cannot know is which projects the run excludes - that is a property of the
     /// run, not of the revision - so an excluded project can be named here and is dropped when the
     /// answer is matched against the head targets.
     /// </remarks>
@@ -145,7 +146,15 @@ internal sealed class BaseProjectGraph : IDisposable
                 continue;
             }
 
-            reached.Add(path);
+            // A hole, not a wall - the same rule discovery applies, and for the third time in this
+            // codebase. A project declaring itself test support is walked through and not returned:
+            // review found that returning it made the coverage-loss check report a support library
+            // as having lost its tests, and fail the gate, over a project that was never a target to
+            // begin with.
+            if (!facts.IsTestSupport)
+            {
+                reached.Add(path);
+            }
 
             foreach (string reference in Relative(facts.ProjectReferences))
             {
