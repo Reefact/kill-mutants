@@ -76,9 +76,15 @@ public sealed record RunWarning(string Text)
 
         if (report.Untestable > 0 && report.Total > 0)
         {
+            // A partial run has no score to be outside of, and saying otherwise would name a number
+            // the report deliberately does not print. What is outside is the verdict, for the same
+            // reason: the suite was never asked about a mutant the tool could not build.
+            string what = report.Scope.IsPartial ? "the verdict" : "the score";
+
             warnings.Add(new RunWarning(
                 $"{Count(report.Untestable)} of {Count(report.Total)} mutants could not be built " +
-                "and are outside the score entirely. The score describes the rest."));
+                $"and are outside {what} entirely. {char.ToUpperInvariant(what[0])}{what[1..]} " +
+                "describes the rest."));
         }
 
         return warnings;

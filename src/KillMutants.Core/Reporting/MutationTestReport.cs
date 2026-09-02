@@ -9,16 +9,19 @@ public sealed class MutationTestReport
     /// <param name="results">Every mutant, with its outcome.</param>
     /// <param name="duration">How long the whole run took.</param>
     /// <param name="environment">What the run ran on, and under what limits.</param>
+    /// <param name="scope">What population was inspected. Defaults to the whole codebase.</param>
     public MutationTestReport(
         IReadOnlyList<MutantResult> results,
         TimeSpan duration = default,
-        RunEnvironment? environment = null)
+        RunEnvironment? environment = null,
+        RunScope? scope = null)
     {
         ArgumentNullException.ThrowIfNull(results);
 
         Results = results;
         Duration = duration;
         Environment = environment;
+        Scope = scope ?? RunScope.WholeCodebase;
         Killed = Count(MutantStatus.Killed);
         Survived = Count(MutantStatus.Survived);
         TimedOut = Count(MutantStatus.Timeout);
@@ -98,7 +101,39 @@ public sealed class MutationTestReport
     public int Untestable { get; }
 
     /// <summary>The share of judged mutants the suite detected.</summary>
+    /// <remarks>
+    /// Computed whatever the scope, and <em>reported</em> only for a full run. A partial run's
+    /// population is defined against a base revision chosen per run, so a percentage over it answers
+    /// "how well did the suite do on this change?" and no question at all that spans two runs.
+    /// ADR-0010 decides that such a number is not printed; it is not hidden from a caller holding
+    /// this object, which knows from <see cref="Scope"/> what it is looking at.
+    /// </remarks>
     public MutationScore Score { get; }
+
+    /// <summary>What population this run inspected - see <see cref="RunScope"/>.</summary>
+    public RunScope Scope { get; }
+
+    /// <summary>
+    /// True when the run answered "did the selected scope produce an undetected mutant?" with yes.
+    /// </summary>
+    /// <remarks>
+    /// The gate a partial run offers in place of a threshold, per ADR-0010. Both undetected statuses
+    /// count: a change that adds code nothing tests at all produces <c>NoCoverage</c> and not
+    /// <c>Survived</c>, and a gate reading only survivors would wave through the clearest case of
+    /// newly introduced untested behaviour there is.
+    /// </remarks>
+    public bool HasUndetected => Undetected > 0;
+
+    /// <summary>
+    /// True when mutants were generated and not one of them could be tested.
+    /// </summary>
+    /// <remarks>
+    /// Not the same as an empty run, and the difference is the whole point. A change with no mutants
+    /// has nothing to answer for and passes; a change whose mutants all failed to compile
+    /// established nothing, and a run that established nothing must not report success - the same
+    /// rule ADR-0009 already applies to an undefined score against a threshold.
+    /// </remarks>
+    public bool IsInconclusive => Total > 0 && Score.IsUndefined;
 
     /// <summary>What each mutator family cost and bought, most mutants first.</summary>
     public IReadOnlyList<MutatorSummary> ByMutator { get; }
