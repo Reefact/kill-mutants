@@ -8,7 +8,7 @@ namespace KillMutants.Projects;
 /// </summary>
 /// <remarks>
 /// This is the whole of KillMutants' project system integration. See
-/// ADR-0003 in <c>docs/adr</c> for why there is no Buildalyzer,
+/// DEC0003 in <c>docs/decisions</c> for why there is no Buildalyzer,
 /// no MSBuildWorkspace and no MSBuildLocator here.
 /// </remarks>
 internal sealed class MsBuildQuery

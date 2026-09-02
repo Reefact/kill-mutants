@@ -13,7 +13,7 @@ namespace KillMutants.Analysis;
 /// <remarks>
 /// Built once per project and reused for every mutant. Constructing it costs roughly 1.6 seconds,
 /// almost entirely spent loading metadata references; re-emitting from it costs about 6 milliseconds.
-/// Rebuilding it per mutant would invalidate the reasoning in ADR-0002.
+/// Rebuilding it per mutant would invalidate the reasoning in DEC0002.
 /// </remarks>
 internal sealed class ProjectCompilation
 {

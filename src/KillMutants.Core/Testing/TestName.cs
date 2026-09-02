@@ -5,7 +5,7 @@ namespace KillMutants.Testing;
 /// </summary>
 /// <remarks>
 /// Deliberately not the runner's unique id, which is derived from the test assembly's path and so
-/// differs between two identical copies of an output directory. See ADR-0006.
+/// differs between two identical copies of an output directory. See DEC0006.
 /// </remarks>
 public readonly record struct TestName
 {

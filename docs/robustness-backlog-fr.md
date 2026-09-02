@@ -41,7 +41,7 @@ token émettait `clt`, identique à l'original, là où le remplacement de nœud
 
 **Pourquoi c'est le pire mode de défaillance connu.** Le mutant compile, le rapport paraît juste, les
 tests passent, et il est consigné **Survived** — une lacune inventée dans la suite de tests de
-l'utilisateur. La vérification du baseline (ADR-0005) ne peut pas l'attraper, puisqu'elle protège
+l'utilisateur. La vérification du baseline (DEC0005) ne peut pas l'attraper, puisqu'elle protège
 contre les faux *positifs*.
 
 **Ce que la garantie dit réellement.** Non pas « la syntaxe mutée diffère » — c'est précisément ce
@@ -600,7 +600,7 @@ elle-même est parfaitement valide : c'est seulement la *mesure* qui ne peut pas
 **Pourquoi la réparation évidente est refusée.** `where T : allows ref struct` règle le problème en un
 mot, et exige C# 13. La sonde est compilée dans le projet de l'**utilisateur**, dont nous ne
 contrôlons pas la version de langage ;
-[ADR-0007](adr/0007-measure-coverage-with-a-type-preserving-probe-fr.md) garde ce source délibérément
+[DEC0007](decisions/0007-measure-coverage-with-a-type-preserving-probe-fr.md) garde ce source délibérément
 conservateur pour exactement cette raison. Acheter la couverture des spans au prix d'un refus de
 tourner sur une version de langage plus ancienne est un mauvais échange.
 
@@ -923,7 +923,7 @@ n'était pas la cause des échecs de compilation.
 
 ## RB-025 — Le support de test hors d'un projet de test est invisible pour `--since` · OUVERT
 
-**Comment elle a été trouvée.** Une revue de l'ADR-0010, au cinquième passage sur la même règle.
+**Comment elle a été trouvée.** Une revue de le DEC0010, au cinquième passage sur la même règle.
 Chaque passage précédent avait trouvé le correctif appuyé sur une donnée que le changement pouvait
 effacer ; celui-ci l'a trouvé appuyé sur une classification que l'outil ne fait pas.
 
@@ -956,7 +956,7 @@ petite et mérite d'être pesée d'abord : laisser un projet se déclarer suppor
 découverte cesse de le traiter en sujet et traite une modification qui le touche comme une
 modification des tests.
 
-**Ce qui est écrit en attendant.** L'ADR-0010 énonce sa garantie pour les modifications à l'intérieur
+**Ce qui est écrit en attendant.** Le DEC0010 énonce sa garantie pour les modifications à l'intérieur
 des projets de test reconnus et ne revendique aucun absolu au-delà. C'est toute la raison d'être de
 cette entrée : le document disait auparavant « jamais un faux vert ».
 

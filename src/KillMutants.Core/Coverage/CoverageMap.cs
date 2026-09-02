@@ -6,7 +6,7 @@ namespace KillMutants.Coverage;
 /// <summary>Which tests reach which mutants.</summary>
 /// <remarks>
 /// Keyed on <see cref="TestName"/> rather than on the runner's unique ids, which differ between two
-/// identical copies of an output directory and so could not survive a sandboxed run. See ADR-0006.
+/// identical copies of an output directory and so could not survive a sandboxed run. See DEC0006.
 /// </remarks>
 internal sealed class CoverageMap
 {

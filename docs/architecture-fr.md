@@ -62,7 +62,7 @@ Concrètement, une exécution se déroule ainsi :
    `CSharpCompilation`.
 3. **Vérifier le baseline** : émettre la compilation *non mutée*, l'injecter, exécuter les tests,
    exiger le vert. Ce n'est pas optionnel — voir
-   [ADR-0005](adr/0005-verify-the-baseline-before-mutating-fr.md).
+   [DEC0005](decisions/0005-verify-the-baseline-before-mutating-fr.md).
 4. **Générer** les mutants en parcourant les arbres syntaxiques avec le catalogue de mutateurs.
 5. Pour chaque mutant : remplacer l'arbre syntaxique, émettre, écrire l'assembly dans le répertoire
    de sortie du projet de test, exécuter l'application de test, classer le résultat, restaurer
@@ -87,13 +87,13 @@ namespace sont déjà placées là où passeraient les frontières d'assembly.
 | Représentation d'un mutant | `KillMutants.Mutations` | `Mutant`, `MutantId`, `MutantStatus`, `SourceLocation` |
 | Instrumentation | *(absorbée)* | Voir ci-dessous |
 | Compilation | `KillMutants.Compilation` | Émet un assembly muté |
-| Découverte des tests | `KillMutants.Testing` | `-list tests /json`, par nom (ADR-0006) |
+| Découverte des tests | `KillMutants.Testing` | `-list tests /json`, par nom (DEC0006) |
 | Exécution des tests | `KillMutants.Testing` | `ITestRunner`, `TestRunOutcome` |
 | Spécificités xUnit 4 / MTP 2 | `KillMutants.Testing.XUnit` | Le seul endroit qui connaît la CLI du runner |
-| Association tests ↔ mutants | `KillMutants.Coverage` | Sonde préservant le type, une exécution par test (ADR-0007) |
+| Association tests ↔ mutants | `KillMutants.Coverage` | Sonde préservant le type, une exécution par test (DEC0007) |
 | Orchestration | `KillMutants.Execution` | La liste de phases, courte et linéaire |
 | Résultats | `KillMutants.Reporting` | `MutationTestReport`, écritures console et JSON, progression |
-| CLI | `KillMutants.Cli` | `dotnet killmutants`, seuils et codes de sortie (ADR-0009) |
+| CLI | `KillMutants.Cli` | `dotnet killmutants`, seuils et codes de sortie (DEC0009) |
 
 **Le catalogue, à M9.** Onze familles, chacune un `IMutator` distinct, chacune avec ses propres
 tests et chacune exercée de bout en bout contre un vrai projet de fixture.
@@ -139,7 +139,7 @@ jamais le droit, de sorte qu'aucun effet de bord n'est silencieusement supprimé
 laisse tranquille un ternaire dont les deux branches sont la même expression.
 
 **L'instrumentation n'a aucun code propre, et c'est voulu.** Parce que chaque mutant reçoit sa propre
-compilation ([ADR-0002](adr/0002-one-compilation-per-mutant-fr.md)), « instrumenter » un mutant se
+compilation ([DEC0002](decisions/0002-one-compilation-per-mutant-fr.md)), « instrumenter » un mutant se
 réduit à un appel à `SyntaxNode.ReplaceNode` suivi de `Compilation.ReplaceSyntaxTree`. Tout
 l'appareillage qu'exige un outil fondé sur les schemata — aides de contrôle injectées, canal
 d'activation à l'exécution, niveaux de placement, boucle de compilation/rollback — n'existe pas ici.
@@ -176,7 +176,7 @@ diffère du build réel d'une quelconque manière (un `AssemblyInfo.cs` génér�
 version de l'assembly, une référence absente, un symbole de préprocesseur erroné), les tests échouent
 pour des raisons étrangères à la mutation et tous les mutants sont rapportés `Killed`. Un outil de
 mutation testing qui répond toujours « Killed » est pire que pas d'outil du tout, parce qu'il est
-silencieusement rassurant. *Atténué par l'ADR-0005 : le baseline est émis par le même chemin et doit
+silencieusement rassurant. *Atténué par le DEC0005 : le baseline est émis par le même chemin et doit
 être vert avant qu'aucun mutant ne soit envisagé.*
 
 **Critique — mutants silencieusement équivalents dus à la réécriture de l'arbre.** Constaté de
@@ -268,7 +268,7 @@ stratégie cesse donc d'être rentable seulement lorsque les tests dépassent la
 suite de mille tests passerait dix-sept minutes à mesurer. C'est le chiffre à surveiller, et tant
 qu'un vrai projet ne l'atteint pas, l'attribution exacte qu'achète une exécution par test vaut plus
 que le temps qu'un schéma plus malin ferait gagner. Voir
-[ADR-0007](adr/0007-measure-coverage-with-a-type-preserving-probe-fr.md).
+[DEC0007](decisions/0007-measure-coverage-with-a-type-preserving-probe-fr.md).
 
 **Quelles familles valent leur temps, et qui en décide.** Les onze familles ne portent pas un signal
 équivalent, et exécuter l'outil sur lui-même a mesuré l'écart : `Comparison`, `LogicalOperator` et
@@ -349,7 +349,7 @@ maintenant parce que chacun est peu coûteux à anticiper et cher à découvrir 
   concurrents exigent N répertoires de sortie isolés. Mesuré avec quatre bacs à sable : 639 ms contre
   2 235 ms en séquentiel, soit un gain de 3,5×, avec des verdicts indépendants corrects. L'émission
   elle-même se parallélise bien — 3,76 ms par émission sur un thread, 0,85 ms sur quatre — ce qui
-  renforce l'ADR-0002 au lieu de le fragiliser : le terme qu'optimiseraient les schemata rétrécit à
+  renforce le DEC0002 au lieu de le fragiliser : le terme qu'optimiseraient les schemata rétrécit à
   mesure que l'on parallélise.
 - **M5 et M6 entrent en collision, et la collision est dans le modèle de données.** Les identifiants
   uniques de tests xUnit dérivent du *chemin* de l'assembly, pas de son contenu : des copies de bac à

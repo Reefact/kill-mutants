@@ -54,7 +54,7 @@ Concretely, one run is:
 1. **Discover** the project under test and the test project that exercises it.
 2. **Analyse**: ask MSBuild for the exact `csc` command line, turn it into a `CSharpCompilation`.
 3. **Verify the baseline**: emit the *unmutated* compilation, inject it, run the tests, require
-   green. This is not optional — see [ADR-0005](adr/0005-verify-the-baseline-before-mutating-en.md).
+   green. This is not optional — see [DEC0005](decisions/0005-verify-the-baseline-before-mutating-en.md).
 4. **Generate** mutants by walking the syntax trees with the mutator catalog.
 5. For each mutant: replace the syntax tree, emit, write the assembly into the test project's
    output directory, run the test executable, classify the outcome, restore the original.
@@ -77,13 +77,13 @@ namespace boundaries are already where the assembly boundaries would go.
 | Mutant representation | `KillMutants.Mutations` | `Mutant`, `MutantId`, `MutantStatus`, `SourceLocation` |
 | Instrumentation | *(collapsed)* | See below |
 | Compilation | `KillMutants.Compilation` | Emits a mutated assembly |
-| Test discovery | `KillMutants.Testing` | `-list tests /json`, by name (ADR-0006) |
+| Test discovery | `KillMutants.Testing` | `-list tests /json`, by name (DEC0006) |
 | Test execution | `KillMutants.Testing` | `ITestRunner`, `TestRunOutcome` |
 | xUnit 4 / MTP 2 specifics | `KillMutants.Testing.XUnit` | The only place that knows the runner's CLI |
-| Test-to-mutant mapping | `KillMutants.Coverage` | A type-preserving probe, one run per test (ADR-0007) |
+| Test-to-mutant mapping | `KillMutants.Coverage` | A type-preserving probe, one run per test (DEC0007) |
 | Orchestration | `KillMutants.Execution` | The short, linear phase list |
 | Results | `KillMutants.Reporting` | `MutationTestReport`, console and JSON writers, progress |
-| CLI | `KillMutants.Cli` | `dotnet killmutants`, thresholds and exit codes (ADR-0009) |
+| CLI | `KillMutants.Cli` | `dotnet killmutants`, thresholds and exit codes (DEC0009) |
 
 **The catalogue, as of M9.** Eleven families, each a separate `IMutator`, each with its own tests
 and each exercised end to end against a real fixture project.
@@ -129,7 +129,7 @@ so no side effect is silently dropped, and `Conditional` skips a ternary whose b
 expression.
 
 **Instrumentation has no code of its own, by design.** Because each mutant gets its own compilation
-([ADR-0002](adr/0002-one-compilation-per-mutant-en.md)), "instrumenting" a mutant is one call to
+([DEC0002](decisions/0002-one-compilation-per-mutant-en.md)), "instrumenting" a mutant is one call to
 `SyntaxNode.ReplaceNode` followed by `Compilation.ReplaceSyntaxTree`. The entire apparatus that a
 schemata-based tool needs — injected control helpers, a runtime activation channel, placement
 levels, and a compile/rollback loop — does not exist here. This is the largest single simplification
@@ -162,7 +162,7 @@ Ordered by expected damage, from the study and from our own probes.
 from the real build in any way (a missing generated `AssemblyInfo.cs` changing the assembly version,
 a missing reference, a wrong preprocessor symbol), the tests fail for reasons unrelated to the
 mutation and every mutant is reported `Killed`. A mutation tool that always says "Killed" is worse
-than no tool, because it is silently reassuring. *Mitigated by ADR-0005: the baseline is emitted
+than no tool, because it is silently reassuring. *Mitigated by DEC0005: the baseline is emitted
 through the same path and must run green before any mutant is considered.*
 
 **Critical — silent equivalent mutants from tree rewriting.** Verified first-hand: replacing the
@@ -250,7 +250,7 @@ phase scales with the mutant count, so the strategy stops paying only when tests
 mutants — a suite of a thousand tests would spend seventeen minutes measuring. That is the number to
 watch, and until a real project reaches it the exact attribution one run per test buys is worth more
 than the time a cleverer scheme would save. See
-[ADR-0007](adr/0007-measure-coverage-with-a-type-preserving-probe-en.md).
+[DEC0007](decisions/0007-measure-coverage-with-a-type-preserving-probe-en.md).
 
 **Which families are worth their time, and who decides.** The eleven families do not carry equal
 signal, and running the tool on itself measured the gap: `Comparison`, `LogicalOperator` and
@@ -322,7 +322,7 @@ because each is cheap to plan for and expensive to discover late.
   `MutationTestSession` hoists a single `using` above the mutant loop, so N concurrent mutants need
   N sandboxed output directories. Measured with four sandboxes: 639 ms against 2,235 ms sequential,
   a 3.5x gain with correct independent verdicts. Emission itself parallelises well — 3.76 ms per
-  emit at one thread, 0.85 ms at four — which strengthens ADR-0002 rather than straining it: the
+  emit at one thread, 0.85 ms at four — which strengthens DEC0002 rather than straining it: the
   term schemata would optimise shrinks as the run scales out.
 - **M5 and M6 collide, and the collision is in the data model.** xUnit test unique IDs are derived
   from the assembly *path*, not its content: byte-identical sandbox copies produced different UIDs.
