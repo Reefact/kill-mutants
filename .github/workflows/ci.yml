@@ -64,12 +64,36 @@ jobs:
           }
           "$(go env GOPATH)/bin/actionlint"
 
+  # Runs on all three platforms, because this tool's whole claim is that a verdict describes the code
+  # rather than the machine it was measured on - and until now that claim was only ever checked on
+  # Linux. Two things it touches are decided by the operating system and cannot be tested anywhere
+  # else: whether two paths differing in case name the same project (ProjectPaths), and how much of a
+  # command line a filter may take before the suite runs unfiltered (XUnitTestRunner.FilterBudget,
+  # whose 24 000 characters exist for a limit only Windows imposes). Both have unit tests that pass
+  # the platform in as an argument; neither had ever met the real filesystem or the real limit.
+  #
+  # fail-fast is off deliberately. When a platform-specific defect exists, the useful question is
+  # which platforms have it, and cancelling the other two answers that with a shrug.
   test:
-    name: Build and test
-    runs-on: ubuntu-latest
+    name: Build and test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
     # A suite whose end-to-end tests each run a whole mutation sweep takes minutes, and more on a
-    # two-core runner than on a developer's machine. Generous, but bounded.
-    timeout-minutes: 40
+    # two-core runner than on a developer's machine. Windows pays for process creation on top, and
+    # every one of these tests launches several. Generous, but bounded.
+    timeout-minutes: 60
+    # Windows runners default `run:` to PowerShell, where the solution-discovery script below is not
+    # a script at all. bash is present on every GitHub runner, so one shell for the job keeps the
+    # three platforms running the same steps rather than three transcriptions of them.
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
