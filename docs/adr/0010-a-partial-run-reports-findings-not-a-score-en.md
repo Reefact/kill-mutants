@@ -52,10 +52,27 @@ test cannot remove an edge that predates it, so HEAD attribution is sound there 
 still applies. Modifying an existing file is not the same case, because nothing cheap distinguishes a
 modification that adds a test from one that removes an assertion.
 
-Slower, occasionally much slower, and never a false green - the same trade the run already makes when
-coverage is unknown, and when a filter is too long for a command line. Reading coverage from the base
-revision would be the precise answer instead of the conservative one, and it needs stored results
-from a previous run: that is the baseline feature, and it is deliberately not this one.
+Slower, occasionally much slower - the same trade the run already makes when coverage is unknown, and
+when a filter is too long for a command line.
+
+**And the guarantee stops at the edge of a test project, which is worth saying rather than implying.**
+Test support often lives in a plain class library beside the tests - builders, fakes, clocks,
+generated inputs - and `ProjectDiscovery` classifies projects only by `IsTestProject`, so such a
+library is a *mutable target* exactly like the code under test. Change it and `T` can stop reaching
+`M` while neither the test project nor `M`'s project appears in the diff. The change does select that
+library's own mutants, since it is a target; it cannot select `M`.
+
+Nothing available today closes that. Widening on any changed project reachable from a test project
+would mean every production change re-runs everything, which is `--since` abolished rather than
+qualified, and no structural fact separates a support library from a subject. So the rule's guarantee
+is stated for what it covers - changes inside recognized test projects, and the shared build
+configuration discovery already reads - and this document does not claim an absolute it cannot
+establish. RB-025 records the gap; baseline coverage is what closes it, or an explicit way to declare
+a project as test support.
+
+Reading coverage from the base revision would be the precise answer instead of the conservative one,
+and it needs stored results from a previous run: that is the baseline feature, and it is deliberately
+not this one.
 
 Stryker.NET selects on the same two grounds - their configuration
 documentation, verbatim: *"For changes on test project files all mutants covered by tests in that

@@ -850,3 +850,42 @@ compiler server would cost them build time for a problem they do not have.
 this work, including the one that first sent us looking at RB-020. RB-020 is still real and still
 open - it was measured separately, in our own process - but it was not the cause of the build
 failures.
+
+## RB-025 — Test support outside a test project is invisible to `--since` · OPEN
+
+**How it was found.** A review of ADR-0010, on the fifth pass over the same rule. Each earlier pass
+had found the fix resting on something the change itself could delete; this one found the fix resting
+on a classification the tool does not make.
+
+**The mechanism.** `--since` widens its selection when a change touches a test project, because a
+changed test can stop reaching a mutant it used to kill. Test support, though, is commonly a plain
+class library beside the tests:
+
+```text
+Tests -> TestSupport -> ProjectA        (ProjectA contains mutant M)
+```
+
+`ProjectDiscovery` classifies projects by `IsTestProject` alone, and treats every non-test project a
+test project reaches as a mutable target. `TestSupport` is therefore a target exactly like
+`ProjectA` - nothing separates a builder library from the code under test. So changing `TestSupport`
+does not touch a test project, the widening does not fire, and `T` can stop reaching `M` with neither
+`Tests` nor `ProjectA` in the diff. The same holds for shared configuration outside the test
+project's directory.
+
+**What it costs.** A partial run that reports no findings where a full run would have found one.
+Bounded: the change does select `TestSupport`'s own mutants, since it is a target, so the run is not
+silent about the changed code - only about `M`.
+
+**Why it is open rather than fixed.** The two available fixes are both bigger than the entry. Widening
+on any changed project reachable from a test project makes every production change re-run everything,
+which abolishes `--since` rather than qualifying it. Reading coverage from the base revision is the
+precise answer and needs a previous run's stored results - the baseline feature. A third possibility
+is smaller and worth weighing first: let a project declare itself test support, so discovery can stop
+treating it as a subject and start treating a change to it as a change to the tests.
+
+**What is written down meanwhile.** ADR-0010 states its guarantee for changes inside recognized test
+projects and does not claim an absolute beyond them. That is the whole reason this entry exists: the
+document previously said "never a false green".
+
+**Our tests.** None; `--since` is not built yet. This entry exists so that M13 implements a bounded
+promise rather than the one the first draft made.
