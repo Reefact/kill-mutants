@@ -7,6 +7,7 @@ using KillMutants.Mutations;
 using KillMutants.Mutations.Mutators;
 using KillMutants.Projects;
 using KillMutants.Reporting;
+using KillMutants.Selection;
 using KillMutants.Testing;
 using Microsoft.CodeAnalysis.CSharp;
 
@@ -26,6 +27,7 @@ internal sealed class MutationTestSession
     private readonly IReadOnlyList<string> _exclude;
     private readonly MutatorCatalog _catalog;
     private readonly int _verifyKills;
+    private readonly string? _since;
     private readonly IProgress<MutationTestProgress>? _progress;
 
     public MutationTestSession(
@@ -37,6 +39,7 @@ internal sealed class MutationTestSession
         IEnumerable<string>? exclude = null,
         MutatorCatalog? catalog = null,
         int verifyKills = 0,
+        string? since = null,
         IProgress<MutationTestProgress>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(testRunner);
@@ -61,6 +64,7 @@ internal sealed class MutationTestSession
         _exclude = [.. exclude ?? []];
         _catalog = catalog ?? MutatorCatalog.Default;
         _verifyKills = verifyKills;
+        _since = since;
         _progress = progress;
     }
 
@@ -89,6 +93,27 @@ internal sealed class MutationTestSession
         IReadOnlyList<MutationTestTarget> targets = await discovery
             .DiscoverAsync(searchDirectory, cancellationToken)
             .ConfigureAwait(false);
+
+        // Resolved after discovery, because the selection is expressed in terms of what discovery
+        // found - which projects are test projects, and which mutable projects each of them
+        // exercises - and before anything is built, because a change that selects nothing must not
+        // cost a build.
+        ChangeSelection? selection = _since is null
+            ? null
+            : await ChangeSelection
+                .ResolveAsync(_since, searchDirectory, _configuration, targets, _progress, cancellationToken)
+                .ConfigureAwait(false);
+
+        RunScope scope = selection?.Scope ?? RunScope.WholeCodebase;
+
+        if (selection is { SelectsNothing: true })
+        {
+            // Nothing in the change can produce a mutant. Building the test projects and reading
+            // every compilation to establish that would take a minute to reach the same empty
+            // report, and a documentation-only pull request is the commonest partial run there is.
+            return new MutationTestReport(
+                [], stopwatch.Elapsed, RunEnvironment.Describe(_workerCount, null, [], 0), scope);
+        }
 
         // The real build comes first and nothing may run MSBuild after injection, so every
         // compilation is read in between. Reading one relies on the build having already produced
@@ -122,7 +147,7 @@ internal sealed class MutationTestSession
         foreach ((MutationTestTarget target, ProjectCompilation compilation) in targets.Zip(compilations))
         {
             results.AddRange(await TestTargetAsync(
-                    target, compilation, generator, budgets, verified, cancellationToken)
+                    target, compilation, generator, selection, budgets, verified, cancellationToken)
                 .ConfigureAwait(false));
         }
 
@@ -130,18 +155,21 @@ internal sealed class MutationTestSession
             results,
             stopwatch.Elapsed,
             RunEnvironment.Describe(
-                _workerCount, TestFrameworkOf(targets), budgets, verified.Sum()));
+                _workerCount, TestFrameworkOf(targets), budgets, verified.Sum()),
+            scope);
     }
 
     private async Task<IReadOnlyList<MutantResult>> TestTargetAsync(
         MutationTestTarget target,
         ProjectCompilation compilation,
         MutantGenerator generator,
+        ChangeSelection? selection,
         List<TimeBudget> budgets,
         List<int> verified,
         CancellationToken cancellationToken)
     {
-        IReadOnlyList<Mutant> mutants = generator.Generate(compilation.Compilation);
+        IReadOnlyList<Mutant> mutants = generator.Generate(
+            compilation.Compilation, selection?.For(target.ProjectUnderTest));
 
         if (mutants.Count == 0)
         {

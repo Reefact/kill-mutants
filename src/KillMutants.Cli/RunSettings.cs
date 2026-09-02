@@ -14,6 +14,7 @@ namespace KillMutants.Cli;
 /// <param name="VerifyKills">How many of the mutants reported killed to test a second time.</param>
 /// <param name="JsonReportPath">Where to write the machine-readable report, or null for none.</param>
 /// <param name="Threshold">The score the run must reach, or null when the run only reports.</param>
+/// <param name="Since">The revision to measure a change from, or null for the whole codebase.</param>
 internal sealed record RunSettings(
     string Directory,
     string Configuration,
@@ -24,7 +25,8 @@ internal sealed record RunSettings(
     IReadOnlyList<MutatorName> WithoutMutators,
     int VerifyKills,
     string? JsonReportPath,
-    double? Threshold)
+    double? Threshold,
+    string? Since)
 {
     /// <summary>Resolves what was asked against what the project keeps in its file.</summary>
     /// <param name="options">What the command line asked for.</param>
@@ -55,6 +57,7 @@ internal sealed record RunSettings(
 
         RejectUnknown([.. mutators, .. without]);
         RejectImpossible(file);
+        RejectThresholdWithSince(options, file);
 
         return new RunSettings(
             options.Directory,
@@ -66,7 +69,48 @@ internal sealed record RunSettings(
             without,
             options.VerifyKills ?? file?.VerifyKills ?? 0,
             options.JsonReportPath ?? Resolve(file?.ReportJson, file?.Directory),
-            options.Threshold ?? file?.BreakAt);
+            options.ThresholdCleared ? null : options.Threshold ?? file?.BreakAt,
+            options.Since);
+    }
+
+    /// <summary>
+    /// Refuses a threshold on a partial run, and names where the threshold came from.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A threshold means a score, and a partial run has none - see ADR-0010. Refusing is the only
+    /// honest option: silently ignoring the threshold would leave a job that believes it has a
+    /// quality gate with none at all, which is the failure that document exists to prevent.
+    /// </para>
+    /// <para>
+    /// Naming the file is not a nicety. <c>breakAt</c> in <c>killmutants.json</c> is exactly what the
+    /// README tells a project to keep there, so without this the message would send a reader to a
+    /// command line that does not mention a threshold, and every partial run in that repository
+    /// would be refused with no way out short of editing a versioned file. The way out is
+    /// <c>--break-at none</c>, which clears it for this run - the same shape as <c>--without none</c>.
+    /// </para>
+    /// </remarks>
+    private static void RejectThresholdWithSince(CommandLineOptions options, ConfigurationFile? file)
+    {
+        if (options.Since is null || options.ThresholdCleared)
+        {
+            return;
+        }
+
+        if (options.Threshold is not null)
+        {
+            throw new ArgumentException(
+                "'--break-at' cannot be used with '--since': a partial run reports findings and a " +
+                "verdict, not a mutation score. Drop the threshold, or drop '--since'.");
+        }
+
+        if (file?.BreakAt is not null)
+        {
+            throw new ArgumentException(
+                $"'--since' cannot be used while a threshold is set ('breakAt' in " +
+                $"{ConfigurationFile.Name}): a partial run reports findings and a verdict, not a " +
+                "mutation score. Pass '--break-at none' to clear it for this run.");
+        }
     }
 
     /// <summary>

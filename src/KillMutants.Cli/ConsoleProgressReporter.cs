@@ -69,6 +69,7 @@ internal sealed class ConsoleProgressReporter : IProgress<MutationTestProgress>,
         string what = progress.Phase switch
         {
             MutationTestPhase.Discovering => "Discovering projects",
+            MutationTestPhase.SelectingChanges => "Reading the base revision",
             MutationTestPhase.Building => "Building test projects",
             MutationTestPhase.Analysing => "Analysing",
             MutationTestPhase.VerifyingBaseline => "Verifying the baseline",

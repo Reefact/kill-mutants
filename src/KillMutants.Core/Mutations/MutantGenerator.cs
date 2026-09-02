@@ -1,5 +1,6 @@
 using KillMutants.Filtering;
 using KillMutants.Mutations.Mutators;
+using KillMutants.Selection;
 using Microsoft.CodeAnalysis;
 
 namespace KillMutants.Mutations;
@@ -34,19 +35,29 @@ internal sealed class MutantGenerator
     /// observed. Generated files are still <em>compiled</em>: dropping them would change the
     /// assembly's identity.
     /// </summary>
+    /// <param name="compilation">The project to walk.</param>
+    /// <param name="selection">
+    /// The files a partial run is judging, or null for every file. Matched against the syntax tree's
+    /// own path, which is the only thing that knows for certain what a project was built from - a
+    /// linked file, a glob reaching outside the project directory, a file the project excludes.
+    /// </param>
     /// <remarks>
     /// Identifiers continue across calls, so one generator numbers a whole run. A generator per
     /// project would otherwise restart at <c>M1</c> for each of them and make the report ambiguous.
+    /// A partial run numbers only what it generated, and its report says so: see
+    /// <see cref="Reporting.RunScope"/>.
     /// </remarks>
-    public IReadOnlyList<Mutant> Generate(Compilation compilation)
+    public IReadOnlyList<Mutant> Generate(Compilation compilation, MutantSelection? selection = null)
     {
         ArgumentNullException.ThrowIfNull(compilation);
+
+        selection ??= MutantSelection.Everything;
 
         List<Mutant> mutants = [];
 
         foreach (SyntaxTree tree in compilation.SyntaxTrees)
         {
-            if (SourceFile.IsGenerated(tree) || IsExcluded(tree))
+            if (SourceFile.IsGenerated(tree) || IsExcluded(tree) || !IsSelected(tree, selection))
             {
                 continue;
             }
@@ -87,4 +98,15 @@ internal sealed class MutantGenerator
     /// </summary>
     private bool IsExcluded(SyntaxTree tree) =>
         !string.IsNullOrEmpty(tree.FilePath) && _exclusions.Excludes(tree.FilePath);
+
+    /// <summary>
+    /// True when a partial run is judging this file, and always true for a full one.
+    /// </summary>
+    /// <remarks>
+    /// A tree with no path is one nothing can have changed - it came from memory, not from the
+    /// repository - so a partial run leaves it alone rather than guessing.
+    /// </remarks>
+    private static bool IsSelected(SyntaxTree tree, MutantSelection selection) =>
+        selection.IsEverything ||
+        (!string.IsNullOrEmpty(tree.FilePath) && selection.Includes(tree.FilePath));
 }

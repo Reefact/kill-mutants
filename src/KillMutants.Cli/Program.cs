@@ -3,6 +3,7 @@ using KillMutants.Coverage;
 using KillMutants.Execution;
 using KillMutants.Projects;
 using KillMutants.Reporting;
+using KillMutants.Selection;
 using KillMutants.Testing;
 
 namespace KillMutants.Cli;
@@ -60,7 +61,7 @@ internal static class Program
         }
         catch (Exception exception) when (
             exception is ProjectAnalysisException or BaselineVerificationException
-                or TestExecutionException or CoverageException)
+                or TestExecutionException or CoverageException or ChangeSelectionException)
         {
             // These report a problem the user must fix, and their messages say what it is.
             // A stack trace would add noise, not information.
@@ -90,7 +91,7 @@ internal static class Program
             .RunAsync(
                 settings.Directory, settings.Configuration, settings.WorkerCount,
                 settings.MeasureCoverage, settings.Exclude, settings.Mutators,
-                settings.WithoutMutators, settings.VerifyKills, progress)
+                settings.WithoutMutators, settings.VerifyKills, settings.Since, progress)
             .ConfigureAwait(false);
 
         // Progress goes to stderr and the report to stdout, so piping the report somewhere useful
@@ -103,6 +104,11 @@ internal static class Program
     /// <summary>Decides what to tell the shell, and says why on the way out.</summary>
     private static int Verdict(RunSettings settings, MutationTestReport report)
     {
+        if (report.Scope.IsPartial)
+        {
+            return PartialVerdict(report);
+        }
+
         if (settings.Threshold is not { } threshold)
         {
             return ExitCode.Success;
@@ -126,6 +132,53 @@ internal static class Program
         {
             Console.Error.WriteLine(
                 $"Mutation score {report.Score} is below the {wanted}% threshold.");
+
+            return ExitCode.GateNotPassed;
+        }
+
+        return ExitCode.Success;
+    }
+
+    /// <summary>
+    /// The binary question a partial run answers: did the selected scope produce an undetected
+    /// mutant?
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Always a gate, with no threshold to ask for: a partial run is asked for in order to judge a
+    /// change, and a run that judged one and found untested behaviour has to say so with the code
+    /// that means it. See ADR-0010.
+    /// </para>
+    /// <para>
+    /// Both undetected statuses fail it. A change that adds code nothing tests at all produces
+    /// <c>NoCoverage</c> and not <c>Survived</c>, and that is the clearest case this exists to catch.
+    /// A mutant the tool could not build stays outside, for the reason it stays outside the score:
+    /// the suite was never asked about it.
+    /// </para>
+    /// <para>
+    /// And a selection whose mutants were <em>all</em> untestable has not passed. It established
+    /// nothing, and reporting success would let a misconfigured job stay green forever - the same
+    /// rule ADR-0009 already applies to an undefined score against a threshold. A change with no
+    /// mutants at all is a different thing and does pass, having nothing to answer for.
+    /// </para>
+    /// </remarks>
+    private static int PartialVerdict(MutationTestReport report)
+    {
+        if (report.IsInconclusive)
+        {
+            Console.Error.WriteLine(
+                $"{report.Total.ToString(CultureInfo.InvariantCulture)} mutant(s) were generated for " +
+                "this change and not one of them could be tested, so the change has not been shown " +
+                "to be covered.");
+
+            return ExitCode.GateNotPassed;
+        }
+
+        if (report.HasUndetected)
+        {
+            Console.Error.WriteLine(
+                $"{report.Undetected.ToString(CultureInfo.InvariantCulture)} mutant(s) in the " +
+                "selected scope were not detected by the tests.");
 
             return ExitCode.GateNotPassed;
         }
@@ -178,7 +231,14 @@ internal static class Program
                                         Pass 'none' to run every family even when the file
                                         excludes some.
               -p, --parallel <n>        Mutants to test at once. Defaults to half the processors.
+                  --since <revision>    Only judge what changed since a git revision - a branch, a
+                                        tag, a commit. The change is measured from the merge base of
+                                        that revision and HEAD to the working tree. Such a run
+                                        prints findings and a verdict rather than a score, and fails
+                                        if the selected scope holds an undetected mutant.
                   --break-at <percent>  Exit with 1 if the mutation score falls below this.
+                                        Pass 'none' to clear a breakAt the file sets, which is what
+                                        --since needs since it has no score to compare.
                   --no-coverage         Run every test for every mutant, instead of only the ones
                                         that reach it.
                   --report-json <path>  Also write the report as JSON, for CI and tooling.
@@ -188,8 +248,9 @@ internal static class Program
               -h, --help                Show this help.
 
             Exit codes:
-              0   Ran, and met the threshold if one was given.
-              1   Ran, but the score is below --break-at.
+              0   Ran, and the gate you asked for passed - or you asked for none.
+              1   Ran, and the gate did not pass: the score is below --break-at, no mutant could be
+                  tested at all, or --since found an undetected mutant in the change.
               2   Could not run: see the message on standard error.
               64  The command line was not understood.
             """);

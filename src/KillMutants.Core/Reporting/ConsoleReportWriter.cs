@@ -26,7 +26,7 @@ public static class ConsoleReportWriter
         WriteWarnings(writer, report);
 
         writer.WriteLine();
-        writer.WriteLine($"Mutation score: {report.Score}");
+        WriteScopeAndScore(writer, report);
 
         if (report.Duration > TimeSpan.Zero)
         {
@@ -36,6 +36,54 @@ public static class ConsoleReportWriter
         if (report.Environment is { } environment)
         {
             writer.WriteLine($"Ran on: {environment}");
+        }
+    }
+
+    /// <summary>
+    /// Says what population was inspected, and gives the score only where one means something.
+    /// </summary>
+    /// <remarks>
+    /// A full run ends with its score, as it always has. A partial run ends with its scope instead
+    /// and with the reason it prints no percentage - stated in the report rather than left to
+    /// documentation, because the reader who would draw a trend from two partial runs is exactly the
+    /// reader who never opened the documentation. See ADR-0010.
+    /// </remarks>
+    private static void WriteScopeAndScore(TextWriter writer, MutationTestReport report)
+    {
+        if (!report.Scope.IsPartial)
+        {
+            writer.WriteLine($"Mutation score: {report.Score}");
+
+            return;
+        }
+
+        writer.WriteLine(
+            $"Scope: {report.Scope} ({Format(report.Scope.ChangedFiles)} " +
+            $"{Plural(report.Scope.ChangedFiles, "file")} changed)");
+
+        foreach (string line in Wrap(
+                     "No mutation score: a partial run's population is the change itself, chosen " +
+                     "against a base revision per run, so a percentage over it cannot be compared " +
+                     "with any other run. See ADR-0010.",
+                     width: 88))
+        {
+            writer.WriteLine(line);
+        }
+
+        if (report.Total == 0)
+        {
+            writer.WriteLine("Nothing in the change produces a mutant.");
+        }
+        else if (report.IsInconclusive)
+        {
+            writer.WriteLine(
+                "Inconclusive: mutants were generated and not one of them could be tested.");
+        }
+        else
+        {
+            writer.WriteLine(report.HasUndetected
+                ? $"Verdict: {Format(report.Undetected)} undetected mutant(s) in the selected scope."
+                : "Verdict: no undetected mutant in the selected scope.");
         }
     }
 
@@ -135,10 +183,14 @@ public static class ConsoleReportWriter
 
         foreach (MutatorSummary family in report.ByMutator)
         {
+            // The per-family percentage is the whole-run score in miniature, and a partial run has
+            // no population for it to be a percentage of either. The counts stay; the ratio goes.
+            string score = report.Scope.IsPartial ? string.Empty : $"  ({family.Score})";
+
             writer.WriteLine(
                 $"  {family.Mutator.ToString().PadRight(nameWidth)}  " +
                 $"{Format(family.Total).PadLeft(totalWidth)} {Plural(family.Total, "mutant")}, " +
-                $"{Format(family.Detected).PadLeft(detectedWidth)} detected  ({family.Score})");
+                $"{Format(family.Detected).PadLeft(detectedWidth)} detected{score}");
         }
     }
 
