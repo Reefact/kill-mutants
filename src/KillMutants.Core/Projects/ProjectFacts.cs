@@ -104,8 +104,23 @@ internal sealed record ProjectFacts(
     /// every project and find no test project at all. <see cref="TestApplicationPackages"/> is what
     /// answers then.
     /// </para>
+    /// <para>
+    /// And a declaration outranks all of it. A project that says it is test scaffolding is not a test
+    /// project of this run however it is built, so the two properties are mutually exclusive and no
+    /// caller has to get their order right. Without that, <see cref="ProjectDiscovery"/> reaches its
+    /// <see cref="IsTestProject"/> check first and stops walking there, so a declared helper that
+    /// happens to be a runnable test application would be launched as a suite and would hide
+    /// everything it references - the declaration silently ignored, which is the one thing a
+    /// declaration must never be. Review found it.
+    /// </para>
+    /// <para>
+    /// A user who marks their only test project as support gets "no xUnit test project was found",
+    /// which is loud and points at the property. That is the right direction for this mistake to
+    /// fail in.
+    /// </para>
     /// </remarks>
     public bool IsTestProject =>
+        !IsTestSupport &&
         string.Equals(OutputType, "Exe", StringComparison.OrdinalIgnoreCase) &&
         (XunitTestProject ||
          PackageReferences.Any(package =>
@@ -126,7 +141,8 @@ internal sealed record ProjectFacts(
     /// <para>
     /// Set <c>&lt;KillMutantsTestSupport&gt;true&lt;/KillMutantsTestSupport&gt;</c> in the project.
     /// It suppresses the project as a target without hiding what sits behind it, exactly as an
-    /// exclusion does.
+    /// exclusion does - and it is not run as a suite either, whatever the project is built as. See
+    /// <see cref="IsTestProject"/>.
     /// </para>
     /// </remarks>
     public bool IsTestSupport => DeclaredTestSupport;

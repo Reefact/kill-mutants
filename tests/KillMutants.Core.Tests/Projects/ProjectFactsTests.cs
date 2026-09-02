@@ -118,6 +118,25 @@ public class ProjectFactsTests
         Assert.True(Facts(outputType: "Exe", "XUnit.V3.MTP-V2").IsTestProject);
     }
 
+    /// <summary>
+    /// A declaration outranks detection, so the two answers can never both be yes.
+    /// </summary>
+    /// <remarks>
+    /// Review found this. <c>ProjectDiscovery</c> reaches the test-project check first and stops
+    /// walking there, so a declared helper that happens to be a runnable test application would be
+    /// launched as a suite and would hide everything it references - the declaration silently
+    /// ignored. It is a statement of what the project is for, and no structural fact outranks that.
+    /// </remarks>
+    [Fact]
+    public void A_declared_support_project_is_not_a_test_project_however_it_is_built()
+    {
+        ProjectFacts facts = Facts(
+            outputType: "Exe", "xunit.v3.mtp-v2", declaredTestSupport: true, xunitTestProject: true);
+
+        Assert.True(facts.IsTestSupport);
+        Assert.False(facts.IsTestProject);
+    }
+
     [Fact]
     public void A_project_is_test_support_only_when_it_says_so()
     {

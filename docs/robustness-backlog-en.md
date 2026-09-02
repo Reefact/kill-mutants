@@ -905,6 +905,12 @@ the code under test: `<KillMutantsTestSupport>true</KillMutantsTestSupport>` sup
 a target without hiding what sits behind it - a hole in the graph, not a wall, exactly as an exclusion
 is.
 
+A second review round added the precedence between the two, which was missing: a declaration outranks
+detection, so the two answers can never both be yes. Without it, discovery reaches its test-project
+check first and stops walking there, and a declared helper that happens to be a runnable test
+application would be launched as a suite and would hide everything it references - the declaration
+silently ignored, which is the one thing a declaration must never be.
+
 **What it was costing.** Measured on `tests/fixtures/testsupport`, whose support library carries one
 comparison of its own:
 
