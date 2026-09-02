@@ -74,7 +74,10 @@ internal sealed class ProjectDiscovery
         // Ordinal ordering keeps the report stable between runs, which matters as soon as there is
         // more than one project to report on.
         SortedDictionary<string, List<TestProject>> testsByProject = new(ProjectPaths.Comparer);
-        Dictionary<string, string> frameworkByProject = new(ProjectPaths.Comparer);
+
+        // Every framework each mutable project is reached from, not just the first one seen. Keeping
+        // only the first is what let two test suites on different frameworks share one target.
+        Dictionary<string, SortedSet<string>> frameworksByProject = new(ProjectPaths.Comparer);
 
         // Filled only when a test project actually reaches an excluded project, so a repository
         // that excludes directories nothing references pays nothing for it.
@@ -94,9 +97,10 @@ internal sealed class ProjectDiscovery
                 if (!testsByProject.TryGetValue(mutablePath, out List<TestProject>? tests))
                 {
                     testsByProject[mutablePath] = tests = [];
-                    frameworkByProject[mutablePath] = testProject.TargetFramework;
+                    frameworksByProject[mutablePath] = new SortedSet<string>(StringComparer.Ordinal);
                 }
 
+                frameworksByProject[mutablePath].Add(testProject.TargetFramework);
                 tests.Add(runnable);
             }
         }
@@ -107,6 +111,8 @@ internal sealed class ProjectDiscovery
                 "The test projects reference no other project, so there is nothing to mutate.");
         }
 
+        RejectProjectsReachedFromSeveralFrameworks(frameworksByProject);
+
         List<MutationTestTarget> targets = [];
 
         foreach ((string mutablePath, List<TestProject> tests) in testsByProject)
@@ -115,7 +121,8 @@ internal sealed class ProjectDiscovery
             // several would otherwise be analysed against an arbitrary one, and its mutants emitted
             // for a framework nothing runs.
             ProjectFacts facts = await _msBuild
-                .GetProjectFactsAsync(mutablePath, frameworkByProject[mutablePath], cancellationToken)
+                .GetProjectFactsAsync(
+                    mutablePath, frameworksByProject[mutablePath].Single(), cancellationToken)
                 .ConfigureAwait(false);
 
             targets.Add(new MutationTestTarget(
@@ -257,6 +264,48 @@ internal sealed class ProjectDiscovery
         }
 
         return projects;
+    }
+
+    /// <summary>
+    /// The same rule as <see cref="RejectMultiTargetedTestProjects"/>, seen from the other end: a
+    /// project reached by test suites on different frameworks.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Only the first framework used to be kept, and both suites were attached to that one target.
+    /// The run then compiled one variant of the library and injected it into both test outputs -
+    /// so one suite was measured against an assembly it does not reference, and its verdicts
+    /// described a build that does not exist.
+    /// </para>
+    /// <para>
+    /// Mutating the library once per framework is the other answer, and it is not this one. It would
+    /// double the work, and it would collide on identity: a mutant's key is its file, position,
+    /// rule and text, none of which say which framework it was built for, so the two variants of
+    /// every mutant would be indistinguishable in the report they exist to be discussed in.
+    /// </para>
+    /// </remarks>
+    internal static void RejectProjectsReachedFromSeveralFrameworks(
+        IReadOnlyDictionary<string, SortedSet<string>> frameworksByProject)
+    {
+        KeyValuePair<string, SortedSet<string>>[] shared = [.. frameworksByProject
+            .Where(entry => entry.Value.Count > 1)
+            .OrderBy(entry => entry.Key, StringComparer.Ordinal)];
+
+        if (shared.Length == 0)
+        {
+            return;
+        }
+
+        string details = string.Join(
+            Environment.NewLine,
+            shared.Select(entry =>
+                $"  {Path.GetFileNameWithoutExtension(entry.Key)}: reached from " +
+                string.Join(", ", entry.Value)));
+
+        throw new ProjectAnalysisException(
+            "KillMutants cannot yet mutate a project that its test suites reach from different " +
+            "frameworks, because each framework would need its own run and its own score." +
+            Environment.NewLine + details);
     }
 
     /// <summary>
