@@ -130,6 +130,9 @@ excluded, or one that declares itself test support, is not this: those are delib
 run may print and [DEC0011](docs/decisions/0011-widen-a-partial-run-selection-when-a-test-file-changes-en.md)
 the selection rule; both record what the implementation deliberately does not do.
 
+A change to `killmutants.json` is refused: that file decides what a run measures, and a partial run
+cannot judge a change to its own configuration. Run without `--since` for that one.
+
 `--since` needs git, and needs the base revision to be in the clone: a shallow CI checkout often is
 not enough, and the run says so rather than silently comparing against whatever it can reach.
 

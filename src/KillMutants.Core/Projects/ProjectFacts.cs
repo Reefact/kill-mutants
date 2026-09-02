@@ -12,6 +12,11 @@ namespace KillMutants.Projects;
 /// <param name="DeclaredTestSupport">Whether the project sets <c>KillMutantsTestSupport</c>.</param>
 /// <param name="PackageReferences">Package identifiers the project references.</param>
 /// <param name="ProjectReferences">Absolute paths of the projects it references.</param>
+/// <param name="InputFiles">
+/// Absolute paths of every file the project compiles or carries, empty unless the query was asked
+/// for them. The authoritative answer to "does this project consume this file", which the directory
+/// a file sits in only approximates.
+/// </param>
 internal sealed record ProjectFacts(
     string ProjectPath,
     string AssemblyFileName,
@@ -23,7 +28,8 @@ internal sealed record ProjectFacts(
     bool XunitTestProject,
     bool DeclaredTestSupport,
     IReadOnlyList<string> PackageReferences,
-    IReadOnlyList<string> ProjectReferences)
+    IReadOnlyList<string> ProjectReferences,
+    IReadOnlyList<string> InputFiles)
 {
     /// <summary>The project name, for display.</summary>
     public string Name => Path.GetFileNameWithoutExtension(ProjectPath);

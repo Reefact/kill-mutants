@@ -1,5 +1,6 @@
 using KillMutants.Mutations;
 using KillMutants.Reporting;
+using KillMutants.Selection;
 
 namespace KillMutants.EndToEnd.Tests;
 
@@ -314,6 +315,144 @@ public class SinceRunTests
 
         Assert.Contains("Rounding.cs", MutatedFiles(report));
         Assert.True(report.HasUndetected);
+    }
+
+    /// <summary>
+    /// A change to a declared test-support library is a change to what its suites can see.
+    /// </summary>
+    /// <remarks>
+    /// Review found this. Support is deliberately not a target, so a changed file in it was added to
+    /// the selected files and then matched no compilation at all: a helper change that stops tests
+    /// reaching production behaviour selected nothing and passed. It is test-side, and widens through
+    /// the suites that reach it.
+    /// </remarks>
+    [Fact]
+    public async Task A_change_in_a_declared_support_library_widens_what_its_suites_exercise()
+    {
+        using var fixture = FixtureCopy.CreateTestSupportProject();
+
+        fixture.DeclareTheSupportProject();
+        FixtureRepository.InitialiseAt(fixture.Root);
+
+        File.AppendAllText(
+            Path.Combine(fixture.Root, "Sample.Support", "Affordability.cs"),
+            $"{Environment.NewLine}// touched{Environment.NewLine}");
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        Assert.Contains("Money.cs", MutatedFiles(report));
+    }
+
+    /// <summary>
+    /// An added fixture is not an added test, and the exception does not stretch to cover it.
+    /// </summary>
+    /// <remarks>
+    /// Review found the overreach. "A new test cannot remove an edge that predates it" is true of a
+    /// test; a case list, a settings file or any other input an existing test reads can change what
+    /// that test does, and adding one can remove a coverage edge with no production file in the diff
+    /// at all. Only an added C# file keeps the exception now.
+    /// </remarks>
+    [Fact]
+    public async Task An_added_fixture_in_a_test_project_widens_even_though_it_is_added()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+
+        File.WriteAllText(
+            Path.Combine(fixture.Root, "Domain.Tests", "cases.json"),
+            """{ "budget": 12 }""");
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        Assert.Contains("Basket.cs", MutatedFiles(report));
+    }
+
+    /// <summary>
+    /// A resource a project reaches out of its own folder for is still that project's input.
+    /// </summary>
+    /// <remarks>
+    /// Review found this as the production-side twin of the linked source: a non-C# file with no
+    /// enclosing project and no shared-build-file name fell through to nothing, even though the
+    /// project that embeds it would build differently. Attribution is by what a project evaluates,
+    /// which sees it.
+    /// </remarks>
+    [Fact]
+    public async Task A_linked_resource_outside_a_project_widens_the_project_that_embeds_it()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        Directory.CreateDirectory(Path.Combine(fixture.Root, "Shared"));
+
+        string resource = Path.Combine(fixture.Root, "Shared", "Strings.txt");
+
+        File.WriteAllText(resource, "one");
+
+        Reference(
+            fixture,
+            "Domain",
+            "Domain.csproj",
+            null,
+            """<EmbeddedResource Include="../Shared/Strings.txt" Link="Strings.txt" />""");
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+        File.WriteAllText(resource, "two");
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        Assert.Contains("Basket.cs", MutatedFiles(report));
+    }
+
+    /// <summary>
+    /// A partial run cannot judge a change to the settings that decide what it measures.
+    /// </summary>
+    /// <remarks>
+    /// Review found the sharp version: `exclude` in killmutants.json takes effect in discovery,
+    /// before any selection exists, so a change adding one removes a project from the targets and no
+    /// widening afterwards can reach it. A pull request could switch mutation testing off for a
+    /// component by editing the file that configures the gate. The run declines instead.
+    /// </remarks>
+    [Fact]
+    public async Task A_change_to_the_run_configuration_is_refused()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+
+        File.WriteAllText(
+            Path.Combine(fixture.Root, "killmutants.json"),
+            """{ "exclude": ["Domain/*"] }""");
+
+        ChangeSelectionException refusal = await Assert.ThrowsAsync<ChangeSelectionException>(
+            () => RunSinceHeadAsync(fixture));
+
+        Assert.Contains("killmutants.json", refusal.Message, StringComparison.Ordinal);
+        Assert.Contains("--since", refusal.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// An export that left a tracked project out is refused, not read as a project that never was.
+    /// </summary>
+    /// <remarks>
+    /// Review found two ways for `git archive` to be an unfaithful copy of a revision:
+    /// `export-ignore` in `.gitattributes`, which is a common way to keep tests out of a release
+    /// archive, and a submodule, which it records as a gitlink without recursing into. Either leaves
+    /// a project silently absent, and the base graph would drop the edge that ran through it.
+    /// </remarks>
+    [Fact]
+    public async Task A_base_export_that_omitted_a_tracked_project_is_refused()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        File.WriteAllText(Path.Combine(fixture.Root, ".gitattributes"), "Domain/ export-ignore\n");
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+        Touch(fixture, "Domain.Tests", "BasketTests.cs");
+
+        ChangeSelectionException refusal = await Assert.ThrowsAsync<ChangeSelectionException>(
+            () => RunSinceHeadAsync(fixture));
+
+        Assert.Contains("export-ignore", refusal.Message, StringComparison.Ordinal);
     }
 
     /// <summary>

@@ -33,17 +33,20 @@ internal sealed class BaseProjectGraph : IDisposable
     private readonly string _root;
     private readonly string _revision;
     private readonly Dictionary<string, ProjectFacts?> _facts;
+    private readonly HashSet<string> _tracked;
 
     private BaseProjectGraph(
         MsBuildQuery msBuild,
         string root,
         string revision,
-        IReadOnlyCollection<string> projectFiles)
+        IReadOnlyCollection<string> projectFiles,
+        IReadOnlyCollection<string> tracked)
     {
         _msBuild = msBuild;
         _root = root;
         _revision = revision;
         _facts = [];
+        _tracked = new HashSet<string>(tracked, RepositoryPath.Comparer);
         ProjectFiles = new HashSet<string>(projectFiles, RepositoryPath.Comparer);
     }
 
@@ -51,13 +54,23 @@ internal sealed class BaseProjectGraph : IDisposable
     public IReadOnlySet<string> ProjectFiles { get; }
 
     /// <summary>Exports the base revision beside the working copy and indexes its projects.</summary>
+    /// <param name="repository">The working copy to export from.</param>
+    /// <param name="revision">The commit to export.</param>
+    /// <param name="configuration">The build configuration to evaluate against.</param>
+    /// <param name="tracked">
+    /// Every path the revision tracks, so the export can be checked against what it should have
+    /// contained rather than trusted.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the export.</param>
     public static async Task<BaseProjectGraph> ExportAsync(
         GitRepository repository,
         string revision,
         string configuration,
+        IReadOnlyList<string> tracked,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(repository);
+        ArgumentNullException.ThrowIfNull(tracked);
 
         string root = Path.Combine(Path.GetTempPath(), $"killmutants-base-{Guid.NewGuid():N}");
 
@@ -72,7 +85,8 @@ internal sealed class BaseProjectGraph : IDisposable
                 .Select(path => path!)
                 .Order(StringComparer.Ordinal)];
 
-            return new BaseProjectGraph(new MsBuildQuery(configuration), root, revision, projects);
+            return new BaseProjectGraph(
+                new MsBuildQuery(configuration), root, revision, projects, tracked);
         }
         catch
         {
@@ -155,6 +169,22 @@ internal sealed class BaseProjectGraph : IDisposable
         }
 
         ProjectFacts? facts = null;
+
+        // Tracked at that revision and missing from the export is not "there was no such project":
+        // it is an export that did not say everything the revision does. `git archive` honours
+        // export-ignore in .gitattributes - a common way to keep tests out of a release archive -
+        // and records a submodule as a gitlink without recursing into it. Either would leave a
+        // project silently absent, the base graph would drop the edge that ran through it, and the
+        // run would go green over coverage it never checked. Review found both; the run refuses
+        // rather than under-widening in silence.
+        if (!ProjectFiles.Contains(repositoryPath) && _tracked.Contains(repositoryPath))
+        {
+            throw new ChangeSelectionException(
+                $"'{repositoryPath}' is tracked at {Short(_revision)} but is not in the export of " +
+                "that revision, so KillMutants cannot read the project graph it belongs to. " +
+                "'export-ignore' in .gitattributes and paths inside a submodule are both left out " +
+                "of a git archive. Run without --since to measure the whole codebase instead.");
+        }
 
         if (ProjectFiles.Contains(repositoryPath))
         {

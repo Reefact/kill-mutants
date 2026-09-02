@@ -88,7 +88,8 @@ internal sealed class MutationTestSession
         // Built here rather than in the constructor: the patterns are relative to the directory the
         // run was pointed at, which only this call knows.
         PathFilter exclusions = PathFilter.Excluding(searchDirectory, _exclude);
-        var discovery = new ProjectDiscovery(_configuration, exclusions, _progress);
+        var discovery = new ProjectDiscovery(
+            _configuration, exclusions, _progress, readInputFiles: _since is not null);
 
         IReadOnlyList<MutationTestTarget> targets = await discovery
             .DiscoverAsync(searchDirectory, cancellationToken)
@@ -102,8 +103,8 @@ internal sealed class MutationTestSession
             ? null
             : await ChangeSelection
                 .ResolveAsync(
-                    _since, searchDirectory, _configuration, targets, discovery.TestProjects,
-                    discovery.ProjectsLeftOut, _progress, cancellationToken)
+                    _since, searchDirectory, _configuration, discovery.Everything(targets),
+                    _progress, cancellationToken)
                 .ConfigureAwait(false);
 
         RunScope scope = selection?.Scope ?? RunScope.WholeCodebase;

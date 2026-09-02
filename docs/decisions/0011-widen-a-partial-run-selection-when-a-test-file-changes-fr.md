@@ -186,6 +186,18 @@ dû être rouge.
   projet importe explicitement depuis un répertoire voisin plutôt que depuis un parent.
   `MSBuildAllProjects` aurait été la réponse exacte et revient vide sur un projet SDK — mesuré — donc
   il n'existe pas de moyen économique de demander quels fichiers de build un projet lit vraiment.
+* Un fichier C# ajouté dans un projet de test n'élargit toujours rien, et seul un test peut être
+  supposé ajouter de la couverture plutôt que la changer. Un fichier portant une mise en place
+  partagée, ou un initialiseur de module, n'est pas un test et rien de peu coûteux ne l'en distingue.
+  Toute autre entrée ajoutée — une fixture, une liste de cas, un fichier de réglages — élargit
+  désormais, car l'argument « un test neuf ne peut pas retirer une arête préexistante » n'a jamais
+  porté sur elles.
+* Une modification de `killmutants.json` fait refuser l'exécution partielle plutôt que d'être
+  sélectionnée. L'`exclude` qui s'y trouve agit dans la découverte, avant qu'aucune sélection
+  n'existe : un changement qui en ajoute un retire un projet des cibles, et aucun élargissement
+  ultérieur ne peut le rattraper. Comparer les réglages des deux révisions serait la réponse précise ;
+  refuser de juger une modification de la configuration de l'exécution elle-même est la réponse
+  honnête.
 * Un fichier qu'un changement **supprime** et qu'un projet de test atteignait depuis l'extérieur de
   son propre répertoire n'est attribué à rien. L'appartenance se lit dans l'évaluation de HEAD, où un
   fichier supprimé n'apparaît plus, et la règle du répertoire qui couvre les suppressions ordinaires
