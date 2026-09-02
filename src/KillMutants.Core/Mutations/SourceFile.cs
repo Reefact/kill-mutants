@@ -59,10 +59,31 @@ internal static class SourceFile
             return true;
         }
 
-        string separator = Path.DirectorySeparatorChar.ToString();
-
-        return path.Contains(separator + "obj" + separator, StringComparison.OrdinalIgnoreCase);
+        return Normalised(path).Contains("/obj/", StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>Rewrites a path with one separator, so the rule reads every path the platform does.</summary>
+    /// <remarks>
+    /// <para>
+    /// Windows accepts <c>/</c> as well as <c>\</c> and .NET treats the two alike there, so a rule
+    /// built from <see cref="Path.DirectorySeparatorChar"/> alone recognises only half the paths it
+    /// is handed. Measured on a Windows runner:
+    /// <c>/src/obj/Debug/net10.0/Assembly.cs</c> was not generated output, and the mutants in an
+    /// <c>AssemblyInfo.cs</c> were reported as survivors - findings against code the developer
+    /// cannot change, which is the whole thing this rule exists to prevent.
+    /// </para>
+    /// <para>
+    /// On Unix the two properties are the same character, so nothing is rewritten and a backslash -
+    /// a perfectly legal character in a Unix file name - stays part of the name instead of being
+    /// promoted to a separator. The rule therefore cannot become wrong in the other direction.
+    /// </para>
+    /// <para>
+    /// <c>PathFilter</c> and <c>ProjectDiscovery</c> already read paths this way. This rule was the
+    /// one that did not.
+    /// </para>
+    /// </remarks>
+    private static string Normalised(string path) =>
+        path.Replace(Path.DirectorySeparatorChar, '/').Replace(Path.AltDirectorySeparatorChar, '/');
 
     private static bool HasGeneratedHeader(SyntaxTree tree)
     {
