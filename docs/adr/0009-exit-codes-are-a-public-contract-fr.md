@@ -73,7 +73,7 @@ tableau : il est donc énoncé plutôt que laissé à découvrir.
   reviendrait à tester notre intention au lieu du contrat.
 - Un code n'est jamais renuméroté, et un nouveau *genre* de résultat reçoit un nouveau code. Une
   nouvelle *cause* d'un résultat qu'un code nomme déjà le rejoint — c'est ce que
-  l'[ADR-0010](0010-a-partial-run-reports-findings-not-a-score-fr.md) a fait à `1`, dont les deux
-  causes sont désormais un score sous un seuil et un mutant nouvellement non détecté dans une
-  exécution partielle. La distinction est ce sur quoi un script de build peut agir : il branche sur
+  l'[ADR-0010](0010-a-partial-run-reports-findings-not-a-score-fr.md) a fait à `1`, dont les trois
+  cas sont énumérés avec le tableau ci-dessus. La distinction est ce sur quoi un script de build peut
+  agir : il branche sur
   « des constats » contre « je n'ai pas pu vérifier », pas sur lequel des constats.

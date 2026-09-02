@@ -18,16 +18,28 @@ est donc : tout site mutable du code de production modifié, **plus tout mutant 
 d'un fichier de test modifié**.
 
 Cette seconde moitié ne fonctionne que tant que le test est encore là pour être interrogé. Supprimez
-ou renommez un test — ou un utilitaire sur lequel les tests s'appuient — et la relation de couverture
-qui nommait les mutants qu'il tuait disparaît de HEAD avec lui : plus rien ne les sélectionne, et
-l'exécution redevient verte pour la raison exacte qui a motivé la règle. **Quand une modification
-dans un projet de test ne peut pas être rattachée à la couverture actuelle, la sélection s'élargit à
-tout mutant que ce projet de test couvre**, et si même cela ne peut être établi, l'exécution est non
-concluante. Plus lent, parfois beaucoup, et jamais un faux vert — le même arbitrage que l'exécution
-fait déjà quand la couverture est inconnue, et quand un filtre est trop long pour une ligne de
-commande. Lire la couverture de la révision de base serait la réponse précise plutôt que prudente, et
-elle exige les résultats stockés d'une exécution précédente : c'est la fonctionnalité de base de
-référence, et ce n'est délibérément pas celle-ci. Stryker.NET sélectionne sur les deux mêmes fondements — leur
+ou renommez un test — ou un utilitaire sur lequel les tests s'appuient — et la relation de
+couverture qui nommait les mutants qu'il tuait disparaît de HEAD avec lui : plus rien ne les
+sélectionne, et l'exécution redevient verte pour la raison exacte qui a motivé la règle. Et
+l'élargissement évident ne suffit pas, ce qu'il vaut la peine d'énoncer parce qu'il en a l'air :
+« tout mutant que ce projet de test couvre » se calcule lui aussi depuis la couverture HEAD, et si
+`T` était le *seul* test couvrant `M`, alors `M` a quitté cet ensemble à l'instant où `T` l'a
+quitté.
+Élargir le long de l'axe qui a déjà perdu l'information ne change rien.
+
+**Donc, quand une modification dans un projet de test ne peut pas être attribuée depuis la couverture
+HEAD, la sélection s'élargit à tout mutant des projets de production que ce projet de test exerce** —
+une relation que `MutationTestTarget` porte structurellement, par les références de projet, et qui
+survit donc à la suppression de n'importe quel nombre de tests. Si même cela ne peut être établi,
+l'exécution est non concluante.
+
+Plus lent, parfois beaucoup, et jamais un faux vert — le même arbitrage que l'exécution fait déjà
+quand la couverture est inconnue, et quand un filtre est trop long pour une ligne de commande. Lire
+la couverture de la révision de base serait la réponse précise plutôt que prudente, et elle exige les
+résultats stockés d'une exécution précédente : c'est la fonctionnalité de base de référence, et ce
+n'est délibérément pas celle-ci.
+
+Stryker.NET sélectionne sur les deux mêmes fondements — leur
 documentation de configuration, texto : *« For changes on test project files all mutants covered by
 tests in that file will be seen as changed. »* Que deux outils aboutissent à la même règle ne prouve
 pas grand-chose à soi seul, mais cela dit au moins que la seconde moitié n'est pas une inquiétude
