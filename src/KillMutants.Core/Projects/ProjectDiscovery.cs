@@ -30,6 +30,19 @@ internal sealed class ProjectDiscovery
     }
 
     /// <summary>
+    /// Every test project the last discovery recognised, whether or not it exercises anything.
+    /// </summary>
+    /// <remarks>
+    /// A test project that reaches no mutable project appears in no <see cref="MutationTestTarget"/>,
+    /// because there is nothing to pair it with. That is right for a run and wrong for a partial one:
+    /// a change can be what emptied it - remove a test project's last project reference and it
+    /// exercises nothing at HEAD - and the selection has to recognise its files as test-side in order
+    /// to ask the base revision what it used to cover. Reading the test projects back off the targets
+    /// missed exactly that case, and an end-to-end test found it.
+    /// </remarks>
+    public IReadOnlyList<TestProject> TestProjects { get; private set; } = [];
+
+    /// <summary>
     /// Discovers everything to mutate under <paramref name="searchDirectory"/>.
     /// </summary>
     /// <remarks>
@@ -54,6 +67,12 @@ internal sealed class ProjectDiscovery
         }
 
         RejectMultiTargetedTestProjects(testProjects);
+
+        TestProjects =
+        [
+            .. testProjects.Select(test =>
+                new TestProject(test.ProjectPath, test.AssemblyPath, test.OutputDirectory)),
+        ];
 
         return await PairProjectsWithTheirTestsAsync(projects, testProjects, cancellationToken)
             .ConfigureAwait(false);

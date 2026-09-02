@@ -235,7 +235,13 @@ exécuté sur le code source de KillMutants lui-même, ce qui a fait apparaître
 secondes. M11 rend sa sortie exploitable : ce que chaque famille de mutateurs a coûté et attrapé, les
 `--mutators` et `--without` qui agissent dessus, et `[ExcludeFromCodeCoverage]` respecté. M12 permet à
 un projet de garder ces choix dans `killmutants.json` plutôt que dans une commande shell : le
-catalogue derrière un score est ainsi versionné avec le code qu'il a noté.
+catalogue derrière un score est ainsi versionné avec le code qu'il a noté. M13 le rend utilisable sur
+une pull request plutôt que la nuit : `--since` ne juge que ce qu'un changement a touché et — parce
+qu'une population définie par un diff n'a pas de pourcentage qui vaille d'être imprimé — rapporte des
+constats et un verdict binaire plutôt qu'un score. L'ADR-0010 argumente cela, et la sélection qu'il
+arrête est la partie intéressante : le code de production modifié avec précision, les *tests*
+modifiés avec prudence, et le graphe de projets lu aux deux révisions, pour que retirer une référence
+de projet dans le changement jugé n'efface pas la réponse en même temps que la question.
 
 **Ce que mesure l'exécution sur lui-même.** 384 mutants sur `KillMutants.Core`, 6,8 minutes sur
 quatre cœurs : 106 tués, 111 survivants, un tué par timeout, 166 non couverts, aucun en échec de

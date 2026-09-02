@@ -95,6 +95,38 @@ dotnet killmutants --exclude "tests/fixtures/*" --exclude "*.Generated.cs"
 
 Note that `*` matches `/` as well, so `tests/*` covers everything beneath `tests`.
 
+## Judging a change rather than a codebase
+
+A full sweep of a real repository takes minutes; a diff takes seconds. `--since` runs only what a
+change touched, which is what makes mutation testing usable on a pull request rather than nightly:
+
+```bash
+dotnet killmutants --since origin/main
+```
+
+The change is measured from the merge base of that revision and `HEAD` to the **working tree**, since
+the working tree is what gets built. On a clean checkout — every CI job — that is the same thing as
+the commit; on a laptop with uncommitted work it is not, and the report says which it was.
+
+Changed production code is selected precisely, file by file. Anything touching an *existing* file in
+a test project widens instead, to every mutable project that test project exercises: what a change to
+a test removes is a coverage edge, and there is no asking `HEAD` about an edge that is no longer
+there. That relation is read at both revisions, so removing a project reference in the very change
+being judged does not delete the answer along with the question. A file the change *adds* to a test
+project widens nothing — a new test cannot have removed an edge that predates it.
+
+**A partial run prints no mutation score, and that is deliberate.** Its population is the change
+itself, chosen against a base revision that differs every run, so a percentage over it answers
+nothing that spans two runs. It prints the status counts, the findings by name, and a binary verdict:
+the run fails if the selected scope holds an undetected mutant — survived *or* uncovered, since code
+a change adds that nothing tests at all is the second and not the first. A threshold is therefore
+refused with `--since`; pass `--break-at none` to clear one your `killmutants.json` sets.
+[ADR-0010](docs/adr/0010-a-partial-run-reports-findings-not-a-score-en.md) argues all of this, and
+records what the implementation deliberately does not do.
+
+`--since` needs git, and needs the base revision to be in the clone: a shallow CI checkout often is
+not enough, and the run says so rather than silently comparing against whatever it can reach.
+
 Not every mutator family earns its keep on every project, and the report says which do. Measured
 against this repository: the operator families detect 45% to 55% of what they produce, while
 `StringLiteral` and `BooleanLiteral` together account for half the mutants and detect 10% to 15% —
@@ -172,7 +204,7 @@ score, which is the point.
 
 | exit code | meaning |
 |---|---|
-| 0 | Ran, and met the threshold if one was given |
+| 0 | Ran, and the gate you asked for passed — or you asked for none |
 | 1 | Ran, but the gate did not pass; standard error says which case |
 | 2 | Could not run; the reason is on standard error |
 | 64 | The command line was not understood |

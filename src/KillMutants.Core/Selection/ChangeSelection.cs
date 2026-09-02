@@ -81,6 +81,11 @@ internal sealed class ChangeSelection
     /// <param name="searchDirectory">The directory the run was pointed at.</param>
     /// <param name="configuration">The build configuration, for reading the base revision's graph.</param>
     /// <param name="targets">What discovery found at HEAD.</param>
+    /// <param name="testProjects">
+    /// Every test project discovery recognised - not only those that appear in a target. A test
+    /// project the change emptied exercises nothing at HEAD and is in no target, and its files still
+    /// have to be recognised as test-side.
+    /// </param>
     /// <param name="progress">Told when the base revision is being read, which is the slow part.</param>
     /// <param name="cancellationToken">Cancels the resolution.</param>
     /// <exception cref="ChangeSelectionException">
@@ -91,11 +96,13 @@ internal sealed class ChangeSelection
         string searchDirectory,
         string configuration,
         IReadOnlyList<MutationTestTarget> targets,
+        IReadOnlyList<TestProject> testProjects,
         IProgress<MutationTestProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(since);
         ArgumentNullException.ThrowIfNull(targets);
+        ArgumentNullException.ThrowIfNull(testProjects);
 
         GitRepository repository = await GitRepository
             .ContainingAsync(searchDirectory, cancellationToken)
@@ -116,7 +123,8 @@ internal sealed class ChangeSelection
             await repository.HasUncommittedChangesAsync(cancellationToken).ConfigureAwait(false),
             changes.Count);
 
-        var resolver = new Resolver(repository, baseRevision, configuration, targets, progress);
+        var resolver = new Resolver(
+            repository, baseRevision, configuration, targets, testProjects, progress);
 
         return await resolver.ResolveAsync(scope, changes, cancellationToken).ConfigureAwait(false);
     }
@@ -129,11 +137,14 @@ internal sealed class ChangeSelection
         string baseRevision,
         string configuration,
         IReadOnlyList<MutationTestTarget> targets,
+        IReadOnlyList<TestProject> testProjects,
         IProgress<MutationTestProgress>? progress)
     {
+        // From every test project discovery recognised, not from the targets. A test project that
+        // exercises nothing at HEAD is in no target, and a change removing its last project
+        // reference is precisely the case the base revision exists to answer.
         private readonly Dictionary<string, string> _testProjectByDirectory =
-            targets
-                .SelectMany(target => target.TestProjects)
+            testProjects
                 .DistinctBy(test => test.ProjectPath, ProjectPaths.Comparer)
                 .ToDictionary(
                     test => Path.GetDirectoryName(test.ProjectPath)!,
