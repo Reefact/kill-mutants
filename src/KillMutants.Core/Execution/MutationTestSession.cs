@@ -480,19 +480,22 @@ internal sealed class MutationTestSession
         // candidate, which is slower but never wrong.
         IReadOnlyList<TestName>? covering = coverage?.TestsReaching(mutant.Id);
 
-        if (covering is { Count: 0 })
-        {
-            // No test executes this code, so running the suite could only ever report the mutant as
-            // survived - which would read as a gap in the tests rather than as their absence. Saying
-            // NoCoverage is both true and cheaper: the suite is never run at all.
-            return new MutantResult(mutant, MutantStatus.NoCoverage);
-        }
-
+        // The emit comes first, even when nothing covers the mutant. A mutation that cannot be built
+        // is untestable and belongs outside the score; calling it NoCoverage instead counts it as
+        // undetected and holds the score down with a mutant no suite could ever have judged. The
+        // saving that mattered is untouched - the test suite is still never run for it.
         EmitOutcome emitted = compilation.EmitWith(mutant);
 
         if (!emitted.Success)
         {
             return new MutantResult(mutant, MutantStatus.CompileError, emitted.Diagnostics);
+        }
+
+        if (covering is { Count: 0 })
+        {
+            // No test executes this code, so running the suite could only ever report the mutant as
+            // survived - which would read as a gap in the tests rather than as their absence.
+            return new MutantResult(mutant, MutantStatus.NoCoverage);
         }
 
         sandbox.Inject(emitted.Assembly!);
