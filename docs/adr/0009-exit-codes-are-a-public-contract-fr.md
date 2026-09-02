@@ -64,4 +64,9 @@ tableau : il est donc énoncé plutôt que laissé à découvrir.
 - La correspondance est désormais testable, et elle est testée en exécutant le vrai exécutable et en
   vérifiant le code qu'il renvoie, plutôt qu'en vérifiant la logique derrière. Tester autre chose
   reviendrait à tester notre intention au lieu du contrat.
-- Ajouter un résultat plus tard signifie ajouter un code, jamais renuméroter un code existant.
+- Un code n'est jamais renuméroté, et un nouveau *genre* de résultat reçoit un nouveau code. Une
+  nouvelle *cause* d'un résultat qu'un code nomme déjà le rejoint — c'est ce que
+  l'[ADR-0010](0010-a-partial-run-reports-findings-not-a-score-fr.md) a fait à `1`, dont les deux
+  causes sont désormais un score sous un seuil et un mutant nouvellement non détecté dans une
+  exécution partielle. La distinction est ce sur quoi un script de build peut agir : il branche sur
+  « des constats » contre « je n'ai pas pu vérifier », pas sur lequel des constats.

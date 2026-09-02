@@ -8,6 +8,14 @@
 because a full sweep of this repository takes minutes and a diff takes seconds, and it is what makes
 mutation testing usable on a pull request rather than nightly.
 
+**"Touches" has to include the tests.** A change that only deletes an assertion puts no production
+code in the diff at all, so a selection reading production files alone finds nothing to run and
+reports an empty, passing run - while the mutants that assertion used to kill now survive. That is
+precisely the untested behaviour this feature exists to catch, arriving by the door nobody watches.
+So the selection is: every mutable site in the changed production code, **plus every mutant covered
+by a test in a changed test file**. Stryker.NET selects on the same two grounds, which is some
+evidence that the second is not a theoretical worry.
+
 The question this decides is what such a run may print. Every other run of this tool ends with a
 mutation score. The obvious thing is to print one here too.
 
@@ -18,15 +26,20 @@ mutants - they do not, since the code itself changes between commits - but that 
 *rule of scope*: every mutable site in the selected codebase. The population moves; the question the
 number answers stays put, so a movement in the number is a statement about the suite.
 
-A partial run has no such rule. Its denominator is *the mutants in this diff*, and a diff is not a
-scope, it is an accident of what someone happened to touch. Six mutants on Tuesday, ninety on
-Wednesday, and nothing in common between them. A run that prints 72 % and then 40 % has not measured
-a decline; it has answered two different questions and given both answers the same name, the same
-formula, and the same place in the report.
+A partial run has a rule too - the sites its change touches - and it would be too convenient to
+pretend otherwise. The difference is what the rule is anchored to. The full run's scope is the
+codebase, which is the same object from one run to the next; the partial run's scope is defined
+against a base revision chosen per run, so its population is not merely different each time but
+different *by construction*, with no relation between one run's and the next's.
 
-And the number would be badly made as well as badly named. **A small denominator claims a precision
-it does not have**: a diff with three mutants and one survivor renders as "66.7 %", three significant
-figures on a measurement that carries none.
+A percentage over it is therefore a perfectly meaningful answer to *how well did the suite do on this
+change?* - and no answer at all to any question spanning two runs. Print 72 % on Tuesday and 40 % on
+Wednesday under one name, one formula and one place in the report, and the reader will draw a trend
+from two numbers that share nothing but their units.
+
+The number would also be badly made. **A small denominator claims a precision it does not have**: two
+detected and one undetected renders as "66.67 %" - four significant figures, pinned by
+`MutationScoreTests`, on a measurement that carries none.
 
 One trap this does *not* have, which is worth writing down because the obvious version of this
 argument gets it wrong. An empty diff does not produce a reassuring headline here:
@@ -82,6 +95,14 @@ two. Both are named in the output, and both fail the verdict.
 `CompileError` stays outside it, for the reason it stays outside the score: the suite was never asked
 about a mutant the tool could not build.
 
+**But a run that could test nothing has not passed.** Excluding untestable mutants one at a time is
+right; letting a change whose mutants were *all* untestable report success is not, and the two are
+one line apart. ADR-0009 already settled the full-run version of this - an undefined score fails a
+threshold, because a run that demonstrated nothing must not let a misconfigured job stay green - and
+the partial run inherits it: a selection that produced mutants, none of which could be tested, is
+reported as inconclusive and does not pass. A change with no mutants at all is a different thing and
+does pass, having nothing to answer for.
+
 **No status means "outside the diff".** Mutants a partial run did not consider are not generated, not
 counted, and not reported with a state of their own. Adding a status that silently leaves the
 denominator is precisely the seam described above, and we would be importing it deliberately.
@@ -109,9 +130,11 @@ run. That feature earns a percentage. `--since` does not, and the two must not b
 
 ## Consequences
 
-- `--since` cannot be used as a percentage gate. That is the point, not a limitation to work around
-  later: the gate it offers instead — no new undetected mutant — is a stronger statement about a
-  change than any threshold over six mutants would be.
+- `--since` cannot be used as a percentage gate. The gate it offers instead — no new undetected
+  mutant — is *not* stronger than every threshold, and claiming so would be the same kind of
+  overstatement this document keeps correcting: on a non-empty population it fails under exactly the
+  same condition as a 100 % threshold. What it has over a percentage is that it stays meaningful
+  when the denominator is six, where a threshold is arithmetic about nothing.
 - **This broadens exit code `1`, and says so.** [ADR-0009](0009-exit-codes-are-a-public-contract-en.md)
   defined `1` as *the mutation score is below `--break-at`*, and a partial run has no score. Rather
   than let the table and the behaviour disagree, `1` now means what that ADR's own reasoning always
