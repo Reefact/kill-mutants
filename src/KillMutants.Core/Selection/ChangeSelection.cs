@@ -20,6 +20,12 @@ namespace KillMutants.Selection;
 /// <c>Tests</c> to <c>ProjectA</c> in the change being judged, and HEAD no longer says <c>Tests</c>
 /// exercises <c>ProjectA</c>.
 /// </para>
+/// <para>
+/// A changed file is attributed to the projects that <em>consume</em> it - MSBuild's evaluated items,
+/// in union with the directory it sits in - and then plays every role those projects give it. Review
+/// found the alternative the hard way, four times over: a rule that asks "which one project owns
+/// this file" has to guess, and every guess it made was wrong for some legal layout.
+/// </para>
 /// </remarks>
 internal sealed class ChangeSelection
 {
@@ -27,11 +33,11 @@ internal sealed class ChangeSelection
     /// Files outside a project directory that a build reads, and that change what the code does.
     /// </summary>
     /// <remarks>
-    /// A change to one of these widens every mutable project beneath it, which in the usual case of
-    /// a repository-root <c>Directory.Build.props</c> means all of them - a partial run that is
-    /// briefly a full one. That is the honest answer: these files decide what is compiled, against
-    /// which package versions, with which constants. Documentation, workflows and everything else
-    /// outside a project are ignored, so a docs change selects nothing and finishes at once.
+    /// A change to one of these widens every project beneath it, which in the usual case of a
+    /// repository-root <c>Directory.Build.props</c> means all of them - a partial run that is briefly
+    /// a full one. That is the honest answer: these files decide what is compiled, against which
+    /// package versions, with which constants. Documentation, workflows and everything else outside a
+    /// project are ignored, so a docs change selects nothing and finishes at once.
     /// </remarks>
     private static readonly string[] SharedBuildFiles =
     [
@@ -58,6 +64,9 @@ internal sealed class ChangeSelection
         CoverageLost = coverageLost;
     }
 
+    /// <summary>What the report says about the population this run inspected.</summary>
+    public RunScope Scope { get; }
+
     /// <summary>
     /// Projects the base revision's tests exercised, that still exist, and that no test project
     /// reaches any more.
@@ -83,9 +92,6 @@ internal sealed class ChangeSelection
     /// </remarks>
     public IReadOnlyList<string> CoverageLost { get; }
 
-    /// <summary>What the report says about the population this run inspected.</summary>
-    public RunScope Scope { get; }
-
     /// <summary>
     /// True when nothing in the change can produce a mutant, so there is nothing to build or run.
     /// </summary>
@@ -94,7 +100,8 @@ internal sealed class ChangeSelection
     /// changed. A change that touches C# files belonging to no compilation still goes the long way
     /// round and finds no mutants, which is slower and never wrong.
     /// </remarks>
-    public bool SelectsNothing => _widened.Count == 0 && _changedFiles.IsEmpty;
+    public bool SelectsNothing =>
+        _widened.Count == 0 && _changedFiles.IsEmpty && CoverageLost.Count == 0;
 
     /// <summary>What to generate mutants from, for one project under test.</summary>
     public MutantSelection For(ProjectUnderTest projectUnderTest)
@@ -110,35 +117,23 @@ internal sealed class ChangeSelection
     /// <param name="since">The revision to measure the change from.</param>
     /// <param name="searchDirectory">The directory the run was pointed at.</param>
     /// <param name="configuration">The build configuration, for reading the base revision's graph.</param>
-    /// <param name="targets">What discovery found at HEAD.</param>
-    /// <param name="testProjects">
-    /// Every test project discovery recognised - not only those that appear in a target. A test
-    /// project the change emptied exercises nothing at HEAD and is in no target, and its files still
-    /// have to be recognised as test-side.
-    /// </param>
-    /// <param name="projectsLeftOut">
-    /// Projects this run deliberately does not mutate, so that one whose coverage a change removed
-    /// can be told from one the user asked to be left alone.
-    /// </param>
+    /// <param name="discovered">What discovery found at HEAD, and what it consumes.</param>
     /// <param name="progress">Told when the base revision is being read, which is the slow part.</param>
     /// <param name="cancellationToken">Cancels the resolution.</param>
     /// <exception cref="ChangeSelectionException">
-    /// The change, or the base revision's project graph, could not be read.
+    /// The change, or the base revision's project graph, could not be read - or the change touches
+    /// the run's own configuration, which a partial run cannot judge.
     /// </exception>
     public static async Task<ChangeSelection> ResolveAsync(
         string since,
         string searchDirectory,
         string configuration,
-        IReadOnlyList<MutationTestTarget> targets,
-        IReadOnlyList<TestProject> testProjects,
-        IReadOnlySet<string> projectsLeftOut,
+        DiscoveredProjects discovered,
         IProgress<MutationTestProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(since);
-        ArgumentNullException.ThrowIfNull(targets);
-        ArgumentNullException.ThrowIfNull(testProjects);
-        ArgumentNullException.ThrowIfNull(projectsLeftOut);
+        ArgumentNullException.ThrowIfNull(discovered);
 
         GitRepository repository = await GitRepository
             .ContainingAsync(searchDirectory, cancellationToken)
@@ -153,16 +148,50 @@ internal sealed class ChangeSelection
             .ChangesSinceAsync(baseRevision, cancellationToken)
             .ConfigureAwait(false);
 
+        RefuseIfTheGateItselfChanged(changes);
+
         var scope = new RunScope(
             baseRevision,
             head,
             await repository.HasUncommittedChangesAsync(cancellationToken).ConfigureAwait(false),
             changes.Count);
 
-        var resolver = new Resolver(
-            repository, baseRevision, configuration, targets, testProjects, projectsLeftOut, progress);
+        var resolver = new Resolver(repository, baseRevision, configuration, discovered, progress);
 
         return await resolver.ResolveAsync(scope, changes, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Refuses a partial run whose change edits the settings that decide what a run measures.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Review found the sharp version of this: <c>exclude</c> in <c>killmutants.json</c> takes effect
+    /// in discovery, before any selection exists, so a change that adds one removes a project from
+    /// the targets and no widening afterwards can reach it. A pull request could switch mutation
+    /// testing off for a component by editing the file that configures the gate, and the gate would
+    /// report a clean partial run over its own disarming.
+    /// </para>
+    /// <para>
+    /// Comparing the two revisions' settings and keeping whatever the change removed would be the
+    /// precise answer. This is the honest one: a partial run cannot judge a change to its own
+    /// configuration, so it declines to, and says to run without <c>--since</c>. Declining to answer
+    /// is a thing this tool is allowed to do; answering as though the question were unchanged is not.
+    /// </para>
+    /// </remarks>
+    private static void RefuseIfTheGateItselfChanged(IReadOnlyList<FileChange> changes)
+    {
+        FileChange? configuration = changes.FirstOrDefault(change =>
+            Path.GetFileName(change.Path).Equals("killmutants.json", StringComparison.OrdinalIgnoreCase));
+
+        if (configuration is not null)
+        {
+            throw new ChangeSelectionException(
+                $"'{Path.GetFileName(configuration.Path)}' changed in this diff, and it decides what a " +
+                "run measures - which projects are excluded, which mutators run, whether coverage is " +
+                "measured. A partial run cannot judge a change to its own configuration, because the " +
+                "new settings would already have narrowed what it looked at. Run without --since.");
+        }
     }
 
     /// <summary>
@@ -172,43 +201,26 @@ internal sealed class ChangeSelection
         GitRepository repository,
         string baseRevision,
         string configuration,
-        IReadOnlyList<MutationTestTarget> targets,
-        IReadOnlyList<TestProject> testProjects,
-        IReadOnlySet<string> projectsLeftOut,
+        DiscoveredProjects discovered,
         IProgress<MutationTestProgress>? progress)
     {
-        /// <summary>
-        /// Test projects by the directory they sit in, all of them, and from every test project
-        /// discovery recognised rather than from the targets.
-        /// </summary>
+        /// <summary>Every project discovery read, by the directory it sits in.</summary>
         /// <remarks>
-        /// <para>
         /// A list per directory, not one project: two projects in one folder is unusual and legal,
         /// and review found that assuming otherwise threw a duplicate-key exception before a single
-        /// change had been classified - so every partial run in such a repository died where a full
-        /// run works, which is the worst shape a limitation can take.
-        /// </para>
-        /// <para>
-        /// From <see cref="ProjectDiscovery.TestProjects"/>, because a test project that exercises
-        /// nothing at HEAD is in no target - and a change that emptied it is exactly the case the
-        /// base revision exists to answer.
-        /// </para>
+        /// change had been classified.
         /// </remarks>
-        private readonly Dictionary<string, List<string>> _testProjectsByDirectory =
-            Grouped(testProjects.DistinctBy(test => test.ProjectPath, ProjectPaths.Comparer),
-                test => Path.GetDirectoryName(test.ProjectPath)!,
-                test => test.ProjectPath);
+        private readonly Dictionary<string, List<string>> _projectsByDirectory =
+            Grouped(discovered.AllProjects, project => Path.GetDirectoryName(project)!);
 
-        private readonly Dictionary<string, List<ProjectUnderTest>> _mutableProjectsByDirectory =
-            Grouped(
-                targets,
-                target => target.ProjectUnderTest.ProjectDirectory,
-                target => target.ProjectUnderTest);
-
-        /// <summary>
-        /// Every file each test project compiles or carries, or null until a change needs asking.
-        /// </summary>
-        private Dictionary<string, HashSet<string>>? _testProjectInputs;
+        /// <summary>Which projects consume each file, inverted from what discovery evaluated.</summary>
+        /// <remarks>
+        /// The authoritative half of attribution. A project can compile or carry a file from
+        /// anywhere - a <c>Compile</c> with a <c>Link</c>, an <c>EmbeddedResource</c> reached with
+        /// <c>..</c>, a glob leaving the folder - and the directory a file sits in says nothing about
+        /// any of that.
+        /// </remarks>
+        private readonly Dictionary<string, List<string>> _consumersByFile = Inverted(discovered.Inputs);
 
         public async Task<ChangeSelection> ResolveAsync(
             RunScope scope,
@@ -217,9 +229,6 @@ internal sealed class ChangeSelection
         {
             HashSet<string> widened = new(ProjectPaths.Comparer);
             HashSet<string> changedFiles = new(ProjectPaths.Comparer);
-
-            // Test projects whose files the change touched, by the path git knows them under, so the
-            // two revisions can be asked about the same project.
             HashSet<string> touchedTestProjects = new(ProjectPaths.Comparer);
             List<FileChange> unattributed = [];
 
@@ -231,41 +240,20 @@ internal sealed class ChangeSelection
                 // the whole subtree is taken conservatively before anything else looks at it.
                 if (Directory.Exists(change.Path))
                 {
-                    WidenBeneath(widened, change.Path);
-
-                    foreach (string testProject in TestProjectsBeneath(change.Path))
-                    {
-                        touchedTestProjects.Add(testProject);
-                    }
+                    WidenBeneath(widened, touchedTestProjects, change.Path);
 
                     continue;
                 }
 
-                // Every role the file plays, not the first one that matches. Review found that
-                // checking the test side first and moving on suppressed the other: in a nested
-                // layout - tests/A/A.Tests.csproj beside tests/A/FixtureLib/FixtureLib.csproj - an
-                // added production file was attributed to the enclosing suite, added files widen
-                // nothing, and so newly added untested code produced an empty, passing run.
+                // Additive from here on. A file plays every role its consumers give it, because it
+                // can have more than one: a source compiled by a suite and by a library, a resource
+                // one project owns and another links. Review found each of those in turn behind a
+                // rule that stopped at the first match.
                 bool attributed = false;
 
-                IReadOnlyList<string> owningTests = await TestProjectsOwningAsync(
-                        change.Path, cancellationToken)
-                    .ConfigureAwait(false);
-
-                if (owningTests.Count > 0)
+                foreach (string project in ProjectsConsuming(change.Path))
                 {
-                    attributed = true;
-
-                    // An added file cannot have removed a coverage edge that predates it, so it
-                    // widens nothing. See DEC0011, and the note there on what this implementation
-                    // deliberately does not do in that case.
-                    if (change.Kind != ChangeKind.Added)
-                    {
-                        foreach (string testProject in owningTests)
-                        {
-                            touchedTestProjects.Add(testProject);
-                        }
-                    }
+                    attributed |= Attribute(change, project, widened, touchedTestProjects);
                 }
 
                 if (IsCSharp(change.Path))
@@ -276,45 +264,19 @@ internal sealed class ChangeSelection
                     changedFiles.Add(change.Path);
                     attributed = true;
                 }
-                else
-                {
-                    List<ProjectUnderTest> mutable = MutableProjectsOwning(change.Path);
 
-                    // Not a source file, but inside a project: a project file, a resource, an input
-                    // the code reads. Any of them can change what the assembly does or what it is
-                    // built from, and none of them says which lines.
-                    foreach (ProjectUnderTest project in mutable)
-                    {
-                        widened.Add(project.ProjectPath);
-                        attributed = true;
-                    }
+                // Checked whatever else claimed the file, and not instead: a Directory.Build.props
+                // beside a project affects that project and every one beneath it, and attributing it
+                // to its neighbour alone left the rest of the tree unselected.
+                if (IsSharedBuildFile(change.Path))
+                {
+                    WidenBeneath(widened, touchedTestProjects, Path.GetDirectoryName(change.Path)!);
+                    attributed = true;
                 }
 
                 if (!attributed)
                 {
                     unattributed.Add(change);
-                }
-            }
-
-            foreach (FileChange change in unattributed)
-            {
-                if (!IsSharedBuildFile(change.Path))
-                {
-                    continue;
-                }
-
-                string directory = Path.GetDirectoryName(change.Path)!;
-
-                WidenBeneath(widened, directory);
-
-                // And the test projects beneath it, which review found missing: a
-                // tests/Directory.Build.props sits *above* every suite and beneath no production
-                // project, so widening only what was physically under it widened nothing at all in
-                // the ordinary src/ and tests/ layout - and a props file can remove a source from a
-                // suite's compilation as surely as deleting it would.
-                foreach (string testProject in TestProjectsBeneath(directory))
-                {
-                    touchedTestProjects.Add(testProject);
                 }
             }
 
@@ -324,6 +286,72 @@ internal sealed class ChangeSelection
 
             return new ChangeSelection(
                 scope, widened, MutantSelection.Of(changedFiles), coverageLost);
+        }
+
+        /// <summary>
+        /// Gives a change the role one consuming project has for it, and says whether it had one.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Three kinds of consumer and three answers. A test project: the change is test-side, and
+        /// widens what that suite exercises. A declared test-support library: also test-side, through
+        /// the suites that reach it - review found that a changed helper was added to the selected
+        /// files and then matched no compilation, since support is not a target, so a helper change
+        /// that stops tests reaching production behaviour selected nothing at all. A target: a source
+        /// file is selected precisely by the caller, anything else widens the project, since a
+        /// resource or a project file can change what the assembly does without saying which lines.
+        /// </para>
+        /// <para>
+        /// The exception for an added file is narrower than it was. A new <em>test</em> cannot remove
+        /// a coverage edge that predates it, which is what DEC0011 argues; a new fixture, case list or
+        /// settings file consumed by existing tests can change what they do, and review was right
+        /// that the rationale does not stretch to cover it. So only an added C# file keeps the
+        /// exception. What remains is that an added C# file could hold shared setup or a module
+        /// initializer rather than a test - recorded in DEC0011 rather than assumed away.
+        /// </para>
+        /// </remarks>
+        private bool Attribute(
+            FileChange change,
+            string project,
+            HashSet<string> widened,
+            HashSet<string> touchedTestProjects)
+        {
+            bool addedSource = change.Kind == ChangeKind.Added && IsCSharp(change.Path);
+
+            if (discovered.TestProjectPaths.Contains(project))
+            {
+                if (!addedSource)
+                {
+                    touchedTestProjects.Add(project);
+                }
+
+                return true;
+            }
+
+            if (discovered.LeftOut.TryGetValue(project, out IReadOnlyList<string>? reachedBy))
+            {
+                if (!addedSource)
+                {
+                    foreach (string testProject in reachedBy)
+                    {
+                        touchedTestProjects.Add(testProject);
+                    }
+                }
+
+                return true;
+            }
+
+            if (!discovered.TargetPaths.Contains(project))
+            {
+                return false;
+            }
+
+            if (!IsCSharp(change.Path))
+            {
+                widened.Add(project);
+            }
+
+            return true;
         }
 
         /// <summary>
@@ -337,7 +365,7 @@ internal sealed class ChangeSelection
         {
             foreach (string testProject in touchedTestProjects)
             {
-                foreach (MutationTestTarget target in targets.Where(target =>
+                foreach (MutationTestTarget target in discovered.Targets.Where(target =>
                              target.TestProjects.Any(test =>
                                  ProjectPaths.Comparer.Equals(test.ProjectPath, testProject))))
                 {
@@ -359,8 +387,12 @@ internal sealed class ChangeSelection
             progress?.Report(new MutationTestProgress(
                 MutationTestPhase.SelectingChanges, Subject: Short(baseRevision)));
 
+            IReadOnlyList<string> filesAtBase = await repository
+                .ListFilesAsync(baseRevision, cancellationToken)
+                .ConfigureAwait(false);
+
             using BaseProjectGraph graph = await BaseProjectGraph
-                .ExportAsync(repository, baseRevision, configuration, cancellationToken)
+                .ExportAsync(repository, baseRevision, configuration, filesAtBase, cancellationToken)
                 .ConfigureAwait(false);
 
             List<string> atBase = [.. touchedTestProjects.Select(RepositoryPathOf).OfType<string>()];
@@ -415,8 +447,8 @@ internal sealed class ChangeSelection
             string absolute = RepositoryPath.In(repository.Root, repositoryPath);
 
             return File.Exists(absolute) &&
-                   !projectsLeftOut.Contains(absolute) &&
-                   !testProjects.Any(test => ProjectPaths.Comparer.Equals(test.ProjectPath, absolute));
+                   !discovered.LeftOut.ContainsKey(absolute) &&
+                   !discovered.TestProjectPaths.Contains(absolute);
         }
 
         /// <summary>
@@ -427,10 +459,7 @@ internal sealed class ChangeSelection
         /// Not "and no longer exist", which is what this asked at first and what review corrected. A
         /// change can leave a test project's file exactly where it is and stop it being a test
         /// project - flip its <c>OutputType</c>, declare it test support, drop the package - and the
-        /// suite is just as disabled as if it had been deleted. Asking about existence missed that
-        /// entirely: the file was still there, so the project was not a candidate, and if another
-        /// suite still reached the same production code the run went green over a suite that had
-        /// been switched off.
+        /// suite is just as disabled as if it had been deleted.
         /// </remarks>
         private async Task<IReadOnlyList<string>> FormerTestProjectsAsync(
             IReadOnlyList<FileChange> unattributed,
@@ -442,7 +471,7 @@ internal sealed class ChangeSelection
             }
 
             HashSet<string> testProjectsAtHead = new(
-                testProjects.Select(test => RepositoryPathOf(test.ProjectPath)).OfType<string>(),
+                discovered.TestProjectPaths.Select(RepositoryPathOf).OfType<string>(),
                 RepositoryPath.Comparer);
 
             string[] candidates = [.. (await repository
@@ -480,95 +509,35 @@ internal sealed class ChangeSelection
         {
             string absolute = RepositoryPath.In(repository.Root, repositoryPath);
 
-            return targets
-                .Select(target => target.ProjectUnderTest.ProjectPath)
-                .FirstOrDefault(path => ProjectPaths.Comparer.Equals(path, absolute));
+            return discovered.TargetPaths.FirstOrDefault(
+                path => ProjectPaths.Comparer.Equals(path, absolute));
         }
 
         private string? RepositoryPathOf(string path) => RepositoryPath.Of(repository.Root, path);
 
         /// <summary>
-        /// Every test project that owns <paramref name="path"/>: by what it compiles, or failing
-        /// that by where it sits.
+        /// Every project that consumes <paramref name="path"/>: by what it evaluates, and by where
+        /// it sits.
         /// </summary>
         /// <remarks>
-        /// <para>
-        /// Two rules in a union, because each covers what the other cannot. Evaluated membership is
-        /// exact and catches a file the project reaches out of its own folder for - review found
-        /// that a test project including <c>../SharedTests/Assertions.cs</c> had that change read as
-        /// production code, so deleting an assertion from it produced an empty, passing run.
-        /// </para>
-        /// <para>
-        /// The directory rule catches what evaluation cannot see: a file the change deleted is no
-        /// longer in HEAD's item list, and a deleted test file is the case the widening rule was
-        /// written for in the first place.
-        /// </para>
-        /// <para>
-        /// What neither covers is a file both deleted and linked from outside every test project's
-        /// directory. Recorded rather than pretended away.
-        /// </para>
+        /// A union, and this time in the code as well as in the comment. Evaluated membership is
+        /// exact and sees a file a project reaches out of its own folder for; the directory sees a
+        /// file the change <em>deleted</em>, which no evaluation lists any more. Neither covers the
+        /// other's blind spot, and taking the first that answered - which is what this did until
+        /// review said so - misses every file that has two consumers.
         /// </remarks>
-        private async Task<IReadOnlyList<string>> TestProjectsOwningAsync(
-            string path,
-            CancellationToken cancellationToken)
+        private IEnumerable<string> ProjectsConsuming(string path)
         {
-            Dictionary<string, HashSet<string>> inputs = await TestProjectInputsAsync(cancellationToken)
-                .ConfigureAwait(false);
-
             string full = Path.GetFullPath(path);
 
-            // Both, always. Returning the directory's owners as soon as there were any made the two
-            // rules alternatives rather than a union - review found it, and the case is real: a file
-            // that sits in one suite's folder and is linked into another would have widened only the
-            // first, leaving production code that only the second exercises out of the run.
-            return
-            [
-                .. Owning(_testProjectsByDirectory, path)
-                    .Concat(inputs.Where(entry => entry.Value.Contains(full)).Select(entry => entry.Key))
-                    .Distinct(ProjectPaths.Comparer),
-            ];
+            IEnumerable<string> byEvaluation = _consumersByFile.TryGetValue(full, out List<string>? consumers)
+                ? consumers
+                : [];
+
+            return byEvaluation
+                .Concat(Owning(_projectsByDirectory, path))
+                .Distinct(ProjectPaths.Comparer);
         }
-
-        /// <summary>
-        /// What each test project compiles or carries, read once and only when a change needs it.
-        /// </summary>
-        /// <remarks>
-        /// One MSBuild evaluation per test project, cached for the run, on a partial run only - a
-        /// full run never pays it. It is read on the first change classified rather than only for a
-        /// file no directory claims: the two rules are a union, so the answer is needed for every
-        /// file, and paying for it lazily per file would have meant not paying for it at all.
-        /// </remarks>
-        private async Task<Dictionary<string, HashSet<string>>> TestProjectInputsAsync(
-            CancellationToken cancellationToken)
-        {
-            if (_testProjectInputs is not null)
-            {
-                return _testProjectInputs;
-            }
-
-            var msBuild = new MsBuildQuery(configuration);
-            Dictionary<string, HashSet<string>> inputs = new(ProjectPaths.Comparer);
-
-            foreach (TestProject testProject in testProjects.DistinctBy(
-                         test => test.ProjectPath, ProjectPaths.Comparer))
-            {
-                inputs[testProject.ProjectPath] = new HashSet<string>(
-                    await msBuild
-                        .GetInputFilesAsync(testProject.ProjectPath, cancellationToken: cancellationToken)
-                        .ConfigureAwait(false),
-                    ProjectPaths.Comparer);
-            }
-
-            return _testProjectInputs = inputs;
-        }
-
-        private List<ProjectUnderTest> MutableProjectsOwning(string path) =>
-            Owning(_mutableProjectsByDirectory, path);
-
-        private IEnumerable<string> TestProjectsBeneath(string directory) =>
-            testProjects
-                .Where(test => IsUnder(Path.GetDirectoryName(test.ProjectPath), directory))
-                .Select(test => test.ProjectPath);
 
         /// <summary>
         /// The projects of the nearest enclosing directory, or none when the file is under none.
@@ -578,13 +547,13 @@ internal sealed class ChangeSelection
         /// <c>src/Core/Sub</c> if there is a project there, and to <c>src/Core</c> otherwise. All the
         /// projects at that depth are returned, since a directory may hold more than one.
         /// </remarks>
-        private static List<T> Owning<T>(Dictionary<string, List<T>> byDirectory, string path)
+        private static List<string> Owning(Dictionary<string, List<string>> byDirectory, string path)
         {
             string? directory = Path.GetDirectoryName(Path.GetFullPath(path));
-            List<T> found = [];
+            List<string> found = [];
             int longest = -1;
 
-            foreach ((string candidate, List<T> values) in byDirectory)
+            foreach ((string candidate, List<string> values) in byDirectory)
             {
                 if (candidate.Length > longest && IsUnder(directory, candidate))
                 {
@@ -596,35 +565,70 @@ internal sealed class ChangeSelection
             return found;
         }
 
-        private static Dictionary<string, List<TValue>> Grouped<TSource, TValue>(
-            IEnumerable<TSource> source,
-            Func<TSource, string> directory,
-            Func<TSource, TValue> value)
+        private static Dictionary<string, List<string>> Grouped(
+            IEnumerable<string> source,
+            Func<string, string> key)
         {
-            Dictionary<string, List<TValue>> grouped = new(ProjectPaths.Comparer);
+            Dictionary<string, List<string>> grouped = new(ProjectPaths.Comparer);
 
-            foreach (TSource item in source)
+            foreach (string item in source)
             {
-                string key = directory(item);
+                string directory = key(item);
 
-                if (!grouped.TryGetValue(key, out List<TValue>? values))
+                if (!grouped.TryGetValue(directory, out List<string>? values))
                 {
-                    grouped[key] = values = [];
+                    grouped[directory] = values = [];
                 }
 
-                values.Add(value(item));
+                values.Add(item);
             }
 
             return grouped;
         }
 
-        private void WidenBeneath(HashSet<string> widened, string directory)
+        private static Dictionary<string, List<string>> Inverted(
+            IReadOnlyDictionary<string, IReadOnlyList<string>> inputsByProject)
         {
-            foreach (MutationTestTarget target in targets)
+            Dictionary<string, List<string>> consumers = new(ProjectPaths.Comparer);
+
+            foreach ((string project, IReadOnlyList<string> files) in inputsByProject)
+            {
+                foreach (string file in files)
+                {
+                    if (!consumers.TryGetValue(file, out List<string>? projects))
+                    {
+                        consumers[file] = projects = [];
+                    }
+
+                    projects.Add(project);
+                }
+            }
+
+            return consumers;
+        }
+
+        /// <summary>Widens every project beneath a directory, and marks its suites touched.</summary>
+        private void WidenBeneath(
+            HashSet<string> widened,
+            HashSet<string> touchedTestProjects,
+            string directory)
+        {
+            foreach (MutationTestTarget target in discovered.Targets)
             {
                 if (IsUnder(target.ProjectUnderTest.ProjectDirectory, directory))
                 {
                     widened.Add(target.ProjectUnderTest.ProjectPath);
+                }
+            }
+
+            // The suites too, and not only the targets under the file. A tests/Directory.Build.props
+            // sits above every suite and beneath no production project, so widening what was
+            // physically under it widened nothing at all in the ordinary src/ and tests/ layout.
+            foreach (string testProject in discovered.TestProjectPaths)
+            {
+                if (IsUnder(Path.GetDirectoryName(testProject), directory))
+                {
+                    touchedTestProjects.Add(testProject);
                 }
             }
         }

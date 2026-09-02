@@ -16,12 +16,21 @@ internal sealed class MsBuildQuery
     private static readonly TimeSpan Budget = TimeSpan.FromMinutes(5);
 
     private readonly string _configuration;
+    private readonly bool _readInputFiles;
 
-    public MsBuildQuery(string configuration)
+    /// <param name="configuration">The build configuration to evaluate against.</param>
+    /// <param name="readInputFiles">
+    /// Also read what each project consumes. Off by default, because the answer is long - every
+    /// source file, resource and content item, with MSBuild's metadata on each - and only a partial
+    /// run has a use for it. Asked here rather than in a query of its own so that no run pays an
+    /// extra process per project for it.
+    /// </param>
+    public MsBuildQuery(string configuration, bool readInputFiles = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(configuration);
 
         _configuration = configuration;
+        _readInputFiles = readInputFiles;
     }
 
     /// <summary>
@@ -64,6 +73,11 @@ internal sealed class MsBuildQuery
             "-getItem:ProjectReference",
         ]);
 
+        if (_readInputFiles)
+        {
+            arguments.AddRange(InputItemNames.Select(item => $"-getItem:{item}"));
+        }
+
         string output = await RunRawAsync(projectPath, arguments, cancellationToken).ConfigureAwait(false);
 
         using JsonDocument json = ParseJson(projectPath, output);
@@ -92,7 +106,8 @@ internal sealed class MsBuildQuery
                 root,
                 "ProjectReference",
                 identity => Path.GetFullPath(Path.Combine(directory, identity)),
-                RunsAtRunTime));
+                RunsAtRunTime),
+            InputFiles: [.. InputItemNames.SelectMany(item => ReadFullPaths(root, item))]);
     }
 
     /// <summary>Reads an MSBuild boolean, which is written in whatever case the author felt like.</summary>
@@ -186,6 +201,25 @@ internal sealed class MsBuildQuery
         item.TryGetProperty(name, out JsonElement value) ? value.GetString() ?? string.Empty : string.Empty;
 
     /// <summary>
+    /// The item types whose files can change what a project builds or how it behaves.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Sources first, then everything a project carries alongside them. Review added
+    /// <c>EmbeddedResource</c> and <c>AdditionalFiles</c> to the three this started with: a test
+    /// project can consume a case list as an embedded resource, and a generator reads its inputs as
+    /// additional files, and either can change what an existing test does without a line of C#
+    /// moving.
+    /// </para>
+    /// <para>
+    /// It is a list of what MSBuild can be asked for cheaply, not a proof of completeness. A project
+    /// can read a file at run time that appears in no item at all, and nothing here would see it.
+    /// </para>
+    /// </remarks>
+    private static readonly string[] InputItemNames =
+        ["Compile", "None", "Content", "EmbeddedResource", "AdditionalFiles"];
+
+    /// <summary>
     /// Every file a project compiles or carries, as absolute paths, read from evaluation alone.
     /// </summary>
     /// <remarks>
@@ -219,18 +253,13 @@ internal sealed class MsBuildQuery
             arguments.Add($"-p:TargetFramework={targetFramework}");
         }
 
-        arguments.AddRange(["-getItem:Compile", "-getItem:None", "-getItem:Content"]);
+        arguments.AddRange(InputItemNames.Select(item => $"-getItem:{item}"));
 
         string output = await RunRawAsync(projectPath, arguments, cancellationToken).ConfigureAwait(false);
 
         using JsonDocument json = ParseJson(projectPath, output);
 
-        return
-        [
-            .. ReadFullPaths(json.RootElement, "Compile"),
-            .. ReadFullPaths(json.RootElement, "None"),
-            .. ReadFullPaths(json.RootElement, "Content"),
-        ];
+        return [.. InputItemNames.SelectMany(item => ReadFullPaths(json.RootElement, item))];
     }
 
     /// <summary>

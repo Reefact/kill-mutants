@@ -168,6 +168,16 @@ precise and wrong when the failure mode is a green run that should have been red
   from beside a project rather than from above it. MSBuild's `MSBuildAllProjects` would have been the
   exact answer and comes back empty on an SDK project - measured - so there is no cheap way to ask
   which build files a project actually reads.
+* An added C# file in a test project still widens nothing, and only a test can be assumed to add
+  coverage rather than change it. A file holding shared setup, or a module initializer, is not a test
+  and nothing cheap tells it from one. Every other added input - a fixture, a case list, a settings
+  file - now widens, because the "a new test cannot remove an old edge" argument was never about
+  those.
+* A change to `killmutants.json` refuses the partial run outright rather than being selected for.
+  `exclude` there takes effect in discovery, before any selection exists, so a change adding one
+  removes a project from the targets and no widening afterwards can reach it. Comparing the two
+  revisions' settings would be the precise answer; declining to judge a change to the run's own
+  configuration is the honest one.
 * A file that a change both **deletes** and that a test project reached from outside its own
   directory is attributed to nothing. Membership is read from HEAD's evaluation, where a deleted file
   no longer appears, and the directory rule that covers ordinary deletions does not reach it either.

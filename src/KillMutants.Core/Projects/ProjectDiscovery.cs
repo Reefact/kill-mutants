@@ -11,23 +11,33 @@ internal sealed class ProjectDiscovery
 {
     private static readonly TimeSpan BuildBudget = TimeSpan.FromMinutes(10);
 
-    private readonly HashSet<string> _leftOut = new(ProjectPaths.Comparer);
+    private readonly Dictionary<string, List<string>> _leftOut = new(ProjectPaths.Comparer);
+    private readonly Dictionary<string, IReadOnlyList<string>> _inputs = new(ProjectPaths.Comparer);
     private readonly MsBuildQuery _msBuild;
     private readonly string _configuration;
     private readonly PathFilter _exclusions;
     private readonly IProgress<MutationTestProgress>? _progress;
 
+    /// <param name="configuration">The build configuration to analyse and run.</param>
+    /// <param name="exclusions">Paths to leave alone.</param>
+    /// <param name="progress">Told where discovery has got to.</param>
+    /// <param name="readInputFiles">
+    /// Also read what each project consumes, for a run that has to attribute a changed file to the
+    /// projects that build it. Off for a full run, which has no use for the answer and would pay for
+    /// it in the size of every MSBuild reply.
+    /// </param>
     public ProjectDiscovery(
         string configuration,
         PathFilter? exclusions = null,
-        IProgress<MutationTestProgress>? progress = null)
+        IProgress<MutationTestProgress>? progress = null,
+        bool readInputFiles = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(configuration);
 
         _configuration = configuration;
         _exclusions = exclusions ?? PathFilter.None;
         _progress = progress;
-        _msBuild = new MsBuildQuery(configuration);
+        _msBuild = new MsBuildQuery(configuration, readInputFiles);
     }
 
     /// <summary>
@@ -52,7 +62,28 @@ internal sealed class ProjectDiscovery
     /// stopped being covered. "No test reaches it any more" and "you asked me to leave it alone" look
     /// identical from the target list and mean opposite things.
     /// </remarks>
-    public IReadOnlySet<string> ProjectsLeftOut => _leftOut;
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> ProjectsLeftOut =>
+        _leftOut.ToDictionary(
+            entry => entry.Key, entry => (IReadOnlyList<string>)entry.Value, ProjectPaths.Comparer);
+
+    /// <summary>Everything the last discovery learned, for a caller that needs more than targets.</summary>
+    public DiscoveredProjects Everything(IReadOnlyList<MutationTestTarget> targets) =>
+        new(
+            targets,
+            new HashSet<string>(
+                TestProjects.Select(test => test.ProjectPath), ProjectPaths.Comparer),
+            ProjectsLeftOut,
+            InputsByProject);
+
+    /// <summary>
+    /// What each project discovery read consumes, by project path, empty unless it was asked.
+    /// </summary>
+    /// <remarks>
+    /// Every project, not only the targets: a partial run has to attribute a changed file to
+    /// whatever builds it, and that includes a test project and a declared support library as much
+    /// as a project under test.
+    /// </remarks>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> InputsByProject => _inputs;
 
     /// <summary>
     /// Discovers everything to mutate under <paramref name="searchDirectory"/>.
@@ -221,9 +252,16 @@ internal sealed class ProjectDiscovery
             }
             else
             {
-                // Reached, and left alone on purpose. Recorded so that a partial run can tell this
-                // apart from a project whose last test reference a change has just removed.
-                _leftOut.Add(path);
+                // Reached, and left alone on purpose. Recorded with the suite that reached it, so a
+                // partial run can tell this apart from a project whose last test reference a change
+                // has just removed - and can widen through it, since a change to a support library
+                // is a change to what its suites can see.
+                if (!_leftOut.TryGetValue(path, out List<string>? reachedBy))
+                {
+                    _leftOut[path] = reachedBy = [];
+                }
+
+                reachedBy.Add(testProject.ProjectPath);
             }
 
             foreach (string reference in facts.ProjectReferences)
@@ -301,8 +339,12 @@ internal sealed class ProjectDiscovery
                 MutationTestPhase.Discovering, projects.Count, paths.Length,
                 Path.GetFileNameWithoutExtension(path)));
 
-            projects.Add(await _msBuild.GetProjectFactsAsync(path, cancellationToken: cancellationToken)
-                .ConfigureAwait(false));
+            ProjectFacts facts = await _msBuild
+                .GetProjectFactsAsync(path, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            _inputs[facts.ProjectPath] = facts.InputFiles;
+            projects.Add(facts);
         }
 
         return projects;
