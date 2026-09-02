@@ -9,6 +9,15 @@ en premier, parce qu'un balayage complet de ce dépôt prend des minutes et qu'u
 secondes — c'est elle qui rend le test de mutation utilisable sur une pull request plutôt qu'une fois
 par nuit.
 
+**« Toucher » doit inclure les tests.** Un changement qui se contente de supprimer une assertion ne
+met aucun code de production dans le diff : une sélection qui ne lit que les fichiers de production
+n'y trouve rien à exécuter et rapporte une exécution vide et verte — pendant que les mutants que
+cette assertion tuait survivent désormais. C'est exactement le comportement non testé que cette
+fonctionnalité existe pour attraper, arrivant par la porte que personne ne surveille. La sélection
+est donc : tout site mutable du code de production modifié, **plus tout mutant couvert par un test
+d'un fichier de test modifié**. Stryker.NET sélectionne sur les deux mêmes fondements, ce qui indique
+que le second n'est pas une inquiétude théorique.
+
 La question tranchée ici est : qu'a le droit d'afficher une telle exécution ? Toutes les autres se
 terminent par un score de mutation. L'évidence serait d'en afficher un ici aussi.
 
@@ -20,15 +29,22 @@ qu'elles jugent les mêmes mutants — elles ne le font pas, puisque le code lui
 sélectionné. La population bouge ; la question à laquelle le nombre répond, elle, ne bouge pas, si
 bien qu'un mouvement du nombre est une affirmation sur la suite de tests.
 
-Une exécution partielle n'a pas de règle de ce genre. Son dénominateur est *les mutants de ce diff*,
-et un diff n'est pas une portée : c'est l'accident de ce que quelqu'un a touché. Six mutants mardi,
-quatre-vingt-dix mercredi, et rien de commun entre les deux. Une exécution qui affiche 72 % puis 40 %
-n'a pas mesuré une dégradation : elle a répondu à deux questions différentes et donné aux deux
-réponses le même nom, la même formule et la même place dans le rapport.
+Une exécution partielle a une règle elle aussi — les sites que son changement touche — et il serait
+trop commode de prétendre le contraire. La différence tient à ce sur quoi la règle est ancrée. La
+portée d'une exécution complète, c'est le dépôt, qui est le même objet d'une fois sur l'autre ; celle
+d'une exécution partielle est définie contre une révision de base choisie à chaque exécution, si bien
+que sa population n'est pas seulement différente à chaque fois : elle l'est *par construction*, sans
+aucune relation entre celle d'une exécution et celle de la suivante.
 
-Et le nombre serait mal fabriqué autant que mal nommé. **Un petit dénominateur revendique une
-précision qu'il n'a pas** : un diff de trois mutants dont un survit s'affiche « 66,7 % », trois
-chiffres significatifs sur une mesure qui n'en porte aucun.
+Un pourcentage là-dessus est donc une réponse parfaitement sensée à *dans quelle mesure la suite
+s'est-elle bien comportée sur ce changement ?* — et aucune réponse à une question qui enjambe deux
+exécutions. Affichez 72 % mardi et 40 % mercredi sous un seul nom, une seule formule et une seule
+place dans le rapport, et le lecteur tirera une tendance de deux nombres qui ne partagent que leur
+unité.
+
+Le nombre serait aussi mal fabriqué. **Un petit dénominateur revendique une précision qu'il n'a
+pas** : deux détectés et un non détecté s'affichent « 66,67 % » — quatre chiffres significatifs,
+épinglés par `MutationScoreTests`, sur une mesure qui n'en porte aucun.
 
 Un piège que nous n'avons *pas*, et qu'il vaut la peine d'écrire parce que la version évidente de cet
 argument s'y trompe. Un diff vide ne produit pas ici de titre rassurant :
@@ -87,6 +103,15 @@ sont nommés dans la sortie, et les deux font échouer le verdict.
 `CompileError` en reste dehors, pour la raison qui l'exclut déjà du score : la suite n'a jamais été
 interrogée sur un mutant que l'outil n'a pas su construire.
 
+**Mais une exécution qui n'a rien pu tester n'a pas réussi.** Exclure les mutants intestables un par
+un est juste ; laisser un changement dont *tous* les mutants étaient intestables rapporter un succès
+ne l'est pas, et les deux sont à une ligne l'un de l'autre. L'ADR-0009 a déjà tranché la version
+complète de ce problème — un score indéfini fait échouer un seuil, parce qu'une exécution qui n'a
+rien démontré ne doit pas laisser un job mal configuré rester vert — et l'exécution partielle en
+hérite : une sélection qui a produit des mutants dont aucun n'a pu être testé est rapportée comme non
+concluante et ne passe pas. Un changement sans aucun mutant est autre chose, et passe : il n'a rien à
+répondre.
+
 **Aucun statut ne signifie « hors du diff ».** Les mutants qu'une exécution partielle n'a pas
 considérés ne sont pas engendrés, pas comptés, et pas rapportés avec un état à eux. Ajouter un statut
 qui quitte silencieusement le dénominateur, c'est exactement la couture décrite plus haut, et nous
@@ -117,9 +142,12 @@ ne doivent pas être confondues.
 
 ## Conséquences
 
-- `--since` ne peut pas servir de barrière en pourcentage. C'est le but, pas une limitation à
-  contourner plus tard : la barrière qu'il offre à la place — aucun nouveau mutant non détecté — est
-  une affirmation plus forte sur un changement que n'importe quel seuil sur six mutants.
+- `--since` ne peut pas servir de barrière en pourcentage. La barrière qu'il offre à la place —
+  aucun nouveau mutant non détecté — n'est *pas* plus forte que tout seuil, et l'affirmer serait la
+  même surenchère que ce document ne cesse de corriger : sur une population non vide, elle échoue
+  exactement dans les mêmes conditions qu'un seuil à 100 %. Ce qu'elle a de plus qu'un pourcentage,
+  c'est de rester sensée quand le dénominateur vaut six, là où un seuil n'est plus que de
+  l'arithmétique sur rien.
 - **Cela élargit le code de sortie `1`, et le dit.**
   L'[ADR-0009](0009-exit-codes-are-a-public-contract-fr.md) définissait `1` comme *le score de
   mutation est inférieur à `--break-at`*, or une exécution partielle n'a pas de score. Plutôt que de

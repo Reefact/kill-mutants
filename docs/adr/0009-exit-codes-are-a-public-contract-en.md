@@ -61,4 +61,9 @@ both tools will need to read this table, so it is stated rather than left to be 
 - The mapping is now testable, and is tested by running the real executable and asserting on the
   code it returns, rather than by asserting on the policy behind it. Testing anything else would
   test our intention instead of the contract.
-- Adding an outcome later means adding a code, never renumbering an existing one.
+- A code is never renumbered, and a new *kind* of outcome gets a new code. A new *cause* of an
+  outcome a code already names joins it instead — which is what
+  [ADR-0010](0010-a-partial-run-reports-findings-not-a-score-en.md) did to `1`, whose two causes are
+  now a score below a threshold and a newly undetected mutant in a partial run. The distinction is
+  what a build script can act on: it branches on "findings" versus "could not check", not on which
+  finding.
