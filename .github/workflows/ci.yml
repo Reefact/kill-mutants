@@ -1,0 +1,126 @@
+name: ci
+
+# Runs the tests. That sentence should be unremarkable, and until this file existed it was not true
+# of any workflow here: release-dryrun.yml builds the solution and rehearses the pack without running
+# a single test, and release.yml - which does run them - only fires on a tag. A suite was therefore
+# verified by whoever happened to run it locally, and by nobody else.
+#
+# Everything runs, slow tests included. A suite's end-to-end tests are usually where its real defects
+# are found, and a CI that skipped them would be the same half-measure in a smaller size.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Cancel superseded runs on the same branch / PR.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read-only: this workflow publishes nothing and needs no write scope.
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+
+jobs:
+  # Lints the workflows, this one included. It is a job in the gate rather than a workflow of its own
+  # because a broken workflow is not something to discover on the run that needed it: the failure
+  # modes it catches - a mistyped `runs-on`, an expression that never evaluates, an action input that
+  # does not exist - all look like a green workflow that quietly did nothing.
+  #
+  # It runs whether or not the repository has a solution yet, since it has nothing to do with the
+  # code. On a GitHub runner actionlint also shellchecks every `run:` block, which is where its first
+  # finding here came from.
+  workflows:
+    name: Lint the workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Installed from source at a pinned version rather than through a third-party action: the Go
+      # module checksum database verifies what is fetched, and nothing here runs a script downloaded
+      # from the internet. Runners ship Go and shellcheck; actionlint uses the latter for `run:`
+      # blocks and silently skips those checks when it is absent, so it must stay installed.
+      - name: Install actionlint
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+
+      - name: Lint
+        run: |
+          set -euo pipefail
+          command -v shellcheck > /dev/null || {
+            echo "::error::shellcheck is not installed, so actionlint would skip every script check."
+            exit 1
+          }
+          "$(go env GOPATH)/bin/actionlint"
+
+  test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    # A suite whose end-to-end tests each run a whole mutation sweep takes minutes, and more on a
+    # two-core runner than on a developer's machine. Generous, but bounded.
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      # Discovered rather than hardcoded, for the same reason release-dryrun.yml discovers it, and
+      # with the same tolerance: this repository legitimately has no solution until the branch
+      # carrying the projects lands, and a workflow that failed on that state would be red for a
+      # reason that is not a defect. More than one is an error - `dotnet` cannot pick between them.
+      - name: Locate the solution
+        id: solution
+        run: |
+          set -euo pipefail
+          found="$(find . -maxdepth 1 \( -name '*.sln' -o -name '*.slnx' \))"
+          count="$(printf '%s' "$found" | grep -c . || true)"
+          if [ "$count" -gt 1 ]; then
+            echo "::error::Found $count solutions at the repository root; 'dotnet' cannot pick one."
+            exit 1
+          fi
+          if [ "$count" -eq 0 ]; then
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No solution at the repository root yet; there is nothing to test."
+            exit 0
+          fi
+          echo "present=true" >> "$GITHUB_OUTPUT"
+          echo "path=$(printf '%s' "$found" | head -n1)" >> "$GITHUB_OUTPUT"
+
+      # -p:Configuration=Release on the restore so it evaluates the same graph the build compiles: a
+      # PackageReference conditioned on Release is otherwise absent from project.assets.json.
+      - name: Restore
+        if: steps.solution.outputs.present == 'true'
+        env:
+          SOLUTION: ${{ steps.solution.outputs.path }}
+        run: dotnet restore "$SOLUTION" -p:Configuration=Release
+
+      - name: Build
+        if: steps.solution.outputs.present == 'true'
+        env:
+          SOLUTION: ${{ steps.solution.outputs.path }}
+        run: dotnet build "$SOLUTION" -c Release --no-restore
+
+      # --solution, not a positional argument. The .NET 10 SDK refuses `dotnet test <solution>` with
+      # "Specifying a solution for 'dotnet test' should be via '--solution'" and exits 1 before
+      # running anything - which is what release.yml did until this branch, in the one workflow no
+      # ordinary run exercises before a tag.
+      - name: Test
+        if: steps.solution.outputs.present == 'true'
+        env:
+          SOLUTION: ${{ steps.solution.outputs.path }}
+        run: dotnet test --solution "$SOLUTION" -c Release --no-build

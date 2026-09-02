@@ -1,0 +1,157 @@
+name: ci-preview
+
+# The same build and the same tests, on the newest .NET SDK preview rather than on the released one.
+#
+# What it is for: finding out that the next SDK breaks us before it ships, rather than on the day a
+# user upgrades. New analyzers, a new default language version and new compiler diagnostics all
+# arrive through the SDK, and this repository builds with warnings as errors - so a preview will
+# break it for reasons that are not defects as often as for reasons that are.
+#
+# Which is why it is DELIBERATELY NOT A GATE. It never runs on a pull request, and the job is
+# allowed to fail without failing the workflow. Its output is a signal to read, not a verdict to
+# obey; a red gate on somebody else's preview churn teaches people to ignore red gates.
+
+on:
+  schedule:
+    # Weekly, Monday morning UTC. Previews ship roughly monthly, so this is frequent enough to catch
+    # one within days of release and rare enough that nobody learns to skim past it.
+    - cron: '0 6 * * 1'
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ci-preview-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+
+jobs:
+  preview:
+    name: Build and test on the newest SDK preview
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    # The whole point: this reports, it does not gate.
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # The channel is asked for rather than written down. Naming a major here - '11.0.x' - would
+      # pin this job to .NET 11 for ever: the day 11 ships and previews move to 12, it would keep
+      # installing a released SDK and reporting green, having quietly stopped doing the one thing it
+      # exists for. Microsoft's own release index says which channel is in preview today.
+      - name: Find the newest preview channel
+        id: channel
+        run: |
+          set -euo pipefail
+          curl -sSL --retry 3 --fail \
+            https://builds.dotnet.microsoft.com/dotnet/release-metadata/releases-index.json \
+            -o releases-index.json
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+
+          index = json.load(open("releases-index.json"))["releases-index"]
+
+          # go-live counts: it is a preview you are allowed to ship on, and it is still the newest
+          # thing coming.
+          previews = [r for r in index if r.get("support-phase") in ("preview", "go-live")]
+          previews.sort(
+              key=lambda r: [int(part) for part in r["channel-version"].split(".")], reverse=True)
+
+          print(f"present={'true' if previews else 'false'}")
+          if previews:
+              print(f"channel={previews[0]['channel-version']}")
+              print(f"sdk={previews[0].get('latest-sdk', 'unknown')}")
+          PY
+          if [ "$(grep -c '^present=true$' "$GITHUB_OUTPUT")" -eq 0 ]; then
+            echo "::notice::No .NET channel is in preview today; there is nothing newer to test on."
+          fi
+
+      - name: Setup the newest .NET preview
+        if: steps.channel.outputs.present == 'true'
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '${{ steps.channel.outputs.channel }}.x'
+          dotnet-quality: 'preview'
+
+      # Before the diagnostic below, not after it. global.json pins the SDK for everyone who builds
+      # this repository, which is what it is for - and it would quietly send this job back to the
+      # released SDK. Left in place, it would also make the diagnostic report the pinned SDK while
+      # the build used the preview: the one number in this job that has to be true would be wrong.
+      # Overridden in the runner's checkout only, never committed, and only when the file exists.
+      - name: Let the preview SDK be used
+        if: steps.channel.outputs.present == 'true'
+        run: |
+          set -euo pipefail
+          if [ ! -f global.json ]; then
+            echo "::notice::No global.json; the preview SDK is used as installed."
+            exit 0
+          fi
+          python3 - <<'PY'
+          import json, pathlib
+          path = pathlib.Path("global.json")
+          document = json.loads(path.read_text())
+          sdk = document.setdefault("sdk", {})
+          before = dict(sdk)
+          sdk.pop("version", None)
+          sdk["rollForward"] = "latestMajor"
+          path.write_text(json.dumps(document, indent=2) + "\n")
+          print(f"global.json sdk: {before} -> {sdk}")
+          PY
+
+      # A run that does not say what it ran on cannot be acted on, and "the newest preview" is a
+      # moving target by construction. It runs after the pin is dropped so that what it prints is
+      # the SDK that actually compiles the code.
+      - name: Say which SDK this is
+        if: steps.channel.outputs.present == 'true'
+        run: |
+          set -euo pipefail
+          echo "::notice::Testing against .NET SDK $(dotnet --version) (channel ${CHANNEL})"
+          dotnet --info | sed -n '1,12p'
+        env:
+          CHANNEL: ${{ steps.channel.outputs.channel }}
+
+      - name: Locate the solution
+        id: solution
+        if: steps.channel.outputs.present == 'true'
+        run: |
+          set -euo pipefail
+          found="$(find . -maxdepth 1 \( -name '*.sln' -o -name '*.slnx' \))"
+          count="$(printf '%s' "$found" | grep -c . || true)"
+          if [ "$count" -gt 1 ]; then
+            echo "::error::Found $count solutions at the repository root; 'dotnet' cannot pick one."
+            exit 1
+          fi
+          if [ "$count" -eq 0 ]; then
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No solution at the repository root yet; there is nothing to test."
+            exit 0
+          fi
+          echo "present=true" >> "$GITHUB_OUTPUT"
+          echo "path=$(printf '%s' "$found" | head -n1)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore
+        if: steps.channel.outputs.present == 'true' && steps.solution.outputs.present == 'true'
+        env:
+          SOLUTION: ${{ steps.solution.outputs.path }}
+        run: dotnet restore "$SOLUTION" -p:Configuration=Release
+
+      - name: Build
+        if: steps.channel.outputs.present == 'true' && steps.solution.outputs.present == 'true'
+        env:
+          SOLUTION: ${{ steps.solution.outputs.path }}
+        run: dotnet build "$SOLUTION" -c Release --no-restore
+
+      - name: Test
+        if: steps.channel.outputs.present == 'true' && steps.solution.outputs.present == 'true'
+        env:
+          SOLUTION: ${{ steps.solution.outputs.path }}
+        run: dotnet test --solution "$SOLUTION" -c Release --no-build
