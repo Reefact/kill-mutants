@@ -74,6 +74,11 @@ public static class JsonReportWriter
         hasUndetected = report.HasUndetected,
         inconclusive = report.IsInconclusive,
 
+        // Projects the change stopped covering. They carry no mutants - nothing reaches them - so a
+        // consumer reading only the counts would see a clean run over a component that lost its
+        // tests entirely.
+        coverageLost = report.CoverageLost,
+
         // Published so a CI job can act on them rather than only a person reading a terminal.
         warnings = report.Warnings.Select(warning => warning.Text).ToArray(),
         byMutator = report.ByMutator.Select(family => Describe(family, report.Scope)).ToArray(),

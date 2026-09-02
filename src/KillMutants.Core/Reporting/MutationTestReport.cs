@@ -10,11 +10,16 @@ public sealed class MutationTestReport
     /// <param name="duration">How long the whole run took.</param>
     /// <param name="environment">What the run ran on, and under what limits.</param>
     /// <param name="scope">What population was inspected. Defaults to the whole codebase.</param>
+    /// <param name="coverageLost">
+    /// Projects the change stopped covering entirely, which have no mutants here because nothing
+    /// reaches them any more.
+    /// </param>
     public MutationTestReport(
         IReadOnlyList<MutantResult> results,
         TimeSpan duration = default,
         RunEnvironment? environment = null,
-        RunScope? scope = null)
+        RunScope? scope = null,
+        IReadOnlyList<string>? coverageLost = null)
     {
         ArgumentNullException.ThrowIfNull(results);
 
@@ -22,6 +27,7 @@ public sealed class MutationTestReport
         Duration = duration;
         Environment = environment;
         Scope = scope ?? RunScope.WholeCodebase;
+        CoverageLost = coverageLost ?? [];
         Killed = Count(MutantStatus.Killed);
         Survived = Count(MutantStatus.Survived);
         TimedOut = Count(MutantStatus.Timeout);
@@ -114,6 +120,18 @@ public sealed class MutationTestReport
     public RunScope Scope { get; }
 
     /// <summary>
+    /// Projects the change stopped covering: exercised at the base revision, still there, and
+    /// reached by no test project any more.
+    /// </summary>
+    /// <remarks>
+    /// Not mutants, and that is the point. Nothing reaches these projects, so no suite could judge a
+    /// mutant in one and the run has none to report - which is exactly how a change that deletes a
+    /// component's last test came to read as a clean pass. They are named instead, and a partial run
+    /// that has any does not pass.
+    /// </remarks>
+    public IReadOnlyList<string> CoverageLost { get; }
+
+    /// <summary>
     /// True when the run answered "did the selected scope produce an undetected mutant?" with yes.
     /// </summary>
     /// <remarks>
@@ -134,6 +152,9 @@ public sealed class MutationTestReport
     /// rule ADR-0009 already applies to an undefined score against a threshold.
     /// </remarks>
     public bool IsInconclusive => Total > 0 && Score.IsUndefined;
+
+    /// <summary>True when the change left a project with no tests reaching it at all.</summary>
+    public bool LostCoverage => CoverageLost.Count > 0;
 
     /// <summary>What each mutator family cost and bought, most mutants first.</summary>
     public IReadOnlyList<MutatorSummary> ByMutator { get; }

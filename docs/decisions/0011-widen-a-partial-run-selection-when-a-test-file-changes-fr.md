@@ -182,6 +182,10 @@ dû être rouge.
 
 ### Risques
 
+* Un fichier de build partagé est attribué aux projets situés sous lui, ce qui manque celui qu'un
+  projet importe explicitement depuis un répertoire voisin plutôt que depuis un parent.
+  `MSBuildAllProjects` aurait été la réponse exacte et revient vide sur un projet SDK — mesuré — donc
+  il n'existe pas de moyen économique de demander quels fichiers de build un projet lit vraiment.
 * Un fichier qu'un changement **supprime** et qu'un projet de test atteignait depuis l'extérieur de
   son propre répertoire n'est attribué à rien. L'appartenance se lit dans l'évaluation de HEAD, où un
   fichier supprimé n'apparaît plus, et la règle du répertoire qui couvre les suppressions ordinaires

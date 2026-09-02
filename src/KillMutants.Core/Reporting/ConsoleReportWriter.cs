@@ -70,6 +70,18 @@ public static class ConsoleReportWriter
             writer.WriteLine(line);
         }
 
+        if (report.LostCoverage)
+        {
+            foreach (string line in Wrap(
+                         "Coverage lost: no test project reaches " +
+                         string.Join(", ", report.CoverageLost.Select(Path.GetFileNameWithoutExtension)) +
+                         " any more, so this run had nothing to ask about it.",
+                         width: 88))
+            {
+                writer.WriteLine(line);
+            }
+        }
+
         if (report.Total == 0)
         {
             writer.WriteLine("Nothing in the change produces a mutant.");

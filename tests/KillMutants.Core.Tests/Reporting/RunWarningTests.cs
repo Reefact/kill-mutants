@@ -91,8 +91,45 @@ public class RunWarningTests
         Assert.Contains("outside the score", warning.Text, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A partial run prints no score, so no warning on one may name one.
+    /// </summary>
+    /// <remarks>
+    /// Review found two that did: an assumption "carrying the score", and a verdict worth settling
+    /// "before the score is believed". Both branches are emitted for partial reports too, so a run
+    /// that deliberately has no number was telling its reader to trust or distrust one.
+    /// </remarks>
+    [Theory]
+    [InlineData(2070, 2505, 0)]
+    [InlineData(10, 0, 0)]
+    public void No_warning_on_a_partial_run_mentions_a_score(int killed, int timedOut, int survived)
+    {
+        MutationTestReport report = Report(
+            killed, timedOut, survived, compileErrors: 3, scope: Partial);
+
+        Assert.NotEmpty(report.Warnings);
+
+        foreach (RunWarning warning in report.Warnings)
+        {
+            Assert.DoesNotContain("score", warning.Text, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    /// <summary>And a full run still says "score", because that is what it prints.</summary>
+    [Fact]
+    public void A_full_run_still_talks_about_its_score()
+    {
+        MutationTestReport report = Report(killed: 2070, timedOut: 2505, survived: 0, compileErrors: 3);
+
+        Assert.Contains(
+            report.Warnings,
+            warning => warning.Text.Contains("score", StringComparison.Ordinal));
+    }
+
+    private static readonly RunScope Partial = new("0123456789abcdef", "fedcba9876543210", false, 1);
+
     private static MutationTestReport Report(
-        int killed, int timedOut, int survived, int compileErrors = 0)
+        int killed, int timedOut, int survived, int compileErrors = 0, RunScope? scope = null)
     {
         List<MutantResult> results =
         [
@@ -102,6 +139,6 @@ public class RunWarningTests
             .. Enumerable.Repeat(new MutantResult(Mutant, MutantStatus.CompileError), compileErrors),
         ];
 
-        return new MutationTestReport(results);
+        return new MutationTestReport(results, scope: scope);
     }
 }

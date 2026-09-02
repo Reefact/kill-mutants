@@ -121,6 +121,11 @@ nothing that spans two runs. It prints the status counts, the findings by name, 
 the run fails if the selected scope holds an undetected mutant — survived *or* uncovered, since code
 a change adds that nothing tests at all is the second and not the first. A threshold is therefore
 refused with `--since`; pass `--break-at none` to clear one your `killmutants.json` sets.
+
+A partial run also fails when the change leaves **no test reaching a project at all**. That project
+has no mutants to report — nothing exercises it, so no suite could judge one — which is exactly how
+deleting a component's last test used to read as a clean pass. It is named instead. A project you
+excluded, or one that declares itself test support, is not this: those are deliberate.
 [DEC0010](docs/decisions/0010-a-partial-run-reports-findings-not-a-score-en.md) argues what such a
 run may print and [DEC0011](docs/decisions/0011-widen-a-partial-run-selection-when-a-test-file-changes-en.md)
 the selection rule; both record what the implementation deliberately does not do.

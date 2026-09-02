@@ -103,7 +103,7 @@ internal sealed class MutationTestSession
             : await ChangeSelection
                 .ResolveAsync(
                     _since, searchDirectory, _configuration, targets, discovery.TestProjects,
-                    _progress, cancellationToken)
+                    discovery.ProjectsLeftOut, _progress, cancellationToken)
                 .ConfigureAwait(false);
 
         RunScope scope = selection?.Scope ?? RunScope.WholeCodebase;
@@ -114,7 +114,8 @@ internal sealed class MutationTestSession
             // every compilation to establish that would take a minute to reach the same empty
             // report, and a documentation-only pull request is the commonest partial run there is.
             return new MutationTestReport(
-                [], stopwatch.Elapsed, RunEnvironment.Describe(_workerCount, null, [], 0), scope);
+                [], stopwatch.Elapsed, RunEnvironment.Describe(_workerCount, null, [], 0), scope,
+                selection.CoverageLost);
         }
 
         // The real build comes first and nothing may run MSBuild after injection, so every
@@ -158,7 +159,8 @@ internal sealed class MutationTestSession
             stopwatch.Elapsed,
             RunEnvironment.Describe(
                 _workerCount, TestFrameworkOf(targets), budgets, verified.Sum()),
-            scope);
+            scope,
+            selection?.CoverageLost);
     }
 
     private async Task<IReadOnlyList<MutantResult>> TestTargetAsync(
