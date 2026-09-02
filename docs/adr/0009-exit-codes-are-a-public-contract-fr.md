@@ -26,16 +26,23 @@ n'a jamais eu lieu et que rien ne l'a dit.
 | code | signification |
 |---|---|
 | **0** | A tourné, et a atteint le seuil s'il y en avait un |
-| **1** | A tourné, et a trouvé ce sur quoi vous lui avez demandé d'échouer |
+| **1** | A tourné, et la barrière que vous avez demandée n'est pas passée |
 | **2** | N'a pas pu tourner ; la raison est sur la sortie d'erreur |
 | **64** | La ligne de commande n'a pas été comprise |
 
-`1` a commencé sa vie comme *le score est inférieur à `--break-at`* et a été élargi par
-[ADR-0010](0010-a-partial-run-reports-findings-not-a-score-fr.md), qui ajoute une exécution partielle
-sans score, échouant sur un mutant nouvellement non détecté. La ligne ci-dessus est la forme générale
-que son raisonnement impliquait déjà ; les deux cas sont le score sous un seuil, et un nouveau mutant
-non détecté dans une exécution partielle. Un script de build qui lit `1` apprend « des constats »,
-ce sur quoi il agit.
+`1` est nommé d'après la barrière, pas d'après l'une de ses causes, et il en avait déjà plus d'une
+avant qu'on pense à `--since`. Ses cas :
+
+1. le score de mutation est inférieur à `--break-at` ;
+2. le score est **indéfini** parce que rien n'a pu être testé, ce qui ne peut pas démontrer qu'un
+   seuil est atteint — comportement livré, dans `Program.Verdict`, antérieur à
+   l'[ADR-0010](0010-a-partial-run-reports-findings-not-a-score-fr.md) ;
+3. une exécution partielle a trouvé ce sur quoi l'appelant lui a demandé d'échouer, ou n'a rien pu
+   établir du tout.
+
+Les trois disent *ce que vous m'avez demandé de vérifier n'est pas passé*, ce sur quoi un script de
+build branche ; la sortie d'erreur dit lequel. C'est pourquoi la constante s'appelle `GateNotPassed`
+et non `ScoreBelowThreshold` — l'ancien nom était déjà faux pour le cas 2.
 
 `--break-at` est **optionnel**. Sans seuil, un score faible est rapporté et le run sort tout de même
 en 0. Un seuil par défaut ferait de l'adoption de KillMutants une rupture pour tout build qui

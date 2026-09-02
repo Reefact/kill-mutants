@@ -15,7 +15,19 @@ n'y trouve rien à exécuter et rapporte une exécution vide et verte — pendan
 cette assertion tuait survivent désormais. C'est exactement le comportement non testé que cette
 fonctionnalité existe pour attraper, arrivant par la porte que personne ne surveille. La sélection
 est donc : tout site mutable du code de production modifié, **plus tout mutant couvert par un test
-d'un fichier de test modifié**. Stryker.NET sélectionne sur les deux mêmes fondements — leur
+d'un fichier de test modifié**.
+
+Cette seconde moitié ne fonctionne que tant que le test est encore là pour être interrogé. Supprimez
+ou renommez un test — ou un utilitaire sur lequel les tests s'appuient — et la relation de couverture
+qui nommait les mutants qu'il tuait disparaît de HEAD avec lui : plus rien ne les sélectionne, et
+l'exécution redevient verte pour la raison exacte qui a motivé la règle. **Quand une modification
+dans un projet de test ne peut pas être rattachée à la couverture actuelle, la sélection s'élargit à
+tout mutant que ce projet de test couvre**, et si même cela ne peut être établi, l'exécution est non
+concluante. Plus lent, parfois beaucoup, et jamais un faux vert — le même arbitrage que l'exécution
+fait déjà quand la couverture est inconnue, et quand un filtre est trop long pour une ligne de
+commande. Lire la couverture de la révision de base serait la réponse précise plutôt que prudente, et
+elle exige les résultats stockés d'une exécution précédente : c'est la fonctionnalité de base de
+référence, et ce n'est délibérément pas celle-ci. Stryker.NET sélectionne sur les deux mêmes fondements — leur
 documentation de configuration, texto : *« For changes on test project files all mutants covered by
 tests in that file will be seen as changed. »* Que deux outils aboutissent à la même règle ne prouve
 pas grand-chose à soi seul, mais cela dit au moins que la seconde moitié n'est pas une inquiétude
@@ -45,9 +57,14 @@ exécutions. Affichez 72 % mardi et 40 % mercredi sous un seul nom, une seule fo
 place dans le rapport, et le lecteur tirera une tendance de deux nombres qui ne partagent que leur
 unité.
 
-Le nombre serait aussi mal fabriqué. **Un petit dénominateur revendique une précision qu'il n'a
-pas** : deux détectés et un non détecté s'affichent « 66,67 % » — quatre chiffres significatifs,
-épinglés par `MutationScoreTests`, sur une mesure qui n'en porte aucun.
+Le nombre serait aussi trop grossier pour servir de barrière, ce qui est un reproche différent de
+l'imprécision et plus difficile à contester. Deux détectés et un non détecté s'affichent « 66,67 % »
+— épinglé par `MutationScoreTests` — et c'est un rapport exact, pas une mesure bruitée : parler de
+fausse précision serait faux. **Le problème est la granularité.** Sur trois mutants, un verdict
+déplace le score de 33,3 points : tous les seuils entre 34 % et 66 % veulent donc dire la même chose,
+et aucun ne peut exprimer « légèrement moins bien ». Un pourcentage exige une population assez grande
+pour bouger par pas plus petits que la décision qu'il éclaire, et un diff, couramment, n'en est pas
+une.
 
 Un piège que nous n'avons *pas*, et qu'il vaut la peine d'écrire parce que la version évidente de cet
 argument s'y trompe. Un diff vide ne produit pas ici de titre rassurant :
@@ -106,7 +123,8 @@ sont nommés dans la sortie, et les deux font échouer le verdict.
 `CompileError` en reste dehors, pour la raison qui l'exclut déjà du score : la suite n'a jamais été
 interrogée sur un mutant que l'outil n'a pas su construire.
 
-**Mais une exécution qui n'a rien pu tester n'a pas réussi.** Exclure les mutants intestables un par
+**Mais une exécution qui n'a rien pu tester n'a pas réussi** — et elle sort en `1`, comme sa jumelle
+complète. Exclure les mutants intestables un par
 un est juste ; laisser un changement dont *tous* les mutants étaient intestables rapporter un succès
 ne l'est pas, et les deux sont à une ligne l'un de l'autre. L'ADR-0009 a déjà tranché la version
 complète de ce problème — un score indéfini fait échouer un seuil, parce qu'une exécution qui n'a
@@ -114,6 +132,18 @@ rien démontré ne doit pas laisser un job mal configuré rester vert — et l'e
 hérite : une sélection qui a produit des mutants dont aucun n'a pu être testé est rapportée comme non
 concluante et ne passe pas. Un changement sans aucun mutant est autre chose, et passe : il n'a rien à
 répondre.
+
+Le code n'est pas un choix neuf. `Program.Verdict` renvoie déjà `1` pour la version complète de ce
+cas — un score indéfini face à un seuil, avec *« No mutant could be tested, so the N% threshold
+cannot be shown to be met »* sur la sortie d'erreur — si bien que `1` porte deux causes depuis bien
+avant qu'on pense à `--since`, et voici la troisième. `2` reste ce qu'il a toujours été : l'outil n'a
+pas pu s'exécuter. Une exécution partielle entièrement intestable, elle, **s'est** exécutée ; elle
+n'a simplement rien établi, et le dire avec le code qui signifie *la barrière n'est pas passée* est
+ce qui empêche un job mal configuré de passer au vert.
+
+Cela fait de `ScoreBelowThreshold` un mauvais nom pour la constante, et il l'était déjà avant cet ADR
+— le chemin du score indéfini le renvoie aussi. Il est renommé `GateNotPassed` dans ce changement,
+pour que le vocabulaire de l'implémentation et l'ADR-0009 disent la même chose.
 
 **Aucun statut ne signifie « hors du diff ».** Les mutants qu'une exécution partielle n'a pas
 considérés ne sont pas engendrés, pas comptés, et pas rapportés avec un état à eux. Ajouter un statut
@@ -160,7 +190,10 @@ ne doivent pas être confondues.
   même changement ; une automatisation qui lit `1` apprend toujours « des constats », ce sur quoi
   elle agit. `2` est inchangé.
 - Deux rapports ne peuvent plus être comparés en lisant un nombre de chacun, puisque nous n'affichons
-  plus le nombre qui y invite. Les décomptes par statut sont comparables et disent ce qu'ils disent.
+  plus le nombre qui y invite. Les décomptes par statut restent explicites et interprétables
+  localement, et ne sont pas davantage offerts comme métrique de qualité d'une exécution à l'autre :
+  « Killed 5 / Survived 1 » à côté de « Killed 80 / Survived 2 » n'est pas plus une tendance que ne
+  l'auraient été les pourcentages.
 - Un rapport partiel se distingue d'un rapport complet, et sa sélection se reproduit, parce que le
   mode d'exécution et les révisions résolues y figurent.
 - Si la fonctionnalité de base de référence est construite plus tard, cet ADR est l'endroit où son

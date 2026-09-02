@@ -13,7 +13,18 @@ code in the diff at all, so a selection reading production files alone finds not
 reports an empty, passing run - while the mutants that assertion used to kill now survive. That is
 precisely the untested behaviour this feature exists to catch, arriving by the door nobody watches.
 So the selection is: every mutable site in the changed production code, **plus every mutant covered
-by a test in a changed test file**. Stryker.NET selects on the same two grounds - their configuration
+by a test in a changed test file**.
+
+That second half only works while the test is still there to be asked about. Delete or rename a test
+- or a fixture or helper the tests lean on - and the coverage relation that named the mutants it used
+to kill is gone from HEAD along with it, so nothing selects them and the run is green again for
+exactly the reason the rule was added. **Where a change to a test project cannot be mapped onto
+current coverage, the selection widens to every mutant that test project covers**, and if even that
+cannot be established the run is inconclusive. Slower, occasionally much slower, and never a false
+green - the same trade the run already makes when coverage is unknown, and when a filter is too long
+for a command line. Reading coverage from the base revision would be the precise answer instead of
+the conservative one, and it needs stored results from a previous run: that is the baseline feature,
+and it is deliberately not this one. Stryker.NET selects on the same two grounds - their configuration
 documentation, verbatim: *"For changes on test project files all mutants covered by tests in that
 file will be seen as changed."* Two tools arriving at the same rule is weak evidence on its own, but
 it does say the second half is not a theoretical worry.
@@ -39,9 +50,13 @@ change?* - and no answer at all to any question spanning two runs. Print 72 % on
 Wednesday under one name, one formula and one place in the report, and the reader will draw a trend
 from two numbers that share nothing but their units.
 
-The number would also be badly made. **A small denominator claims a precision it does not have**: two
-detected and one undetected renders as "66.67 %" - four significant figures, pinned by
-`MutationScoreTests`, on a measurement that carries none.
+The number would also be too coarse to gate on, which is a different complaint from imprecision and a
+harder one to argue with. Two detected and one undetected renders as "66.67 %" - pinned by
+`MutationScoreTests` - and that is an exact ratio, not a noisy measurement: calling it false
+precision would be wrong. **The problem is granularity.** Over three mutants, one verdict moves the
+score by 33.3 points, so every threshold between 34 % and 66 % means the same thing and no threshold
+can express "slightly worse". A percentage needs a population big enough for it to move in steps
+smaller than the decision it informs, and a diff routinely is not one.
 
 One trap this does *not* have, which is worth writing down because the obvious version of this
 argument gets it wrong. An empty diff does not produce a reassuring headline here:
@@ -97,13 +112,24 @@ two. Both are named in the output, and both fail the verdict.
 `CompileError` stays outside it, for the reason it stays outside the score: the suite was never asked
 about a mutant the tool could not build.
 
-**But a run that could test nothing has not passed.** Excluding untestable mutants one at a time is
+**But a run that could test nothing has not passed** - and it exits `1`, like its full-run twin. Excluding untestable mutants one at a time is
 right; letting a change whose mutants were *all* untestable report success is not, and the two are
 one line apart. ADR-0009 already settled the full-run version of this - an undefined score fails a
 threshold, because a run that demonstrated nothing must not let a misconfigured job stay green - and
 the partial run inherits it: a selection that produced mutants, none of which could be tested, is
 reported as inconclusive and does not pass. A change with no mutants at all is a different thing and
 does pass, having nothing to answer for.
+
+The code is not a new choice. `Program.Verdict` already returns `1` for the full-run version of this
+- an undefined score against a threshold, with *"No mutant could be tested, so the N% threshold
+cannot be shown to be met"* on standard error - so `1` has carried two causes since before `--since`
+was thought of, and this is the third. `2` stays what it has always been: the tool could not run. An
+all-untestable partial run **did** run; it simply established nothing, and saying so with the code
+that means *the gate did not pass* is what stops a misconfigured job going green.
+
+That makes `ScoreBelowThreshold` the wrong name for the constant, and it was already wrong before
+this ADR - the undefined-score path returns it too. It is renamed `GateNotPassed` in this change, so
+that the implementation's vocabulary and ADR-0009 say the same thing.
 
 **No status means "outside the diff".** Mutants a partial run did not consider are not generated, not
 counted, and not reported with a state of their own. Adding a status that silently leaves the
@@ -144,7 +170,9 @@ run. That feature earns a percentage. `--since` does not, and the two must not b
   threshold and the new undetected mutant as its two cases. ADR-0009 is amended in the same change;
   automation reading `1` still learns "findings", which is what it acts on. `2` is unchanged.
 - Two reports can no longer be compared by reading one number each, because we no longer print a
-  number that invites it. The status counts are comparable and mean what they say.
+  number that invites it. The status counts remain explicit and locally interpretable, and are not
+  offered as a cross-run quality metric either: `Killed 5 / Survived 1` beside `Killed 80 /
+  Survived 2` is no more a trend than the percentages would have been.
 - A partial report can be told apart from a full one, and its selection reproduced, because the run
   mode and the resolved revisions are in it.
 - If the baseline feature is built later, this ADR is where its denominator is already argued.
