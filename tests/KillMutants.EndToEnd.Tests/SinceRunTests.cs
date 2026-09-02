@@ -456,6 +456,92 @@ public class SinceRunTests
     }
 
     /// <summary>
+    /// A support library that a change stops reaching has not lost coverage it never had.
+    /// </summary>
+    /// <remarks>
+    /// Review found the third instance of one rule in this codebase: a declared test-support library
+    /// is a hole in the graph, not a wall - walked through, never returned. The base traversal
+    /// returned it as production code, so when a change removed the suite that reached it, the
+    /// coverage-loss check reported it as a component whose tests had gone and failed the gate over a
+    /// project that was never a target.
+    /// </remarks>
+    [Fact]
+    public async Task A_support_library_the_change_stops_reaching_is_not_reported_as_lost()
+    {
+        using var fixture = FixtureCopy.CreateTestSupportProject();
+
+        fixture.DeclareTheSupportProject();
+
+        // A second suite, reaching the library directly, so the library itself stays covered when the
+        // first suite lets go of the support project.
+        string other = Path.Combine(fixture.Root, "Sample.Other.Tests");
+
+        Directory.CreateDirectory(other);
+
+        File.WriteAllText(
+            Path.Combine(other, "Sample.Other.Tests.csproj"),
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <OutputType>Exe</OutputType>
+                <ImplicitUsings>enable</ImplicitUsings>
+                <IsPackable>false</IsPackable>
+              </PropertyGroup>
+              <ItemGroup><Using Include="Xunit" /></ItemGroup>
+              <ItemGroup><PackageReference Include="xunit.v3.mtp-v2" Version="4.0.0" /></ItemGroup>
+              <ItemGroup><ProjectReference Include="../Sample.Library/Sample.Library.csproj" /></ItemGroup>
+            </Project>
+            """);
+
+        File.WriteAllText(
+            Path.Combine(other, "OtherMoneyTests.cs"),
+            """
+            using Sample.Library;
+
+            namespace Sample.Other.Tests;
+
+            public class OtherMoneyTests
+            {
+                [Fact]
+                public void A_price_within_budget_is_affordable() =>
+                    Assert.True(Money.IsAffordable(price: 5, budget: 10));
+            }
+            """);
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+
+        // The first suite lets go of the support project, and rewrites the test that needed it.
+        string project = Path.Combine(fixture.Root, "Sample.Library.Tests", "Sample.Library.Tests.csproj");
+
+        File.WriteAllText(
+            project,
+            File.ReadAllText(project).Replace(
+                """<ItemGroup><ProjectReference Include="../Sample.Support/Sample.Support.csproj" /></ItemGroup>""",
+                """<ItemGroup><ProjectReference Include="../Sample.Library/Sample.Library.csproj" /></ItemGroup>""",
+                StringComparison.Ordinal));
+
+        File.WriteAllText(
+            Path.Combine(fixture.Root, "Sample.Library.Tests", "MoneyTests.cs"),
+            """
+            using Sample.Library;
+
+            namespace Sample.Library.Tests;
+
+            public class MoneyTests
+            {
+                [Fact]
+                public void A_price_above_budget_is_not() =>
+                    Assert.False(Money.IsAffordable(price: 11, budget: 10));
+            }
+            """);
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        Assert.False(report.LostCoverage);
+    }
+
+    /// <summary>
     /// A suite can be switched off without being deleted, and that is just as much a loss of
     /// coverage.
     /// </summary>
