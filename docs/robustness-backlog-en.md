@@ -851,41 +851,58 @@ this work, including the one that first sent us looking at RB-020. RB-020 is sti
 open - it was measured separately, in our own process - but it was not the cause of the build
 failures.
 
-## RB-025 — Test support outside a test project is invisible to `--since` · OPEN
+## RB-025 — Test support is not the subject, and xUnit's own advice made it worse · COVERED
 
 **How it was found.** A review of DEC0010, on the fifth pass over the same rule. Each earlier pass
 had found the fix resting on something the change itself could delete; this one found the fix resting
-on a classification the tool does not make.
+on a classification the tool does not make. Running the tool on the shape it described then found
+something worse, and the reading that predicted it was wrong.
 
-**The mechanism.** `--since` widens its selection when a change touches a test project, because a
-changed test can stop reaching a mutant it used to kill. Test support, though, is commonly a plain
-class library beside the tests:
+**What the reading said.** That `Tests -> TestSupport -> ProjectA` would lose `ProjectA`, because
+discovery stops walking at a test project.
+
+**What the run said.** It never got that far:
 
 ```text
-Tests -> TestSupport -> ProjectA        (ProjectA contains mutant M)
+Discovering projects - Sample.Library.Tests
+Building test projects - Sample.Support
+'Sample.Support' cannot be used: KillMutants could not find 'xunit.v3.core.dll' ...
 ```
 
-`ProjectDiscovery` classifies projects by `IsTestProject` alone, and treats every non-test project a
-test project reaches as a mutable target. `TestSupport` is therefore a target exactly like
-`ProjectA` - nothing separates a builder library from the code under test. So changing `TestSupport`
-does not touch a test project, the widening does not fire, and `T` can stop reaching `M` with neither
-`Tests` nor `ProjectA` in the diff. The same holds for shared configuration outside the test
-project's directory.
+xUnit v3 refuses to be referenced by a class library - *"xUnit.net v3 test projects must be
+executable ... If this is not a test project, reference xunit.v3.extensibility.core instead"* - so a
+helper library has to reference `xunit.v3.assert` or `xunit.v3.extensibility.core`. Both begin with
+`xunit.v3`, and `IsTestProject` matched that prefix. The library was therefore classified as a test
+suite, the run tried to launch it, and it stopped. **Following xUnit's own instruction made a project
+impossible to measure.**
 
-**What it costs.** A partial run that reports no findings where a full run would have found one.
-Bounded: the change does select `TestSupport`'s own mutants, since it is a target, so the run is not
-silent about the changed code - only about `M`.
+**The fix, in two halves.** A test project must now also be `Exe` - the same condition xUnit enforces
+at build time, so a project this calls a test project is exactly one xUnit would let run. That covers
+every support library that references xUnit, which is most of them, with nothing for the user to
+declare.
 
-**Why it is open rather than fixed.** The two available fixes are both bigger than the entry. Widening
-on any changed project reachable from a test project makes every production change re-run everything,
-which abolishes `--since` rather than qualifying it. Reading coverage from the base revision is the
-precise answer and needs a previous run's stored results - the baseline feature. A third possibility
-is smaller and worth weighing first: let a project declare itself test support, so discovery can stop
-treating it as a subject and start treating a change to it as a change to the tests.
+The rest is declared, because for a plain library of builders no structural fact separates it from
+the code under test: `<KillMutantsTestSupport>true</KillMutantsTestSupport>` suppresses the project as
+a target without hiding what sits behind it - a hole in the graph, not a wall, exactly as an exclusion
+is.
 
-**What is written down meanwhile.** DEC0010 states its guarantee for changes inside recognized test
-projects and does not claim an absolute beyond them. That is the whole reason this entry exists: the
-document previously said "never a false green".
+**What it was costing.** Measured on `tests/fixtures/testsupport`, whose support library carries one
+comparison of its own:
 
-**Our tests.** None; `--since` is not built yet. This entry exists so that M13 implements a bounded
-promise rather than the one the first draft made.
+| | Mutants | Score |
+| --- | --- | --- |
+| Undeclared | 4, in two files | 25 % |
+| Declared | 2, in the library under test | 50 % |
+
+Scaffolding nobody set out to measure was halving the reported score.
+
+**What is still open.** ADR-0010's `--since` boundary. A change to a *declared* support library can
+now be recognised as test-side, which is what the ADR needs; a change to an undeclared one still
+cannot, and neither can a change to shared configuration outside a test project. The guarantee stated
+there is unchanged: it covers recognized test projects, and this entry narrows how much sits outside
+them rather than closing the boundary.
+
+**Our tests.** `ProjectFactsTests` pins the rule both ways, including `xunit.v3.assert` on a library
+and an executable that references no test framework. `TestSupportProjectTests` runs all three
+end-to-end: the production code behind a support library is reached, an undeclared support library is
+mutated like any other project, and a declared one is skipped without hiding what it references.

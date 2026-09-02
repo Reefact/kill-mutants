@@ -376,6 +376,28 @@ internal sealed class FixtureCopy : IDisposable
     /// </summary>
     public static FixtureCopy CreateMultiTargetedProject() => CopyOf(FixtureDirectory("multitarget"));
 
+    /// <summary>
+    /// Copies the test-support fixture: <c>Tests -&gt; Support -&gt; Library</c>, where the support
+    /// project is a class library referencing <c>xunit.v3.assert</c> - the package xUnit directs a
+    /// non-test library to - and carrying a mutable site of its own.
+    /// </summary>
+    public static FixtureCopy CreateTestSupportProject() => CopyOf(FixtureDirectory("testsupport"));
+
+    /// <summary>Makes the support project declare itself, the way a user would.</summary>
+    public void DeclareTheSupportProject()
+    {
+        string project = Path.Combine(Root, "Sample.Support", "Sample.Support.csproj");
+        string text = File.ReadAllText(project);
+
+        File.WriteAllText(
+            project,
+            text.Replace(
+                "<IsPackable>false</IsPackable>",
+                "<IsPackable>false</IsPackable>" + Environment.NewLine +
+                "    <KillMutantsTestSupport>true</KillMutantsTestSupport>",
+                StringComparison.Ordinal));
+    }
+
     private static FixtureCopy CopyOf(string source)
     {
         string destination = Path.Combine(Path.GetTempPath(), $"killmutants-e2e-{Guid.NewGuid():N}");

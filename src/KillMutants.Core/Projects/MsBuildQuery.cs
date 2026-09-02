@@ -57,6 +57,8 @@ internal sealed class MsBuildQuery
             "-getProperty:TargetDir",
             "-getProperty:TargetFramework",
             "-getProperty:TargetFrameworks",
+            "-getProperty:OutputType",
+            "-getProperty:KillMutantsTestSupport",
             "-getItem:PackageReference",
             "-getItem:ProjectReference",
         ]);
@@ -81,6 +83,8 @@ internal sealed class MsBuildQuery
             OutputDirectory: Property("TargetDir"),
             TargetFramework: Property("TargetFramework"),
             TargetFrameworks: Split(Property("TargetFrameworks")),
+            OutputType: Property("OutputType"),
+            DeclaredTestSupport: IsTrue(Property("KillMutantsTestSupport")),
             PackageReferences: ReadItems(root, "PackageReference", identity => identity),
             ProjectReferences: ReadItems(
                 root,
@@ -88,6 +92,10 @@ internal sealed class MsBuildQuery
                 identity => Path.GetFullPath(Path.Combine(directory, identity)),
                 RunsAtRunTime));
     }
+
+    /// <summary>Reads an MSBuild boolean, which is written in whatever case the author felt like.</summary>
+    private static bool IsTrue(string value) =>
+        string.Equals(value.Trim(), "true", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Makes MSBuild re-run <c>CoreCompile</c>, by removing the cache file its incremental check

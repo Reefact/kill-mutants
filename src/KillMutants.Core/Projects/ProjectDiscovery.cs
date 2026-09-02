@@ -149,6 +149,11 @@ internal sealed class ProjectDiscovery
     /// facade, and said nothing: the run reported on what was left. Excluding a project must stop it
     /// being mutated, never stop what sits behind it from being found.
     /// </para>
+    /// <para>
+    /// A project declaring itself test support is the same shape: skipped as a target, walked
+    /// through as a graph. <c>Tests -&gt; TestSupport -&gt; Core</c> has to reach <c>Core</c>, or
+    /// declaring the support library would cost the user the code it exists to test.
+    /// </para>
     /// </remarks>
     private async Task<IReadOnlyList<string>> ReachableProjectsAsync(
         ProjectFacts testProject,
@@ -179,7 +184,7 @@ internal sealed class ProjectDiscovery
                 continue;
             }
 
-            if (mutable)
+            if (mutable && !facts.IsTestSupport)
             {
                 reachable.Add(path);
             }
