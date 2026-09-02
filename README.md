@@ -57,6 +57,7 @@ The few choices that are expensive to reverse. Each is recorded in [docs/adr](do
 | ADR-0007 — Measure coverage with a type-preserving probe | [en](docs/adr/0007-measure-coverage-with-a-type-preserving-probe-en.md) | [fr](docs/adr/0007-measure-coverage-with-a-type-preserving-probe-fr.md) |
 | ADR-0008 — Never reuse a test host between mutants | [en](docs/adr/0008-never-reuse-a-test-host-between-mutants-en.md) | [fr](docs/adr/0008-never-reuse-a-test-host-between-mutants-fr.md) |
 | ADR-0009 — Exit codes are a public contract | [en](docs/adr/0009-exit-codes-are-a-public-contract-en.md) | [fr](docs/adr/0009-exit-codes-are-a-public-contract-fr.md) |
+| ADR-0010 — A partial run reports findings, not a score | [en](docs/adr/0010-a-partial-run-reports-findings-not-a-score-en.md) | [fr](docs/adr/0010-a-partial-run-reports-findings-not-a-score-fr.md) |
 
 ## Installing
 
