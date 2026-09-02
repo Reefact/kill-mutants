@@ -13,8 +13,10 @@ code in the diff at all, so a selection reading production files alone finds not
 reports an empty, passing run - while the mutants that assertion used to kill now survive. That is
 precisely the untested behaviour this feature exists to catch, arriving by the door nobody watches.
 So the selection is: every mutable site in the changed production code, **plus every mutant covered
-by a test in a changed test file**. Stryker.NET selects on the same two grounds, which is some
-evidence that the second is not a theoretical worry.
+by a test in a changed test file**. Stryker.NET selects on the same two grounds - their configuration
+documentation, verbatim: *"For changes on test project files all mutants covered by tests in that
+file will be seen as changed."* Two tools arriving at the same rule is weak evidence on its own, but
+it does say the second half is not a theoretical worry.
 
 The question this decides is what such a run may print. Every other run of this tool ends with a
 mutation score. The obvious thing is to print one here too.
