@@ -11,6 +11,7 @@ internal sealed class ProjectDiscovery
 {
     private static readonly TimeSpan BuildBudget = TimeSpan.FromMinutes(10);
 
+    private readonly HashSet<string> _leftOut = new(ProjectPaths.Comparer);
     private readonly MsBuildQuery _msBuild;
     private readonly string _configuration;
     private readonly PathFilter _exclusions;
@@ -41,6 +42,17 @@ internal sealed class ProjectDiscovery
     /// missed exactly that case, and an end-to-end test found it.
     /// </remarks>
     public IReadOnlyList<TestProject> TestProjects { get; private set; } = [];
+
+    /// <summary>
+    /// Projects a test project reaches that this run deliberately does not mutate.
+    /// </summary>
+    /// <remarks>
+    /// Excluded by the user, or declaring themselves test support. Not a target, and not an accident
+    /// either - which is the distinction a partial run needs when it asks whether a project has
+    /// stopped being covered. "No test reaches it any more" and "you asked me to leave it alone" look
+    /// identical from the target list and mean opposite things.
+    /// </remarks>
+    public IReadOnlySet<string> ProjectsLeftOut => _leftOut;
 
     /// <summary>
     /// Discovers everything to mutate under <paramref name="searchDirectory"/>.
@@ -206,6 +218,12 @@ internal sealed class ProjectDiscovery
             if (mutable && !facts.IsTestSupport)
             {
                 reachable.Add(path);
+            }
+            else
+            {
+                // Reached, and left alone on purpose. Recorded so that a partial run can tell this
+                // apart from a project whose last test reference a change has just removed.
+                _leftOut.Add(path);
             }
 
             foreach (string reference in facts.ProjectReferences)

@@ -164,6 +164,19 @@ internal static class Program
     /// </remarks>
     private static int PartialVerdict(MutationTestReport report)
     {
+        // First, because it is the one the counts cannot show: a project with no tests reaching it
+        // has no mutants either, so every other number in the report is silent about it.
+        if (report.LostCoverage)
+        {
+            Console.Error.WriteLine(
+                "The change left no test reaching " +
+                string.Join(", ", report.CoverageLost.Select(Path.GetFileNameWithoutExtension)) +
+                ", so nothing in it could be judged. Cover it again, exclude it, or declare it test " +
+                "support - but a run cannot pass over a component it can no longer ask about.");
+
+            return ExitCode.GateNotPassed;
+        }
+
         if (report.IsInconclusive)
         {
             Console.Error.WriteLine(

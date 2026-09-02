@@ -141,6 +141,79 @@ public class SinceRunTests
         MutationTestReport report = await RunSinceHeadAsync(fixture);
 
         Assert.Contains("Money.cs", MutatedFiles(report));
+
+        // And Domain, which that suite was the only one to reach, is gone from the run entirely.
+        // There are no mutants to report for it - nothing reaches it, so no suite could judge one -
+        // which is exactly how deleting a component's last test came to read as a clean pass.
+        Assert.True(report.LostCoverage);
+        Assert.Contains(
+            report.CoverageLost,
+            path => path.EndsWith("Domain.csproj", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// A project the run was told to leave alone has not lost its coverage; it never had any here.
+    /// </summary>
+    /// <remarks>
+    /// The other half of the rule above, and the one that keeps it from crying wolf. Excluding
+    /// <c>Domain</c> takes it out of the targets exactly as removing its last test reference would,
+    /// and the two must not be reported the same way: one is the user's instruction, the other is a
+    /// change deleting a component's coverage behind their back.
+    /// </remarks>
+    [Fact]
+    public async Task A_project_the_run_excludes_is_not_reported_as_having_lost_coverage()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+        Touch(fixture, "Domain.Tests", "BasketTests.cs");
+
+        MutationTestReport report = await MutationTesting.RunAsync(
+            fixture.Root,
+            exclude: ["Domain/*"],
+            mutators: Families,
+            since: "HEAD",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(report.LostCoverage);
+    }
+
+    /// <summary>
+    /// A build file above the suites reaches them, even when no production project sits beneath it.
+    /// </summary>
+    /// <remarks>
+    /// Review found this. A <c>tests/Directory.Build.props</c> sits above every suite and beneath no
+    /// production project, so widening only what was physically under it widened nothing at all in
+    /// the ordinary <c>src/</c> and <c>tests/</c> layout - and such a file can remove a source from a
+    /// suite's compilation as surely as deleting it would.
+    /// </remarks>
+    [Fact]
+    public async Task A_build_file_above_a_test_project_widens_what_that_suite_exercises()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        MoveIntoTestsDirectory(fixture, "Domain.Tests");
+
+        string props = Path.Combine(fixture.Root, "tests", "Directory.Build.props");
+
+        // Repeats what the fixture's root file says, because MSBuild stops walking up at the first
+        // Directory.Build.props it finds and this one now shadows it for everything beneath.
+        File.WriteAllText(
+            props,
+            """
+            <Project>
+              <PropertyGroup>
+                <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+        File.AppendAllText(props, $"{Environment.NewLine}<!-- touched -->{Environment.NewLine}");
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        Assert.Contains("Basket.cs", MutatedFiles(report));
     }
 
     /// <summary>
@@ -425,6 +498,33 @@ public class SinceRunTests
             mutators: Families,
             since: "HEAD",
             cancellationToken: TestContext.Current.CancellationToken);
+
+    /// <summary>
+    /// Moves a test project one level down, into a <c>tests/</c> directory of its own.
+    /// </summary>
+    /// <remarks>
+    /// The <c>multi</c> fixture is flat, so a shared build file at its root sits above the production
+    /// projects too and widens them whatever the rule. Reproducing the case at all needs a directory
+    /// that holds suites and no production project, which is the ordinary layout of a real
+    /// repository.
+    /// </remarks>
+    private static void MoveIntoTestsDirectory(FixtureCopy fixture, string project)
+    {
+        string from = Path.Combine(fixture.Root, project);
+        string to = Path.Combine(fixture.Root, "tests", project);
+
+        Directory.CreateDirectory(to);
+
+        foreach (string file in Directory.EnumerateFiles(from))
+        {
+            // One directory deeper, so every relative project reference gains a level.
+            File.WriteAllText(
+                Path.Combine(to, Path.GetFileName(file)),
+                File.ReadAllText(file).Replace("\"../", "\"../../", StringComparison.Ordinal));
+        }
+
+        Directory.Delete(from, recursive: true);
+    }
 
     private static void Exclude(FixtureCopy fixture, string directory, string project, string file)
     {

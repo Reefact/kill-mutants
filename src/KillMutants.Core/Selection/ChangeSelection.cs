@@ -46,12 +46,42 @@ internal sealed class ChangeSelection
     private readonly HashSet<string> _widened;
     private readonly MutantSelection _changedFiles;
 
-    private ChangeSelection(RunScope scope, HashSet<string> widened, MutantSelection changedFiles)
+    private ChangeSelection(
+        RunScope scope,
+        HashSet<string> widened,
+        MutantSelection changedFiles,
+        IReadOnlyList<string> coverageLost)
     {
         Scope = scope;
         _widened = widened;
         _changedFiles = changedFiles;
+        CoverageLost = coverageLost;
     }
+
+    /// <summary>
+    /// Projects the base revision's tests exercised, that still exist, and that no test project
+    /// reaches any more.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The one thing the widening cannot express, and review found it: remove the last
+    /// <c>ProjectReference</c> from a suite to a project and that project leaves the run entirely -
+    /// there is no target for it, so no compilation, so no mutants to select. The selection stays
+    /// empty and the verdict passes, over a component whose coverage the change has just deleted.
+    /// </para>
+    /// <para>
+    /// It is reported rather than mutated, because there is nothing to mutate it against: no test
+    /// project reaches it, so no suite could judge a mutant in it. What the run can say is that it
+    /// used to be covered and is not any more, and that a partial run which cannot ask about a
+    /// component has not passed.
+    /// </para>
+    /// <para>
+    /// A project the run was told to leave alone - excluded, or declaring itself test support - is
+    /// not this. Those are deliberate, and <see cref="ProjectDiscovery.ProjectsLeftOut"/> is how the
+    /// two are told apart.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> CoverageLost { get; }
 
     /// <summary>What the report says about the population this run inspected.</summary>
     public RunScope Scope { get; }
@@ -86,6 +116,10 @@ internal sealed class ChangeSelection
     /// project the change emptied exercises nothing at HEAD and is in no target, and its files still
     /// have to be recognised as test-side.
     /// </param>
+    /// <param name="projectsLeftOut">
+    /// Projects this run deliberately does not mutate, so that one whose coverage a change removed
+    /// can be told from one the user asked to be left alone.
+    /// </param>
     /// <param name="progress">Told when the base revision is being read, which is the slow part.</param>
     /// <param name="cancellationToken">Cancels the resolution.</param>
     /// <exception cref="ChangeSelectionException">
@@ -97,12 +131,14 @@ internal sealed class ChangeSelection
         string configuration,
         IReadOnlyList<MutationTestTarget> targets,
         IReadOnlyList<TestProject> testProjects,
+        IReadOnlySet<string> projectsLeftOut,
         IProgress<MutationTestProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(since);
         ArgumentNullException.ThrowIfNull(targets);
         ArgumentNullException.ThrowIfNull(testProjects);
+        ArgumentNullException.ThrowIfNull(projectsLeftOut);
 
         GitRepository repository = await GitRepository
             .ContainingAsync(searchDirectory, cancellationToken)
@@ -124,7 +160,7 @@ internal sealed class ChangeSelection
             changes.Count);
 
         var resolver = new Resolver(
-            repository, baseRevision, configuration, targets, testProjects, progress);
+            repository, baseRevision, configuration, targets, testProjects, projectsLeftOut, progress);
 
         return await resolver.ResolveAsync(scope, changes, cancellationToken).ConfigureAwait(false);
     }
@@ -138,6 +174,7 @@ internal sealed class ChangeSelection
         string configuration,
         IReadOnlyList<MutationTestTarget> targets,
         IReadOnlyList<TestProject> testProjects,
+        IReadOnlySet<string> projectsLeftOut,
         IProgress<MutationTestProgress>? progress)
     {
         /// <summary>
@@ -251,22 +288,38 @@ internal sealed class ChangeSelection
 
             foreach (FileChange change in unattributed)
             {
-                if (IsSharedBuildFile(change.Path))
+                if (!IsSharedBuildFile(change.Path))
                 {
-                    WidenBeneath(widened, Path.GetDirectoryName(change.Path)!);
+                    continue;
+                }
+
+                string directory = Path.GetDirectoryName(change.Path)!;
+
+                WidenBeneath(widened, directory);
+
+                // And the test projects beneath it, which review found missing: a
+                // tests/Directory.Build.props sits *above* every suite and beneath no production
+                // project, so widening only what was physically under it widened nothing at all in
+                // the ordinary src/ and tests/ layout - and a props file can remove a source from a
+                // suite's compilation as surely as deleting it would.
+                foreach (string testProject in TestProjectsBeneath(directory))
+                {
+                    touchedTestProjects.Add(testProject);
                 }
             }
 
-            await WidenForTestsAsync(widened, touchedTestProjects, unattributed, cancellationToken)
+            IReadOnlyList<string> coverageLost = await WidenForTestsAsync(
+                    widened, touchedTestProjects, unattributed, cancellationToken)
                 .ConfigureAwait(false);
 
-            return new ChangeSelection(scope, widened, MutantSelection.Of(changedFiles));
+            return new ChangeSelection(
+                scope, widened, MutantSelection.Of(changedFiles), coverageLost);
         }
 
         /// <summary>
         /// Widens to every project the touched test projects exercise, at both revisions.
         /// </summary>
-        private async Task WidenForTestsAsync(
+        private async Task<IReadOnlyList<string>> WidenForTestsAsync(
             HashSet<string> widened,
             HashSet<string> touchedTestProjects,
             IReadOnlyList<FileChange> unattributed,
@@ -290,7 +343,7 @@ internal sealed class ChangeSelection
 
             if (touchedTestProjects.Count == 0 && formerTestProjects.Count == 0)
             {
-                return;
+                return [];
             }
 
             progress?.Report(new MutationTestProgress(
@@ -310,20 +363,50 @@ internal sealed class ChangeSelection
                 }
             }
 
+            SortedSet<string> coverageLost = new(StringComparer.Ordinal);
+
             foreach (string testProject in atBase.Distinct(RepositoryPath.Comparer))
             {
                 foreach (string reached in await graph
                              .ProductionProjectsReachedFromAsync(testProject, cancellationToken)
                              .ConfigureAwait(false))
                 {
-                    // A project the base revision reached that this run does not mutate - excluded,
-                    // deleted, or never a target - is not something the selection can widen to.
                     if (HeadTargetAt(reached) is { } target)
                     {
                         widened.Add(target);
+
+                        continue;
+                    }
+
+                    if (StoppedBeingCovered(reached))
+                    {
+                        coverageLost.Add(reached);
                     }
                 }
             }
+
+            return [.. coverageLost];
+        }
+
+        /// <summary>
+        /// True when a project the base revision's tests reached is still there and no longer
+        /// measured by anything.
+        /// </summary>
+        /// <remarks>
+        /// Four questions, and each excludes a different innocent case. Gone from disk: the change
+        /// deleted it, and there is nothing left to cover. A target at HEAD: still measured. A test
+        /// project at HEAD: it became the yardstick rather than the subject. Left out on purpose:
+        /// excluded, or declaring itself test support, which is the user saying not to measure it.
+        /// What remains is a project that still exists, that nothing was told to ignore, and that no
+        /// suite reaches any more.
+        /// </remarks>
+        private bool StoppedBeingCovered(string repositoryPath)
+        {
+            string absolute = RepositoryPath.In(repository.Root, repositoryPath);
+
+            return File.Exists(absolute) &&
+                   !projectsLeftOut.Contains(absolute) &&
+                   !testProjects.Any(test => ProjectPaths.Comparer.Equals(test.ProjectPath, absolute));
         }
 
         /// <summary>

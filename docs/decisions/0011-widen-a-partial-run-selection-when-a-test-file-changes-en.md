@@ -164,6 +164,10 @@ precise and wrong when the failure mode is a green run that should have been red
 
 ### Risks
 
+* A shared build file is attributed to the projects beneath it, which misses one imported explicitly
+  from beside a project rather than from above it. MSBuild's `MSBuildAllProjects` would have been the
+  exact answer and comes back empty on an SDK project - measured - so there is no cheap way to ask
+  which build files a project actually reads.
 * A file that a change both **deletes** and that a test project reached from outside its own
   directory is attributed to nothing. Membership is read from HEAD's evaluation, where a deleted file
   no longer appears, and the directory rule that covers ordinary deletions does not reach it either.
