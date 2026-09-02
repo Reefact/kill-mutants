@@ -217,6 +217,106 @@ public class SinceRunTests
     }
 
     /// <summary>
+    /// A file one suite owns by directory and another links in widens both.
+    /// </summary>
+    /// <remarks>
+    /// Review found that the two attribution rules were alternatives rather than a union: the
+    /// directory's owners were returned as soon as there were any, so membership was never consulted
+    /// and the linking suite was never widened. Production code only that suite exercises would have
+    /// stayed out of the run.
+    /// </remarks>
+    [Fact]
+    public async Task A_file_one_suite_owns_and_another_links_widens_both()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        string shared = Path.Combine(fixture.Root, "Core.Tests", "Assertions.cs");
+
+        File.WriteAllText(
+            shared,
+            """
+            namespace Shared.Assertions;
+
+            public static class Amounts
+            {
+                public static void IsTwelve(int value) => Assert.Equal(12, value);
+            }
+            """);
+
+        // Owned by Core.Tests because it sits there, and by Domain.Tests because it links it in.
+        Reference(
+            fixture,
+            "Domain.Tests",
+            "Domain.Tests.csproj",
+            null,
+            """<Compile Include="../Core.Tests/Assertions.cs" Link="Assertions.cs" />""");
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+        File.AppendAllText(shared, $"{Environment.NewLine}// touched{Environment.NewLine}");
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        // Money.cs would come from the directory owner alone. Basket.cs is the half that only the
+        // union provides: Domain is exercised by Domain.Tests and by nothing else here.
+        Assert.Contains("Basket.cs", MutatedFiles(report));
+    }
+
+    /// <summary>
+    /// A production file inside a suite's folder is still production code.
+    /// </summary>
+    /// <remarks>
+    /// Review found this. Test ownership was checked first and always moved on, so in a nested layout
+    /// - a fixture library inside the suite's own directory - an added production file was attributed
+    /// to the enclosing suite, and an added file widens nothing. Newly added untested code therefore
+    /// produced an empty, passing run, which is the one case this feature exists to catch.
+    /// </remarks>
+    [Fact]
+    public async Task A_production_file_inside_a_test_projects_folder_is_still_selected()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        string library = Path.Combine(fixture.Root, "Domain.Tests", "FixtureLib");
+
+        Directory.CreateDirectory(library);
+
+        File.WriteAllText(
+            Path.Combine(library, "FixtureLib.csproj"),
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        File.WriteAllText(Path.Combine(library, "Clock.cs"), "namespace FixtureLib;\n\npublic static class Clock { }\n");
+
+        // The suite's default glob would otherwise compile the library's sources as well, which is a
+        // different situation from the nested one under test.
+        Exclude(fixture, "Domain.Tests", "Domain.Tests.csproj", "FixtureLib/**");
+        Reference(fixture, "Domain.Tests", "Domain.Tests.csproj", "FixtureLib/FixtureLib.csproj");
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+
+        // Added, inside the suite's directory, and exercised by nothing.
+        File.WriteAllText(
+            Path.Combine(library, "Rounding.cs"),
+            """
+            namespace FixtureLib;
+
+            public static class Rounding
+            {
+                public static bool IsWhole(int cents) => cents % 100 == 0;
+            }
+            """);
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        Assert.Contains("Rounding.cs", MutatedFiles(report));
+        Assert.True(report.HasUndetected);
+    }
+
+    /// <summary>
     /// A suite can be switched off without being deleted, and that is just as much a loss of
     /// coverage.
     /// </summary>
@@ -538,16 +638,21 @@ public class SinceRunTests
                 StringComparison.Ordinal));
     }
 
-    private static void Reference(FixtureCopy fixture, string directory, string project, string reference)
+    private static void Reference(
+        FixtureCopy fixture,
+        string directory,
+        string project,
+        string? reference,
+        string? item = null)
     {
         string path = Path.Combine(fixture.Root, directory, project);
+        string added = item ?? $"<ProjectReference Include=\"{reference}\" />";
 
         File.WriteAllText(
             path,
             File.ReadAllText(path).Replace(
                 "</Project>",
-                $"  <ItemGroup><ProjectReference Include=\"{reference}\" /></ItemGroup>" +
-                $"{Environment.NewLine}</Project>",
+                $"  <ItemGroup>{added}</ItemGroup>{Environment.NewLine}</Project>",
                 StringComparison.Ordinal));
     }
 
