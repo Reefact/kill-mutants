@@ -400,11 +400,57 @@ internal sealed class FixtureCopy : IDisposable
 
     private static FixtureCopy CopyOf(string source)
     {
-        string destination = Path.Combine(Path.GetTempPath(), $"killmutants-e2e-{Guid.NewGuid():N}");
+        string destination = Path.Combine(TempRoot, $"killmutants-e2e-{Guid.NewGuid():N}");
 
         CopyDirectory(source, destination);
 
         return new FixtureCopy(destination);
+    }
+
+    /// <summary>
+    /// The temporary directory, with every symbolic link on the way to it resolved.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Measured, after macOS failed three tests that pass everywhere else with
+    /// <c>CS0103: The name 'Money' does not exist in the current context</c>. On macOS
+    /// <c>Path.GetTempPath()</c> returns a path under <c>/var</c>, which is a symbolic link to
+    /// <c>/private/var</c>. MSBuild resolves the link for the referenced projects and not for the
+    /// one it was given - the restore log says <c>/private/var/.../Sample.Support</c> on one line
+    /// and <c>/var/.../Sample.Library.Tests</c> on the next - and the transitive project reference
+    /// is lost between the two spellings: <c>Tests -&gt; Support -&gt; Library</c> compiles without
+    /// <c>Library</c>.
+    /// </para>
+    /// <para>
+    /// It is not a macOS defect and it is not ours. Reproduced on Linux by planting the same fixture
+    /// behind a symbolic link and building through it: the identical error, from plain
+    /// <c>dotnet build</c>, with KillMutants not involved. What is ours is handing MSBuild a path
+    /// shape no real repository has, so the link is resolved once, here, and every fixture is built
+    /// at the path a user's would be.
+    /// </para>
+    /// </remarks>
+    private static string TempRoot { get; } = Canonical(Path.GetTempPath());
+
+    /// <summary>Resolves every symbolic link on a path, from the root down.</summary>
+    /// <remarks>
+    /// There is no <c>realpath</c> in .NET. <see cref="FileSystemInfo.ResolveLinkTarget"/> answers
+    /// for one component, so the path is walked from the top: a link anywhere along it - and on
+    /// macOS the link is <c>/var</c>, four levels above the leaf - is resolved before the next
+    /// component is appended.
+    /// </remarks>
+    private static string Canonical(string path)
+    {
+        var directory = new DirectoryInfo(Path.GetFullPath(path));
+
+        if (directory.Parent is null)
+        {
+            return directory.FullName;
+        }
+
+        string resolved = Path.Combine(Canonical(directory.Parent.FullName), directory.Name);
+
+        return new DirectoryInfo(resolved).ResolveLinkTarget(returnFinalTarget: true)?.FullName
+               ?? resolved;
     }
 
     /// <remarks>
