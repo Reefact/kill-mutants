@@ -58,6 +58,7 @@ internal sealed class MsBuildQuery
             "-getProperty:TargetFramework",
             "-getProperty:TargetFrameworks",
             "-getProperty:OutputType",
+            "-getProperty:XunitTestProject",
             "-getProperty:KillMutantsTestSupport",
             "-getItem:PackageReference",
             "-getItem:ProjectReference",
@@ -84,6 +85,7 @@ internal sealed class MsBuildQuery
             TargetFramework: Property("TargetFramework"),
             TargetFrameworks: Split(Property("TargetFrameworks")),
             OutputType: Property("OutputType"),
+            XunitTestProject: IsTrue(Property("XunitTestProject")),
             DeclaredTestSupport: IsTrue(Property("KillMutantsTestSupport")),
             PackageReferences: ReadItems(root, "PackageReference", identity => identity),
             ProjectReferences: ReadItems(
