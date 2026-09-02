@@ -921,44 +921,60 @@ relevés pendant ce travail, y compris celui qui nous avait d'abord orientés ve
 réelle et reste ouverte — elle a été mesurée séparément, dans notre propre processus — mais elle
 n'était pas la cause des échecs de compilation.
 
-## RB-025 — Le support de test hors d'un projet de test est invisible pour `--since` · OUVERT
+## RB-025 — Le support de test n'est pas le sujet, et le conseil de xUnit aggravait le cas · COUVERT
 
-**Comment elle a été trouvée.** Une revue de le DEC0010, au cinquième passage sur la même règle.
-Chaque passage précédent avait trouvé le correctif appuyé sur une donnée que le changement pouvait
-effacer ; celui-ci l'a trouvé appuyé sur une classification que l'outil ne fait pas.
+**Comment elle a été trouvée.** Une revue du DEC0010, au cinquième passage sur la même règle. Chaque
+passage précédent avait trouvé le correctif appuyé sur une donnée que le changement pouvait effacer ;
+celui-ci l'a trouvé appuyé sur une classification que l'outil ne fait pas. Exécuter ensuite l'outil
+sur la forme décrite a révélé pire — et la lecture qui l'avait prédit était fausse.
 
-**Le mécanisme.** `--since` élargit sa sélection quand un changement touche un projet de test, parce
-qu'un test modifié peut cesser d'atteindre un mutant qu'il tuait. Or le support de test vit
-couramment dans une bibliothèque ordinaire à côté des tests :
+**Ce que disait la lecture.** Que `Tests -> TestSupport -> ProjectA` perdrait `ProjectA`, parce que la
+découverte cesse de marcher sur un projet de test.
+
+**Ce qu'a dit l'exécution.** Elle n'allait même pas jusque-là :
 
 ```text
-Tests -> TestSupport -> ProjectA        (ProjectA contient le mutant M)
+Discovering projects - Sample.Library.Tests
+Building test projects - Sample.Support
+'Sample.Support' cannot be used: KillMutants could not find 'xunit.v3.core.dll' ...
 ```
 
-`ProjectDiscovery` ne classe les projets que par `IsTestProject`, et traite tout projet non-test
-qu'un projet de test atteint comme une cible mutable. `TestSupport` est donc une cible exactement
-comme `ProjectA` — rien ne sépare une bibliothèque de constructeurs du code sous test. Modifier
-`TestSupport` ne touche donc aucun projet de test, l'élargissement ne se déclenche pas, et `T` peut
-cesser d'atteindre `M` sans que ni `Tests` ni `ProjectA` ne figurent au diff. Il en va de même pour
-une configuration partagée hors du répertoire du projet de test.
+xUnit v3 refuse d'être référencé par une bibliothèque de classes — *« xUnit.net v3 test projects must
+be executable ... If this is not a test project, reference xunit.v3.extensibility.core instead »* —
+si bien qu'une bibliothèque d'aide doit référencer `xunit.v3.assert` ou
+`xunit.v3.extensibility.core`. Les deux commencent par `xunit.v3`, et `IsTestProject` matchait ce
+préfixe. La bibliothèque était donc classée suite de tests, l'exécution a tenté de la lancer, et elle
+s'est arrêtée. **Suivre l'instruction de xUnit rendait un projet impossible à mesurer.**
 
-**Ce que cela coûte.** Une exécution partielle qui ne rapporte aucun constat là où une exécution
-complète en aurait trouvé un. C'est borné : le changement sélectionne bien les mutants propres à
-`TestSupport`, puisqu'il est une cible — l'exécution n'est donc pas muette sur le code modifié, mais
-seulement sur `M`.
+**Le correctif, en deux moitiés.** Un projet de test doit désormais être `Exe` — la condition même que
+xUnit impose à la construction, si bien qu'un projet que nous appelons projet de test est exactement
+un projet que xUnit accepterait d'exécuter. Cela couvre toute bibliothèque de support qui référence
+xUnit, c'est-à-dire la plupart, sans que l'utilisateur ait rien à déclarer.
 
-**Pourquoi elle est ouverte plutôt que corrigée.** Les deux correctifs disponibles sont plus gros que
-l'entrée. Élargir sur tout projet modifié joignable depuis un projet de test fait que chaque
-changement de production réexécute tout, ce qui supprime `--since` au lieu de le nuancer. Lire la
-couverture de la révision de base est la réponse précise et exige les résultats stockés d'une
-exécution précédente — la fonctionnalité de base de référence. Une troisième possibilité est plus
-petite et mérite d'être pesée d'abord : laisser un projet se déclarer support de test, pour que la
-découverte cesse de le traiter en sujet et traite une modification qui le touche comme une
-modification des tests.
+Le reste est déclaré, parce que pour une bibliothèque ordinaire de constructeurs aucun fait
+structurel ne la sépare du code sous test : `<KillMutantsTestSupport>true</KillMutantsTestSupport>`
+supprime le projet comme cible sans cacher ce qui se trouve derrière — un trou dans le graphe, pas un
+mur, exactement comme une exclusion.
 
-**Ce qui est écrit en attendant.** Le DEC0010 énonce sa garantie pour les modifications à l'intérieur
-des projets de test reconnus et ne revendique aucun absolu au-delà. C'est toute la raison d'être de
-cette entrée : le document disait auparavant « jamais un faux vert ».
+**Ce que cela coûtait.** Mesuré sur `tests/fixtures/testsupport`, dont la bibliothèque de support
+porte une comparaison à elle :
 
-**Nos tests.** Aucun ; `--since` n'existe pas encore. Cette entrée existe pour que M13 implémente une
-promesse bornée plutôt que celle du premier jet.
+| | Mutants | Score |
+| --- | --- | --- |
+| Non déclarée | 4, dans deux fichiers | 25 % |
+| Déclarée | 2, dans la bibliothèque sous test | 50 % |
+
+De l'échafaudage que personne n'avait cherché à mesurer divisait par deux le score rapporté.
+
+**Ce qui reste ouvert.** La frontière de `--since` dans l'ADR-0010. Une modification d'une
+bibliothèque de support *déclarée* peut désormais être reconnue comme relevant du côté tests, ce dont
+l'ADR a besoin ; une modification d'une bibliothèque non déclarée, non — pas plus qu'une modification
+de configuration partagée hors d'un projet de test. La garantie énoncée là-bas est inchangée : elle
+couvre les projets de test reconnus, et cette entrée réduit ce qui se trouve en dehors plutôt qu'elle
+ne ferme la frontière.
+
+**Nos tests.** `ProjectFactsTests` épingle la règle dans les deux sens, y compris `xunit.v3.assert`
+sur une bibliothèque et un exécutable qui ne référence aucun cadre de test.
+`TestSupportProjectTests` exécute les trois cas de bout en bout : le code de production derrière une
+bibliothèque de support est atteint, une bibliothèque de support non déclarée est mutée comme
+n'importe quel projet, et une bibliothèque déclarée est ignorée sans cacher ce qu'elle référence.

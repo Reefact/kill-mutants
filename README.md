@@ -109,6 +109,22 @@ dotnet killmutants --mutators Comparison,LogicalOperator,Arithmetic
 Code marked `[ExcludeFromCodeCoverage]` is left alone: the attribute already says this code is not
 part of what the tests are expected to cover.
 
+A **test-support library** — builders, fakes, clocks, assertion helpers — is scaffolding rather than
+the subject, and mutating it reports findings nobody set out to measure. When it references xUnit it
+is recognised on its own, because xUnit refuses to be referenced by a class library and so such a
+project is never an `Exe`. When it references nothing in particular, nothing distinguishes it from
+the code under test, so it says so itself:
+
+```xml
+<PropertyGroup>
+  <KillMutantsTestSupport>true</KillMutantsTestSupport>
+</PropertyGroup>
+```
+
+The project is then left out of the run without hiding what it references: the code under test behind
+it is still found and still mutated. On the fixture this was measured against, declaring one support
+library moved the score from 25 % to 50 % by removing four mutants nobody had asked about.
+
 A project keeps its habits in `killmutants.json`, beside its code, so a CI job stops retyping flags —
 and so the catalogue that produced a score is versioned with the code that was scored:
 

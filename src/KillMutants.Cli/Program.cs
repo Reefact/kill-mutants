@@ -170,6 +170,9 @@ internal static class Program
                                         against the path relative to the directory above, written
                                         with '/'. Note that '*' also matches '/', so 'tests/*'
                                         covers everything beneath 'tests'.
+                                        A project can also keep itself out by setting the MSBuild
+                                        property KillMutantsTestSupport to true, which says it is
+                                        test scaffolding rather than code under test.
               -m, --mutators <list>     Only run these mutator families, comma separated.
                   --without <list>      Leave these families out. Applied after --mutators.
                                         Pass 'none' to run every family even when the file
