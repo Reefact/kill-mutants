@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup><Using Include="Xunit" /></ItemGroup>
+  <!-- xUnit itself directs a non-test library here: referencing xunit.v3.mtp-v2 fails the build
+       with "xUnit.net v3 test projects must be executable". This is the package a test-support
+       library is supposed to use. -->
+  <ItemGroup><PackageReference Include="xunit.v3.assert" Version="4.0.0" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../Sample.Library/Sample.Library.csproj" /></ItemGroup>
+</Project>
