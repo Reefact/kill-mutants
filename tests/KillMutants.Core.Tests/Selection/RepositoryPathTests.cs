@@ -70,4 +70,31 @@ public class RepositoryPathTests
     {
         Assert.False(RepositoryPath.IsUnder("src/Core", "src/Core"));
     }
+
+    /// <summary>
+    /// The parent segment, not the two characters that spell it.
+    /// </summary>
+    /// <remarks>
+    /// Review found this: a directory legally named <c>..tests</c> produces a relative path starting
+    /// with <c>..</c> without climbing anywhere, and was read as outside the repository. A test
+    /// project there was then left out of the base-side traversal, so a removed project reference
+    /// could go unreported.
+    /// </remarks>
+    [Fact]
+    public void A_directory_whose_name_begins_with_two_dots_is_still_in_the_repository()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "repo");
+
+        Assert.Equal(
+            "..tests/Suite.csproj",
+            RepositoryPath.Of(root, Path.Combine(root, "..tests", "Suite.csproj")));
+    }
+
+    [Fact]
+    public void A_path_that_really_climbs_out_is_still_outside_the_repository()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "repo");
+
+        Assert.Null(RepositoryPath.Of(root, Path.Combine(Path.GetTempPath(), "elsewhere", "Suite.csproj")));
+    }
 }

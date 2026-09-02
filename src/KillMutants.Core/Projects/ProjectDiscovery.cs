@@ -13,6 +13,7 @@ internal sealed class ProjectDiscovery
 
     private readonly Dictionary<string, List<string>> _leftOut = new(ProjectPaths.Comparer);
     private readonly Dictionary<string, IReadOnlyList<string>> _inputs = new(ProjectPaths.Comparer);
+    private readonly Dictionary<string, List<string>> _analyzerConsumers = new(ProjectPaths.Comparer);
     private readonly MsBuildQuery _msBuild;
     private readonly string _configuration;
     private readonly PathFilter _exclusions;
@@ -73,7 +74,8 @@ internal sealed class ProjectDiscovery
             new HashSet<string>(
                 TestProjects.Select(test => test.ProjectPath), ProjectPaths.Comparer),
             ProjectsLeftOut,
-            InputsByProject);
+            InputsByProject,
+            AnalyzerConsumers);
 
     /// <summary>
     /// What each project discovery read consumes, by project path, empty unless it was asked.
@@ -84,6 +86,18 @@ internal sealed class ProjectDiscovery
     /// as a project under test.
     /// </remarks>
     public IReadOnlyDictionary<string, IReadOnlyList<string>> InputsByProject => _inputs;
+
+    /// <summary>Which projects consume each generator project, by the generator's path.</summary>
+    /// <remarks>
+    /// A project referenced as an analyzer is invisible to everything else here on purpose: it does
+    /// not run at run time, so it is neither a target nor something a target links. But it decides
+    /// what its consumers compile, so a change to its source changes the assembly under test without
+    /// putting a line of that assembly's own code in the diff - review found a partial run passing
+    /// clean over exactly that. This is the relation that lets the change reach them.
+    /// </remarks>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> AnalyzerConsumers =>
+        _analyzerConsumers.ToDictionary(
+            entry => entry.Key, entry => (IReadOnlyList<string>)entry.Value, ProjectPaths.Comparer);
 
     /// <summary>
     /// Discovers everything to mutate under <paramref name="searchDirectory"/>.
@@ -357,6 +371,17 @@ internal sealed class ProjectDiscovery
                 .ConfigureAwait(false);
 
             _inputs[facts.ProjectPath] = facts.InputFiles;
+
+            foreach (string generator in facts.AnalyzerProjects)
+            {
+                if (!_analyzerConsumers.TryGetValue(generator, out List<string>? consumers))
+                {
+                    _analyzerConsumers[generator] = consumers = [];
+                }
+
+                consumers.Add(facts.ProjectPath);
+            }
+
             projects.Add(facts);
         }
 

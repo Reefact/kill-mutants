@@ -25,9 +25,26 @@ internal static class RepositoryPath
 
         // GetRelativePath climbs out with "..", and returns the path unchanged when the two are on
         // different volumes. Both mean the same thing here: not in this repository.
-        return relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative)
+        //
+        // The parent segment, not the prefix: review pointed out that a directory legally named
+        // "..tests" starts with those two characters without climbing anywhere, and was being read
+        // as outside the repository.
+        return ClimbsOut(relative) || Path.IsPathRooted(relative)
             ? null
             : Normalise(relative);
+    }
+
+    /// <summary>True when the first segment of a relative path is the parent directory.</summary>
+    private static bool ClimbsOut(string relative)
+    {
+        if (!relative.StartsWith("..", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return relative.Length == 2 ||
+               relative[2] == Path.DirectorySeparatorChar ||
+               relative[2] == Path.AltDirectorySeparatorChar;
     }
 
     /// <summary>The absolute path a repository name points at inside <paramref name="root"/>.</summary>

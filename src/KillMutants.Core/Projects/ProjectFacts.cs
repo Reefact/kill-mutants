@@ -12,6 +12,11 @@ namespace KillMutants.Projects;
 /// <param name="DeclaredTestSupport">Whether the project sets <c>KillMutantsTestSupport</c>.</param>
 /// <param name="PackageReferences">Package identifiers the project references.</param>
 /// <param name="ProjectReferences">Absolute paths of the projects it references.</param>
+/// <param name="AnalyzerProjects">
+/// Absolute paths of the projects it references as analyzers - generators, which run at build time
+/// and are deliberately absent from <paramref name="ProjectReferences"/> because nothing links them.
+/// They still decide what this project compiles.
+/// </param>
 /// <param name="InputFiles">
 /// Absolute paths of every file the project compiles or carries, empty unless the query was asked
 /// for them. The authoritative answer to "does this project consume this file", which the directory
@@ -29,6 +34,7 @@ internal sealed record ProjectFacts(
     bool DeclaredTestSupport,
     IReadOnlyList<string> PackageReferences,
     IReadOnlyList<string> ProjectReferences,
+    IReadOnlyList<string> AnalyzerProjects,
     IReadOnlyList<string> InputFiles)
 {
     /// <summary>The project name, for display.</summary>
