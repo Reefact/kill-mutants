@@ -73,8 +73,14 @@ public class ProcessRunnerTests
         string marker = Path.Combine(Path.GetTempPath(), $"killmutants-test-{Guid.NewGuid():N}.marker");
 
         // Survives long enough to be cancelled, and leaves proof behind if it is left running.
+        //
+        // `ping`, not `timeout`, for the reason given on the test above: `timeout` refuses to wait
+        // without a console and exits at once, which here would run the marker command immediately
+        // and finish the whole thing before the token could fire. That is what it did, on a Windows
+        // runner, four lines below the first place this was fixed. `ping -n 6` waits about five
+        // seconds and reads nothing from standard input.
         (string command, string[] arguments) = OperatingSystem.IsWindows()
-            ? ("cmd.exe", ["/c", $"timeout /t 5 /nobreak > nul & type nul > \"{marker}\""])
+            ? ("cmd.exe", ["/c", $"ping -n 6 127.0.0.1 > nul & type nul > \"{marker}\""])
             : ("/bin/sh", new[] { "-c", $"sleep 5; touch '{marker}'" });
 
         using var cancellation = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
