@@ -15,8 +15,11 @@ n'y trouve rien à exécuter et rapporte une exécution vide et verte — pendan
 cette assertion tuait survivent désormais. C'est exactement le comportement non testé que cette
 fonctionnalité existe pour attraper, arrivant par la porte que personne ne surveille. La sélection
 est donc : tout site mutable du code de production modifié, **plus tout mutant couvert par un test
-d'un fichier de test modifié**. Stryker.NET sélectionne sur les deux mêmes fondements, ce qui indique
-que le second n'est pas une inquiétude théorique.
+d'un fichier de test modifié**. Stryker.NET sélectionne sur les deux mêmes fondements — leur
+documentation de configuration, texto : *« For changes on test project files all mutants covered by
+tests in that file will be seen as changed. »* Que deux outils aboutissent à la même règle ne prouve
+pas grand-chose à soi seul, mais cela dit au moins que la seconde moitié n'est pas une inquiétude
+théorique.
 
 La question tranchée ici est : qu'a le droit d'afficher une telle exécution ? Toutes les autres se
 terminent par un score de mutation. L'évidence serait d'en afficher un ici aussi.
