@@ -148,3 +148,40 @@ jobs:
         env:
           SOLUTION: ${{ steps.solution.outputs.path }}
         run: dotnet test --solution "$SOLUTION" -c Release --no-build
+
+  # One check name that never changes, for branch protection to require.
+  #
+  # Requiring the matrix jobs directly means requiring the literal string
+  # `Build and test (ubuntu-latest)`. Rename a runner image or add a platform and protection is left
+  # waiting on a name nothing reports - which blocks every pull request, starting the day somebody
+  # touches the matrix and not before, with an error that says nothing useful. This job is the stable
+  # name; the matrix behind it is then free to move.
+  #
+  # `if: always()` is what makes it a gate rather than a decoration. Without it the job is *skipped*
+  # when a dependency fails, and a skipped required check does not fail a pull request: protection
+  # would be satisfied by a build that never happened.
+  gate:
+    name: CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - workflows
+      - test
+    if: always()
+    steps:
+      - name: Every job this gate stands for
+        env:
+          LINT: ${{ needs.workflows.result }}
+          TEST: ${{ needs.test.result }}
+        run: |
+          set -euo pipefail
+
+          echo "Lint the workflows: $LINT"
+          echo "Build and test:     $TEST"
+
+          # A matrix job's result is 'success' only when every leg succeeded, so one red platform
+          # arrives here as one red gate without this having to know how many there are.
+          if [ "$LINT" != success ] || [ "$TEST" != success ]; then
+            echo "::error::A job this gate stands for did not succeed."
+            exit 1
+          fi
