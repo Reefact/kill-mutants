@@ -947,9 +947,29 @@ préfixe. La bibliothèque était donc classée suite de tests, l'exécution a t
 s'est arrêtée. **Suivre l'instruction de xUnit rendait un projet impossible à mesurer.**
 
 **Le correctif, en deux moitiés.** Un projet de test doit désormais être `Exe` — la condition même que
-xUnit impose à la construction, si bien qu'un projet que nous appelons projet de test est exactement
-un projet que xUnit accepterait d'exécuter. Cela couvre toute bibliothèque de support qui référence
-xUnit, c'est-à-dire la plupart, sans que l'utilisateur ait rien à déclarer.
+xUnit impose à la construction. Cela couvre toute bibliothèque de support qui référence xUnit,
+c'est-à-dire la plupart, sans que l'utilisateur ait rien à déclarer.
+
+`Exe` seul ne suffit pas, et la revue a rattrapé l'affirmation excessive avant la livraison : un
+exécutable qui référence `xunit.v3.extensibility.core` n'est pas non plus un projet de test, et
+l'appeler ainsi en ferait un mur dans le graphe de références plutôt qu'un trou. Mesuré sur les
+paquets 4.0.0, en construisant contre chacun un exécutable doté de son propre `Main` :
+
+| Paquet | Se construit avec son propre `Main` | `xunit.v3.core.dll` en sortie |
+| --- | --- | --- |
+| `xunit.v3`, `xunit.v3.core`, `xunit.v3.mtp-v2` | non — CS0017, xUnit en avait déjà fourni un | — |
+| `xunit.v3.extensibility.core` | oui | **oui** |
+| `xunit.v3.assert` | oui | non |
+
+La ligne du milieu est la coupante : un tel projet passe le test du préfixe *et* la vérification
+d'exécutabilité que l'outil fait après la construction, si bien que rien en aval ne l'aurait
+rattrapé. Le paquet est donc désormais reconnu par son nom, parmi les quatre qui tirent
+`xunit.v3.core.mtp-v2` — le paquet qui engendre le point d'entrée — et la propriété `XunitTestProject`
+de xUnit lui-même est interrogée d'abord. Cette propriété est posée dans les props `buildTransitive`
+de `xunit.v3.core.mtp-v2`, donc elle reconnaît des variantes dont l'outil n'a jamais entendu parler ;
+elle arrive par les imports engendrés de NuGet, donc elle est vide tant que le projet n'a pas été
+restauré — mesuré `true` sur un projet restauré et vide sur le même privé de son `obj` — et la
+découverte s'exécute avant toute construction. Aucune des deux questions ne suffit seule.
 
 Le reste est déclaré, parce que pour une bibliothèque ordinaire de constructeurs aucun fait
 structurel ne la sépare du code sous test : `<KillMutantsTestSupport>true</KillMutantsTestSupport>`
@@ -973,8 +993,73 @@ de configuration partagée hors d'un projet de test. La garantie énoncée là-b
 couvre les projets de test reconnus, et cette entrée réduit ce qui se trouve en dehors plutôt qu'elle
 ne ferme la frontière.
 
-**Nos tests.** `ProjectFactsTests` épingle la règle dans les deux sens, y compris `xunit.v3.assert`
-sur une bibliothèque et un exécutable qui ne référence aucun cadre de test.
+**Nos tests.** `ProjectFactsTests` épingle la table de vérité dans les deux sens : `xunit.v3.assert`
+sur une bibliothèque, un exécutable qui référence `xunit.v3.extensibility.core`, un exécutable qui ne
+référence aucun cadre de test, et une variante que personne n'a nommée mais dont la propriété de
+xUnit se porte garante.
 `TestSupportProjectTests` exécute les trois cas de bout en bout : le code de production derrière une
 bibliothèque de support est atteint, une bibliothèque de support non déclarée est mutée comme
 n'importe quel projet, et une bibliothèque déclarée est ignorée sans cacher ce qu'elle référence.
+
+
+## RB-026 — Un dépôt derrière un lien symbolique perd ses références de projet transitives · COUVERT
+
+**Comment elle a été trouvée.** Le poste macOS de l'intégration continue a échoué sur trois tests de
+bout en bout qui passent sous Linux et Windows, avec `CS0103: The name 'Money' does not exist in the
+current context` — un projet de test compilé sans la bibliothèque qu'il est censé exercer.
+
+**Ce que c'est.** Sous macOS, `Path.GetTempPath()` renvoie un chemin sous `/var`, qui est un lien
+symbolique vers `/private/var`. MSBuild résout le lien pour les projets référencés et pas pour celui
+qu'on lui a donné. Le journal de restauration écrit les deux orthographes, à deux lignes d'écart :
+
+```text
+Restored /private/var/.../Sample.Support/Sample.Support.csproj
+Restored /var/.../Sample.Library.Tests/Sample.Library.Tests.csproj
+```
+
+et la référence transitive se perd entre les deux : `Tests -> Support -> Library` compile sans
+`Library`.
+
+**Ce n'est pas un défaut de macOS.** Reproduit sous Linux en plantant la même fixture derrière un lien
+symbolique et en construisant à travers : erreur identique, depuis un simple `dotnet build`, sans que
+KillMutants intervienne. Ce qui est à nous, c'est le harnais de bout en bout, qui donnait à MSBuild
+une forme de chemin qu'aucun dépôt réel n'a.
+
+**Le correctif.** `FixtureCopy` résout une fois pour toutes les liens du chemin vers le répertoire
+temporaire, si bien que chaque fixture est construite au chemin qu'aurait le dépôt d'un utilisateur.
+.NET n'a pas de `realpath` : le chemin est donc parcouru depuis la racine et chaque composant résolu
+par `ResolveLinkTarget` — sous macOS, le lien est `/var`, quatre niveaux au-dessus de la feuille.
+
+**Ce qui reste ouvert.** Un utilisateur dont le dépôt est réellement atteint par un lien symbolique
+obtient le même échec de son propre `dotnet build`, avant que KillMutants n'intervienne : il n'y a
+donc rien à corriger côté outil. C'est consigné parce que l'échec nomme un type manquant et non une
+référence manquante, et que personne en le lisant ne soupçonnerait le chemin.
+
+
+## RB-027 — Un projet de test reste un mur dans le graphe de références · OUVERT
+
+**Comment elle a été trouvée.** Lue dans le code en corrigeant RB-025, et pas encore reproduite sur
+une fixture — d'où le fait que ceci soit une affirmation sur
+`ProjectDiscovery.ReachableProjectsAsync` et non une mesure.
+
+**Ce qu'elle dit.** Le parcours s'arrête sur un projet de test :
+
+```csharp
+if (facts is null || facts.IsTestProject) { continue; }
+```
+
+Le `continue` précède la mise en file des références : rien de ce qui se trouve sous un projet de test
+n'est parcouru. `Tests -> IntegrationTests -> Core` perdrait donc `Core`, à moins qu'un autre projet
+de test ne l'atteigne directement.
+
+**Pourquoi cela compte.** C'est la troisième occurrence d'un même motif, et les deux premières se sont
+révélées réelles : un projet exclu était un mur — `Tests -> ExcludedFacade -> Core` perdait `Core` et
+ne disait rien — et une bibliothèque de support l'était jusqu'à ce changement. La règle établie par
+les deux précédentes est qu'un projet écarté comme *cible* doit malgré tout être parcouru comme
+*graphe*, et voici le seul endroit où elle n'est pas appliquée. Écarter un projet de test des cibles
+est juste — son code est l'étalon, pas le sujet — mais les assemblages situés sous lui sont chargés
+par l'hôte de test exactement comme les autres.
+
+**Ce que coûterait sa fermeture.** Une ligne, et une fixture où un projet de test en référence un
+autre. Laissée ouverte plutôt que fondue dans le changement de RB-025 : elle a été trouvée pendant une
+passe de revue, et élargir un changement en cours de revue est ce qui transforme deux passes en cinq.
