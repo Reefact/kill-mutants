@@ -89,6 +89,22 @@ internal sealed class ProjectCompilation
         AdditionalText[] additionalTexts =
             [.. arguments.AdditionalFiles.Select(file => new CompilerAdditionalText(file.Path))];
 
+        // An analyzer that could not be inspected and does carry a generator is the same failure as
+        // one that threw while generating, arriving earlier: its code is missing from the
+        // compilation, and nothing downstream would say so. An analyzer that only reports
+        // diagnostics is left alone - it contributes nothing to the assembly, so failing to read it
+        // changes nothing about what is emitted.
+        if (generators.Unreadable.Count > 0)
+        {
+            throw new ProjectAnalysisException(
+                "A source generator could not be inspected, so the compilation is missing code the " +
+                $"build has:{Environment.NewLine}  " +
+                string.Join(Environment.NewLine + "  ", generators.Unreadable) +
+                Environment.NewLine + Environment.NewLine +
+                "This usually means the project pins a newer Roslyn than KillMutants runs on " +
+                $"({typeof(CSharpCompilation).Assembly.GetName().Version}).");
+        }
+
         GeneratedCompilation generated = generators.Run(
             compilation, parseOptions, analyzerConfig, additionalTexts);
 

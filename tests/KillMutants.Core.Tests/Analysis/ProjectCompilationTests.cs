@@ -96,7 +96,7 @@ public class ProjectCompilationTests
 [CollectionDefinition(nameof(SerialFixtureAccess), DisableParallelization = true)]
 public class SerialFixtureAccess : ICollectionFixture<BuiltSample>;
 
-/// <summary>Builds the sample fixture once, before anything asks MSBuild about it.</summary>
+/// <summary>Builds the fixtures once, before anything asks MSBuild - or the filesystem - about them.</summary>
 /// <remarks>
 /// <para>
 /// The tool itself never queries a project it has not built first - <c>BuildTestProjectsAsync</c>
@@ -116,13 +116,19 @@ public sealed class BuiltSample
 {
     public BuiltSample()
     {
+        // Both fixtures, for the same reason in two shapes: one is asked about through MSBuild, the
+        // other read straight off the disk. A test that reads an assembly which was never built
+        // fails in a way that looks like the thing it was testing.
+        Build(FixtureRepository.SampleLibraryProject);
+        Build(FixtureRepository.GeneratorProject);
+    }
+
+    private static void Build(string project)
+    {
         using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
         {
             FileName = "dotnet",
-            ArgumentList =
-            {
-                "build", FixtureRepository.SampleLibraryProject, "-c", "Release", "-nologo",
-            },
+            ArgumentList = { "build", project, "-c", "Release", "-nologo" },
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
@@ -135,8 +141,8 @@ public sealed class BuiltSample
         if (process.ExitCode != 0)
         {
             throw new InvalidOperationException(
-                "The sample fixture could not be built, so no test that queries it can mean " +
-                $"anything.{Environment.NewLine}{output}");
+                $"'{Path.GetFileNameWithoutExtension(project)}' could not be built, so no test that " +
+                $"uses it can mean anything.{Environment.NewLine}{output}");
         }
     }
 }
