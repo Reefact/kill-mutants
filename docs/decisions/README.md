@@ -38,16 +38,25 @@ decided on the day. Any of it may stop being true later without the record chang
   would need maintaining. The filter for any sentence: *does this help understand why the decision
   was taken then?* If not, it belongs to another document.
 
-**One exception, recorded here rather than left implicit.** On 2026-09-02 the nine records that
-already existed were reformatted into this format and renumbered from `ADR-NNNN` to `DECNNNN`, while
-they were accepted. That was a bootstrap migration of the base's presentation, not a reconsideration
-of anything: wording moved between sections, sections with no recorded material say so rather than
-being filled, and no status row was added because no decision changed state. Two decisions do read
-differently, and both changes are the migration itself — DEC0001 names the folder and the identifier
-that were renamed, and DEC0009 was rewritten into the single sentence the format requires, its table
-of exit codes being user documentation that already lives in the repository's `README.md`. The rule
-above governs the base from that day on. A base nine records old was the last moment at which
-converting them cost less than living with two formats for good.
+**One exception, bounded here rather than left implicit.** On 2026-09-02 the ten records that
+existed — `ADR-0001` to `ADR-0010`, all of them accepted — were migrated into this format and
+renumbered from `ADR-NNNN` to `DECNNNN`. The exception is that whole migration, and nothing outside
+it.
+
+Most of it was presentation: wording moved between sections, sections with no recorded material say
+so rather than being filled, and no status row was added because no decision changed state. Three
+records read differently, and each change is the migration itself. DEC0001 names the folder and the
+identifier that were renamed. DEC0009 was rewritten into the single sentence the format requires, its
+table of exit codes being user documentation that already lives in the repository's `README.md`. And
+`ADR-0010` was **split into two records** — DEC0010 for what a partial run prints, DEC0011 for what it
+selects — because it carried two decisions that are independently reversible and whose alternatives
+belong to one or the other, never to both.
+
+That split is structural, not cosmetic, and it is the reason this exception is written as a boundary
+rather than as a principle. It is not licensed by the record's age: there is no grace period during
+which an accepted record stays rewritable, and inferring one from this migration would be reading it
+backwards. **From the merge of this migration onward, an accepted record is never rewritten** — a
+decision that evolves becomes a new record, and the old one's status gains a row.
 
 ## Where the format comes from
 
