@@ -94,4 +94,49 @@ public class ProjectCompilationTests
 
 /// <summary>The fixture projects are shared state on disk, so tests touching them run one at a time.</summary>
 [CollectionDefinition(nameof(SerialFixtureAccess), DisableParallelization = true)]
-public class SerialFixtureAccess;
+public class SerialFixtureAccess : ICollectionFixture<BuiltSample>;
+
+/// <summary>Builds the sample fixture once, before anything asks MSBuild about it.</summary>
+/// <remarks>
+/// <para>
+/// The tool itself never queries a project it has not built first - <c>BuildTestProjectsAsync</c>
+/// runs before any compiler-command-line query, and <c>MsBuildQuery</c> says why in as many words:
+/// the query passes <c>SkipCompilerExecution</c>, so it is only safe on a project whose intermediate
+/// assembly already exists. These tests skipped that step and got away with it, because a
+/// developer's working copy has almost always built the fixture at some point.
+/// </para>
+/// <para>
+/// A fresh clone has not. Measured on a copy of the fixture with no <c>obj</c>: the query fails with
+/// <c>MSB3030 - could not copy Sample.Library.dll because it was not found</c>. The fixture projects
+/// are deliberately outside the solution, so nothing in an ordinary build reaches them, and a CI run
+/// would have met that failure and blamed the tool.
+/// </para>
+/// </remarks>
+public sealed class BuiltSample
+{
+    public BuiltSample()
+    {
+        using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = "dotnet",
+            ArgumentList =
+            {
+                "build", FixtureRepository.SampleLibraryProject, "-c", "Release", "-nologo",
+            },
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        })!;
+
+        string output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
+
+        process.WaitForExit();
+
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                "The sample fixture could not be built, so no test that queries it can mean " +
+                $"anything.{Environment.NewLine}{output}");
+        }
+    }
+}
