@@ -274,9 +274,24 @@ avertissements d'analyseurs, et T4, protobuf, les concepteurs, XSD et EF l'émet
 honorée qu'en tout début de fichier, avant tout code, comme la convention le spécifie ; un
 commentaire plus bas est un commentaire.
 
+**La moitié « chemin » était fausse sous Windows jusqu'à ce que la suite y tourne.** La règle sur
+`obj/` était construite à partir du seul `Path.DirectorySeparatorChar` : sous Windows elle
+reconnaissait donc `\src\obj\x.cs` et laissait passer `/src/obj/x.cs` — un séparateur que cette
+plateforme accepte et que .NET traite comme équivalent. Mesuré sur un exécuteur Windows : un
+`AssemblyInfo.cs` sous `obj` a été muté, et ses mutants rapportés comme survivants. La règle lit
+désormais un chemin comme `PathFilter` et `ProjectDiscovery` le faisaient déjà, à travers les deux
+séparateurs ; sous Unix les deux sont le même caractère, si bien qu'une contre-oblique reste un
+caractère ordinaire dans un nom de fichier au lieu d'être promue séparateur.
+
+Que la règle de l'en-tête aurait de toute façon attrapé ce fichier-là relève de la chance, pas de la
+couverture. L'entrée dit COUVERT pour deux règles, et l'une d'elles ne fonctionnait que sur une
+plateforme sur deux.
+
 **Nos tests.** La suite `SourceFileTests`, en particulier
 `A_file_that_declares_itself_generated_is_recognised_wherever_it_lives` — un nom ordinaire, hors
-`obj`, reconnu sur son seul en-tête — et `The_header_only_counts_at_the_top_of_the_file`.
+`obj`, reconnu sur son seul en-tête —, `The_header_only_counts_at_the_top_of_the_file` et
+`A_path_written_with_the_platform_separator_is_recognised_too`, qui construit son séparateur à
+l'exécution afin d'exercer le caractère de la plateforme qui le fait tourner.
 
 ---
 
@@ -713,14 +728,29 @@ et chaque verdict mesuré contre elle décrit autre chose. C'est exactement la d
 outil existe pour ne pas produire, atteinte par un chemin que l'outil livré n'emprunte pas
 aujourd'hui.
 
+**Une deuxième conséquence, sur Windows seulement.** Un assemblage chargé dans un contexte qu'on ne
+décharge jamais reste *ouvert*, et Windows refuse de supprimer un fichier ouvert. Mesuré sur un
+exécuteur Windows : deux tests de bout en bout ont échoué à la fermeture avec
+`UnauthorizedAccessException : Access to the path 'Sample.Generator.dll' is denied`, en supprimant le
+répertoire temporaire où le projet de test avait été copié — alors que toutes leurs assertions
+étaient passées. Linux et macOS suppriment le fichier sans rien dire.
+
+Autrement dit, un appelant qui utilise KillMutants en bibliothèque dans son propre processus, sous
+Windows, ne peut pas nettoyer les répertoires d'où venaient les analyseurs d'une exécution, tant que
+le processus vit. C'est une fuite et non un verdict faux, ce qui ne change pas la priorité de cette
+entrée — mais c'est la même cause profonde sous un autre habit, et c'est ce qui rend le correctif
+ci-dessous plus urgent sous Windows qu'ailleurs.
+
 **Pourquoi elle est ouverte plutôt que corrigée.** Le correctif est celui que RB-018 a déjà écarté :
 donner aux analyseurs leur propre `AssemblyLoadContext` et partager les assemblages Roslyn à la main
 par-dessus la frontière. C'est une vraie mécanique, et elle relève d'un changement à elle seule
 plutôt que de la fin d'un autre. En attendant, notre propre projet de test à générateur renomme son
 assemblage lorsqu'il porte un générateur délibérément cassé, pour que la collision ne puisse pas
-atteindre un autre test.
+atteindre un autre test, et `FixtureCopy.Dispose` tolère un répertoire que Windows lui refuse.
 
-**Nos tests.** Aucun pour l'instant. C'est ce que veut dire OUVERT ici.
+**Nos tests.** Aucun pour l'instant sur la réutilisation elle-même. C'est ce que veut dire OUVERT
+ici. Le verrou Windows est toléré et non testé : un test affirmant qu'un fichier reste verrouillé
+serait un test affirmant le défaut.
 
 ---
 

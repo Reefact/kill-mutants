@@ -385,13 +385,20 @@ internal sealed class FixtureCopy : IDisposable
         return new FixtureCopy(destination);
     }
 
+    /// <remarks>
+    /// Windows reports a locked file as <see cref="UnauthorizedAccessException"/> rather than
+    /// <see cref="IOException"/>, so catching only the latter meant this teardown failed tests whose
+    /// every assertion had passed. And the lock is ours: KillMutants loads a project's generators
+    /// into <c>AssemblyLoadContext.Default</c> and never unloads them, which on Windows holds the
+    /// file open for the life of the process. That is RB-020's second consequence, recorded there.
+    /// </remarks>
     public void Dispose()
     {
         try
         {
             Directory.Delete(Root, recursive: true);
         }
-        catch (IOException)
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             // A leftover temp directory is not worth failing a test over.
         }

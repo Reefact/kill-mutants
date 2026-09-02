@@ -9,11 +9,18 @@ public class ProcessRunnerTests
     /// The mechanism the Timeout status rests on. A mutation can turn a terminating loop into an
     /// endless one, and a run that never comes back would otherwise hang the whole session.
     /// </summary>
+    /// <remarks>
+    /// The Windows half used to be <c>timeout /t 60</c>, which does not wait at all when it has no
+    /// console: it prints "Input redirection is not supported" and exits immediately. Every process
+    /// this runner starts is in that state, so the test was killing a process that had already
+    /// finished - and it only failed loudly because it asserts <c>TimedOut</c> rather than just
+    /// asserting that the call came back quickly. <c>ping</c> waits without reading standard input.
+    /// </remarks>
     [Fact]
     public async Task A_process_that_never_finishes_is_killed_and_reported_as_timed_out()
     {
         (string command, string[] arguments) = OperatingSystem.IsWindows()
-            ? ("cmd.exe", ["/c", "timeout /t 60 /nobreak"])
+            ? ("ping", ["-n", "61", "127.0.0.1"])
             : ("/bin/sh", new[] { "-c", "sleep 60" });
 
         var stopwatch = Stopwatch.StartNew();

@@ -252,9 +252,22 @@ file sits — which is exactly why the convention exists: the C# compiler reads 
 warnings, and T4, protobuf, the designers, XSD and EF all emit it. It is honoured only at the very
 top of the file, before any code, as the convention specifies; a comment further down is a comment.
 
+**The path half was wrong on Windows until the suite ran there.** The `obj/` rule was built from
+`Path.DirectorySeparatorChar` alone, so on Windows it recognised `\src\obj\x.cs` and missed
+`/src/obj/x.cs` — a separator that platform accepts and that .NET treats as equivalent. Measured on a
+Windows runner: an `AssemblyInfo.cs` under `obj` was mutated, and its mutants reported as survivors.
+The rule now reads a path the way `PathFilter` and `ProjectDiscovery` already did, through both
+separators; on Unix the two are the same character, so a backslash stays an ordinary character in a
+file name rather than being promoted to a separator.
+
+That the header rule would have caught this particular file anyway is luck, not cover. The entry says
+COVERED for two rules, and one of them was working on one platform out of two.
+
 **Our tests.** The `SourceFileTests` suite, in particular
 `A_file_that_declares_itself_generated_is_recognised_wherever_it_lives` — an ordinary name, outside
-`obj`, recognised on its header alone — and `The_header_only_counts_at_the_top_of_the_file`.
+`obj`, recognised on its header alone — `The_header_only_counts_at_the_top_of_the_file`, and
+`A_path_written_with_the_platform_separator_is_recognised_too`, which builds its separator at runtime
+so it exercises whichever character the platform running it uses.
 
 ---
 
@@ -665,13 +678,27 @@ generators. The compilation is then not the project's, and every verdict measure
 describes something else. That is the failure this tool exists not to produce, reached by a path the
 shipped tool does not currently take.
 
+**A second consequence, on Windows only.** An assembly loaded into a context that is never unloaded
+stays *open*, and Windows will not delete an open file. Measured on a Windows runner: two end-to-end
+tests failed in teardown with `UnauthorizedAccessException: Access to the path 'Sample.Generator.dll'
+is denied` while removing the temporary directory the fixture had been copied into - every assertion
+in both tests having passed. Linux and macOS delete the file regardless and say nothing.
+
+So a library caller running KillMutants in-process on Windows cannot clean up the directories a run's
+analyzers came from, for as long as the process lives. That is a leak rather than a wrong verdict,
+which is why it does not change this entry's priority - but it is the same root cause wearing
+different clothes, and it is what makes the fix below matter on Windows sooner than elsewhere.
+
 **Why it is open rather than fixed.** The fix is the one RB-018 already declined: give the analyzers
 their own `AssemblyLoadContext` and share the Roslyn assemblies across the boundary by hand. That is
 real machinery, and it belongs in a change of its own rather than at the end of an unrelated one.
 Until then, our own generator fixture renames its assembly when it carries a deliberately broken
-generator, so the collision cannot reach another test.
+generator, so the collision cannot reach another test, and `FixtureCopy.Dispose` tolerates a
+directory Windows will not let it remove.
 
-**Our tests.** None yet. That is what OPEN means here.
+**Our tests.** None yet for the reuse itself. That is what OPEN means here. The Windows lock is
+tolerated rather than tested, since a test asserting that a file stays locked would be a test
+asserting the defect.
 
 ---
 

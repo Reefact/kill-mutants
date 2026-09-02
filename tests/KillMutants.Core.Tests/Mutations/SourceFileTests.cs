@@ -23,6 +23,25 @@ public class SourceFileTests
         Assert.True(SourceFile.IsGenerated(Tree(Code, path)));
     }
 
+    /// <summary>
+    /// The same rule read through the platform's own separator, which on Windows is the other
+    /// character entirely.
+    /// </summary>
+    /// <remarks>
+    /// Built at runtime rather than written down: writing a backslash path here would assert
+    /// something false on Unix, where a backslash is an ordinary character in a file name and
+    /// <c>\src\obj\x.cs</c> is one file with a strange name, not a file in an <c>obj</c>
+    /// directory. On a Windows runner this is the case the rule used to miss.
+    /// </remarks>
+    [Fact]
+    public void A_path_written_with_the_platform_separator_is_recognised_too()
+    {
+        char separator = Path.DirectorySeparatorChar;
+
+        Assert.True(SourceFile.IsGenerated(
+            Tree(Code, $"{separator}src{separator}obj{separator}Debug{separator}Assembly.cs")));
+    }
+
     [Theory]
     [InlineData("/src/Model.cs")]
     [InlineData("/src/Gadget.cs")]
