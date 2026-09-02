@@ -64,6 +64,37 @@ jobs:
           }
           "$(go env GOPATH)/bin/actionlint"
 
+  # Refuses a documentation change that leaves an English page and its French twin out of step.
+  #
+  # It has no `needs` and no `if`, deliberately, and that is the only thing about this job that is
+  # easy to get wrong. The job below classifies `docs/` and every `*.md` as documentation and skips
+  # the build - so a parity check gated on its output would skip on precisely the changes it exists
+  # to see, and report green for having looked at nothing. `Lint the workflows` is the model here,
+  # for the same reason: it has nothing to do with whether the code compiles.
+  #
+  # The script carries the reasoning - why one direction fails and the other only warns, and the
+  # four things a naive version of this check gets wrong.
+  translations:
+    name: Check the translations
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The whole history: the co-change check diffs against the base branch, and a shallow
+          # clone does not have it. The script says so by name rather than failing obscurely.
+          fetch-depth: 0
+
+      - name: Check
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          # On a push there is no pull request to compare against, so only the tree is checked.
+          # Nothing is lost: the same diff was already checked on the pull request that produced it.
+          tools/docs/check-translation-parity.sh "$BASE"
+
   # Decides whether anything worth compiling changed, so a documentation-only pull request does not
   # spend fifteen minutes of Windows proving that Markdown still parses.
   #
@@ -239,6 +270,7 @@ jobs:
     timeout-minutes: 5
     needs:
       - workflows
+      - translations
       - changes
       - test
     if: always()
@@ -246,6 +278,7 @@ jobs:
       - name: Every job this gate stands for
         env:
           LINT: ${{ needs.workflows.result }}
+          TRANSLATIONS: ${{ needs.translations.result }}
           DECIDE: ${{ needs.changes.result }}
           TEST: ${{ needs.test.result }}
           CODE: ${{ needs.changes.outputs.code }}
@@ -253,6 +286,7 @@ jobs:
           set -euo pipefail
 
           echo "Lint the workflows:    $LINT"
+          echo "Check translations:    $TRANSLATIONS"
           echo "Decide what to build:  $DECIDE (code=$CODE)"
           echo "Build and test:        $TEST"
 
@@ -261,9 +295,10 @@ jobs:
             exit 1
           }
 
-          # These two always run, so anything but success is a failure whatever its shape.
-          [ "$LINT" = success ]   || refuse "Linting the workflows did not succeed."
-          [ "$DECIDE" = success ] || refuse "Deciding what to build did not succeed."
+          # These three always run, so anything but success is a failure whatever its shape.
+          [ "$LINT" = success ]         || refuse "Linting the workflows did not succeed."
+          [ "$TRANSLATIONS" = success ] || refuse "Checking the translations did not succeed."
+          [ "$DECIDE" = success ]       || refuse "Deciding what to build did not succeed."
 
           # A matrix job's result is 'success' only when every leg succeeded, so one red platform
           # arrives here as one red gate without this having to know how many there are.

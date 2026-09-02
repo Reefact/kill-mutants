@@ -51,8 +51,16 @@ half.
 
 `docs/architecture`, `docs/robustness-backlog`, `docs/study/stryker-net` and every decision record
 exist as `-en.md` and `-fr.md`. **The English is canonical**; the French changes with it, in the
-same pass. Nothing checks this, so a half-translated change goes green. The root `README.md` is
-English only.
+same pass. The root `README.md` is English only.
+
+`tools/docs/check-translation-parity.sh` refuses the mechanical half of that, and `ci.yml` runs it
+on every event: a missing twin, a pair whose heading structure has diverged, a record whose status
+history differs between languages, and an English page changed without its French twin — the reverse
+only warns, because the English is the one that leads.
+
+The half that stays here is the half no tool reaches. Nothing establishes that the French *says* the
+same thing as the English: a twin rewritten to mean something else passes every check above, and
+only a reader catches it.
 
 ## Commits and history
 
