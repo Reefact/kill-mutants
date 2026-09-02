@@ -174,6 +174,14 @@ internal sealed record CommandLineOptions(
                         break;
                     }
 
+                    // Cleared by a later value, or the option stops being last-one-wins: review
+                    // found that '--break-at none --break-at 80' kept the marker and resolved to no
+                    // threshold at all, so a job that had asked for a gate twice would have had
+                    // none - and would have been allowed to combine it with --since besides. A
+                    // quality gate that disarms itself silently is the one failure this must not
+                    // have.
+                    thresholdCleared = false;
+
                     // IsFinite first, and not as an afterthought: TryParse accepts "NaN", and every
                     // comparison with NaN is false - including the range check here and the one the
                     // verdict makes at the end. A threshold of NaN therefore passes every gate and

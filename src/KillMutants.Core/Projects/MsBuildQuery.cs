@@ -185,6 +185,76 @@ internal sealed class MsBuildQuery
     private static string Metadata(JsonElement item, string name) =>
         item.TryGetProperty(name, out JsonElement value) ? value.GetString() ?? string.Empty : string.Empty;
 
+    /// <summary>
+    /// Every file a project compiles or carries, as absolute paths, read from evaluation alone.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The authoritative answer to "does this project own this file", which the directory it sits in
+    /// only approximates. A project can compile a file from anywhere - a <c>Compile</c> item with a
+    /// <c>Link</c>, a glob reaching out of the project folder - and review found the consequence: a
+    /// test project including <c>../SharedTests/Assertions.cs</c> made a change to that file look
+    /// like production code, so deleting an assertion from it produced an empty, passing partial run.
+    /// </para>
+    /// <para>
+    /// <c>None</c> and <c>Content</c> come along because a test project's inputs are not only its
+    /// source: a fixture file, a JSON case list and an <c>appsettings</c> are all things a change to
+    /// which can stop a test reaching a mutant.
+    /// </para>
+    /// <para>
+    /// Evaluation only, so no build and no restore is needed - the same property the project graph
+    /// query relies on. It is asked once per test project and only by a partial run, so a full run
+    /// pays nothing for it.
+    /// </para>
+    /// </remarks>
+    public async Task<IReadOnlyList<string>> GetInputFilesAsync(
+        string projectPath,
+        string? targetFramework = null,
+        CancellationToken cancellationToken = default)
+    {
+        List<string> arguments = ["msbuild", projectPath, $"-p:Configuration={_configuration}", "-nologo"];
+
+        if (!string.IsNullOrEmpty(targetFramework))
+        {
+            arguments.Add($"-p:TargetFramework={targetFramework}");
+        }
+
+        arguments.AddRange(["-getItem:Compile", "-getItem:None", "-getItem:Content"]);
+
+        string output = await RunRawAsync(projectPath, arguments, cancellationToken).ConfigureAwait(false);
+
+        using JsonDocument json = ParseJson(projectPath, output);
+
+        return
+        [
+            .. ReadFullPaths(json.RootElement, "Compile"),
+            .. ReadFullPaths(json.RootElement, "None"),
+            .. ReadFullPaths(json.RootElement, "Content"),
+        ];
+    }
+
+    /// <summary>
+    /// Reads an item's <c>FullPath</c> metadata, which MSBuild has already resolved for us.
+    /// </summary>
+    /// <remarks>
+    /// <c>Identity</c> is relative to the project and would have to be resolved against it, which is
+    /// exactly wrong for a linked file: its identity is the <c>..</c> path that makes it interesting.
+    /// </remarks>
+    private static IEnumerable<string> ReadFullPaths(JsonElement root, string itemName)
+    {
+        if (!root.TryGetProperty("Items", out JsonElement items) ||
+            !items.TryGetProperty(itemName, out JsonElement values))
+        {
+            return [];
+        }
+
+        return values.EnumerateArray()
+            .Select(item =>
+                item.TryGetProperty("FullPath", out JsonElement path) ? path.GetString() : null)
+            .Where(path => !string.IsNullOrEmpty(path))
+            .Select(path => Path.GetFullPath(path!));
+    }
+
     /// <summary>Reads MSBuild properties from a project without building it.</summary>
     public async Task<IReadOnlyDictionary<string, string>> GetPropertiesAsync(
         string projectPath,
