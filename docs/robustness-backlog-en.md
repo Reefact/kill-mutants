@@ -877,9 +877,28 @@ suite, the run tried to launch it, and it stopped. **Following xUnit's own instr
 impossible to measure.**
 
 **The fix, in two halves.** A test project must now also be `Exe` - the same condition xUnit enforces
-at build time, so a project this calls a test project is exactly one xUnit would let run. That covers
-every support library that references xUnit, which is most of them, with nothing for the user to
-declare.
+at build time. That covers every support library that references xUnit, which is most of them, with
+nothing for the user to declare.
+
+`Exe` alone is not enough, and review caught the overclaim before it shipped: an executable
+referencing `xunit.v3.extensibility.core` is not a test project either, and calling one would make it
+a wall in the reference graph rather than a hole. Measured against the 4.0.0 packages, by building an
+executable with a `Main` of its own against each:
+
+| Package | Builds with its own `Main` | `xunit.v3.core.dll` in output |
+| --- | --- | --- |
+| `xunit.v3`, `xunit.v3.core`, `xunit.v3.mtp-v2` | no - CS0017, xUnit already supplied one | - |
+| `xunit.v3.extensibility.core` | yes | **yes** |
+| `xunit.v3.assert` | yes | no |
+
+The middle row is the sharp one: such a project passes the prefix test *and* the runnability check
+this tool makes after the build, so nothing downstream would have caught it. So the package is now
+matched by name against the four that pull in `xunit.v3.core.mtp-v2` - the package that generates the
+entry point - and xUnit's own `XunitTestProject` property is asked first. That property is set in
+`xunit.v3.core.mtp-v2`'s `buildTransitive` props, so it recognises flavours this tool has never heard
+of; it arrives through NuGet's generated imports, so it is empty until the project has been restored
+- measured `true` on a restored project and empty on the same one with its `obj` removed - and
+discovery runs before anything is built. Neither question suffices alone.
 
 The rest is declared, because for a plain library of builders no structural fact separates it from
 the code under test: `<KillMutantsTestSupport>true</KillMutantsTestSupport>` suppresses the project as
@@ -902,7 +921,71 @@ cannot, and neither can a change to shared configuration outside a test project.
 there is unchanged: it covers recognized test projects, and this entry narrows how much sits outside
 them rather than closing the boundary.
 
-**Our tests.** `ProjectFactsTests` pins the rule both ways, including `xunit.v3.assert` on a library
-and an executable that references no test framework. `TestSupportProjectTests` runs all three
+**Our tests.** `ProjectFactsTests` pins the truth table both ways: `xunit.v3.assert` on a library, an
+executable referencing `xunit.v3.extensibility.core`, an executable that references no test framework,
+and a flavour nobody has named that xUnit's own property vouches for. `TestSupportProjectTests` runs all three
 end-to-end: the production code behind a support library is reached, an undeclared support library is
 mutated like any other project, and a declared one is skipped without hiding what it references.
+
+
+## RB-026 — A repository behind a symbolic link loses its transitive project references · COVERED
+
+**How it was found.** The macOS leg of CI failed three end-to-end tests that pass on Linux and
+Windows, with `CS0103: The name 'Money' does not exist in the current context` - a test project
+compiling without the library it is meant to exercise.
+
+**What it is.** On macOS `Path.GetTempPath()` returns a path under `/var`, which is a symbolic link to
+`/private/var`. MSBuild resolves the link for the referenced projects and not for the one it was
+handed. The restore log says both spellings, two lines apart:
+
+```text
+Restored /private/var/.../Sample.Support/Sample.Support.csproj
+Restored /var/.../Sample.Library.Tests/Sample.Library.Tests.csproj
+```
+
+and the transitive reference is lost between them: `Tests -> Support -> Library` compiles without
+`Library`.
+
+**It is not a macOS defect.** Reproduced on Linux by planting the same fixture behind a symbolic link
+and building through it - the identical error, from plain `dotnet build`, with KillMutants not
+involved at all. What is ours is the end-to-end harness, which handed MSBuild a path shape no real
+repository has.
+
+**The fix.** `FixtureCopy` resolves every link on the way to the temporary directory once, so every
+fixture is built at the path a user's repository would be at. There is no `realpath` in .NET, so the
+path is walked from the root down and each component resolved with `ResolveLinkTarget` - on macOS the
+link is `/var`, four levels above the leaf.
+
+**What is still open.** A user whose repository really is reached through a symbolic link gets the
+same failure from their own `dotnet build`, before KillMutants is involved, so there is nothing here
+for the tool to correct. It is recorded because the failure names a missing type rather than a
+missing reference, and nobody reading it would suspect the path.
+
+
+## RB-027 — A test project is still a wall in the reference graph · OPEN
+
+**How it was found.** Read from the code while fixing RB-025, and not yet reproduced against a
+fixture - which is why this is a claim about `ProjectDiscovery.ReachableProjectsAsync` and not a
+measurement.
+
+**What it says.** The traversal stops at a test project:
+
+```csharp
+if (facts is null || facts.IsTestProject) { continue; }
+```
+
+`continue` comes before the references are enqueued, so nothing beneath a test project is walked.
+`Tests -> IntegrationTests -> Core` would therefore lose `Core`, unless some other test project
+reaches it directly.
+
+**Why it matters.** It is the third instance of one pattern, and the first two both turned out to be
+real: an excluded project used to be a wall - `Tests -> ExcludedFacade -> Core` dropped `Core` and
+said nothing - and a test-support library was one until this change. The rule those two settled is
+that a project left out as a *target* must still be walked as a *graph*, and this is the one place
+the rule is not applied. Leaving a test project out of
+the targets is right - its code is the yardstick, not the subject - but the assemblies beneath it are
+loaded by the test host exactly like any other.
+
+**What it would cost to close.** One line, and a fixture with a test project referencing another.
+Left open rather than folded into RB-025's change: this was found during a review round, and widening
+a change under review is how a two-round review becomes a five-round one.
