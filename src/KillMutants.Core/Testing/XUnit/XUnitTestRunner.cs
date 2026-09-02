@@ -112,11 +112,23 @@ internal sealed class XUnitTestRunner : ITestRunner
             arguments.Add("-stopOnFail");
         }
 
-        foreach (TestName testName in request.TestNames ?? [])
+        // Repeating -method is a union, so this selects exactly the named tests - up to the point
+        // where the command line itself becomes the limit. Windows caps a process command line at
+        // 32 767 characters, and a mutation site reached by enough tests on shared utility code can
+        // pass that: Process.Start then throws and takes the whole session with it, on the mutants
+        // that are the most covered rather than the least.
+        //
+        // Falling back to the whole suite is slower and never wrong, which is the same trade the
+        // run already makes when coverage is unknown. Losing a session is not a trade at all.
+        IReadOnlyList<TestName> selected = request.TestNames ?? [];
+
+        if (FitsOnACommandLine(selected))
         {
-            // Repeating -method is a union, so this selects exactly the named tests.
-            arguments.Add("-method");
-            arguments.Add(testName.ToString());
+            foreach (TestName testName in selected)
+            {
+                arguments.Add("-method");
+                arguments.Add(testName.ToString());
+            }
         }
 
         try
@@ -209,6 +221,36 @@ internal sealed class XUnitTestRunner : ITestRunner
             Duration: process.Duration,
             TimedOut: false,
             FailedTests: ReadFailures(assembly));
+    }
+
+    /// <summary>
+    /// How much of a command line the test filters may take before the suite is run unfiltered.
+    /// </summary>
+    /// <remarks>
+    /// Windows allows 32 767 characters for a whole command line; this leaves room for the
+    /// executable, the result path and the rest of the switches, and applies everywhere rather than
+    /// only on Windows so that a run behaves the same on every machine - a verdict that depends on
+    /// the operating system is not a measurement of the code.
+    /// </remarks>
+    internal const int FilterBudget = 24_000;
+
+    /// <summary>Whether naming every one of these tests still fits in the budget.</summary>
+    internal static bool FitsOnACommandLine(IReadOnlyList<TestName> tests)
+    {
+        var length = 0;
+
+        foreach (TestName test in tests)
+        {
+            // "-method" plus the name, plus the two separators a command line needs between them.
+            length += 7 + test.ToString().Length + 2;
+
+            if (length > FilterBudget)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>Reports a result file that cannot be believed as a host that did not finish.</summary>

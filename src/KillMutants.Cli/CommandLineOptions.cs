@@ -25,8 +25,8 @@ internal sealed record CommandLineOptions(
     int? WorkerCount,
     bool? MeasureCoverage,
     IReadOnlyList<string> Exclude,
-    IReadOnlyList<MutatorName> Mutators,
-    IReadOnlyList<MutatorName> WithoutMutators,
+    IReadOnlyList<MutatorName>? Mutators,
+    IReadOnlyList<MutatorName>? WithoutMutators,
     int? VerifyKills,
     string? JsonReportPath,
     double? Threshold)
@@ -45,8 +45,11 @@ internal sealed record CommandLineOptions(
         int? workerCount = null;
         bool? measureCoverage = null;
         List<string> exclude = [];
-        List<MutatorName> mutators = [];
-        List<MutatorName> withoutMutators = [];
+        // Null until the option appears. An omitted list and a list given as empty mean different
+        // things - "use whatever the file says" and "nothing at all" - and collapsing them is what
+        // made a `without` in killmutants.json impossible to switch off.
+        IReadOnlyList<MutatorName>? mutators = null;
+        IReadOnlyList<MutatorName>? withoutMutators = null;
         int? verifyKills = null;
         string? jsonReportPath = null;
         double? threshold = null;
@@ -106,13 +109,13 @@ internal sealed record CommandLineOptions(
 
                 case "-m" or "--mutators":
                     index++;
-                    mutators.AddRange(Families(argument, index < args.Count ? args[index] : null));
+                    mutators = [.. mutators ?? [], .. Families(argument, index < args.Count ? args[index] : null)];
 
                     break;
 
                 case "--without":
                     index++;
-                    withoutMutators.AddRange(Families(argument, index < args.Count ? args[index] : null));
+                    withoutMutators = [.. withoutMutators ?? [], .. Families(argument, index < args.Count ? args[index] : null)];
 
                     break;
 
@@ -209,8 +212,24 @@ internal sealed record CommandLineOptions(
     /// the command line.
     /// </remarks>
     /// <exception cref="ArgumentException">The list is missing or empty.</exception>
+    /// <summary>The value a list option takes to mean "an empty list, on purpose".</summary>
+    /// <remarks>
+    /// The documented rule is that a list on the command line replaces the file's, and without this
+    /// there was one list nobody could replace: a <c>without</c> in killmutants.json applied to
+    /// every run, because an omitted option and an explicitly empty one both arrive here as nothing
+    /// and an empty value is refused. Naming every family with <c>--mutators</c> did not help - the
+    /// exclusions were still applied afterwards. A word cannot be confused with a family, since no
+    /// family is called this.
+    /// </remarks>
+    public const string EmptyList = "none";
+
     private static MutatorName[] Families(string option, string? value)
     {
+        if (string.Equals(value, EmptyList, StringComparison.OrdinalIgnoreCase))
+        {
+            return [];
+        }
+
         string[] names = value is null
             ? []
             : [.. value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)];
@@ -218,7 +237,7 @@ internal sealed record CommandLineOptions(
         if (names.Length == 0)
         {
             throw new ArgumentException(
-                $"'{option}' needs a comma-separated list. " +
+                $"'{option}' needs a comma-separated list, or '{EmptyList}' for no families at all. " +
                 $"The families are: {string.Join(", ", MutationTesting.MutatorFamilies)}.");
         }
 
