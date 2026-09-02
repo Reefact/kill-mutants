@@ -921,11 +921,12 @@ comparison of its own:
 
 Scaffolding nobody set out to measure was halving the reported score.
 
-**What is still open.** ADR-0010's `--since` boundary. A change to a *declared* support library can
-now be recognised as test-side, which is what the ADR needs; a change to an undeclared one still
+**What is still open.** DEC0011's `--since` boundary. A change to a *declared* support library can
+now be recognised as test-side, which is what that record needs; a change to an undeclared one still
 cannot, and neither can a change to shared configuration outside a test project. The guarantee stated
 there is unchanged: it covers recognized test projects, and this entry narrows how much sits outside
-them rather than closing the boundary.
+them rather than closing the boundary. That bounded wording is itself why this entry exists - the
+document once said "never a false green" - and it stays bounded.
 
 **Our tests.** `ProjectFactsTests` pins the truth table both ways: `xunit.v3.assert` on a library, an
 executable referencing `xunit.v3.extensibility.core`, an executable that references no test framework,

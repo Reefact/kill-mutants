@@ -993,12 +993,13 @@ porte une comparaison à elle :
 
 De l'échafaudage que personne n'avait cherché à mesurer divisait par deux le score rapporté.
 
-**Ce qui reste ouvert.** La frontière de `--since` dans l'ADR-0010. Une modification d'une
+**Ce qui reste ouvert.** La frontière de `--since` dans le DEC0011. Une modification d'une
 bibliothèque de support *déclarée* peut désormais être reconnue comme relevant du côté tests, ce dont
-l'ADR a besoin ; une modification d'une bibliothèque non déclarée, non — pas plus qu'une modification
-de configuration partagée hors d'un projet de test. La garantie énoncée là-bas est inchangée : elle
-couvre les projets de test reconnus, et cette entrée réduit ce qui se trouve en dehors plutôt qu'elle
-ne ferme la frontière.
+ce document a besoin ; une modification d'une bibliothèque non déclarée, non — pas plus qu'une
+modification de configuration partagée hors d'un projet de test. La garantie énoncée là-bas est
+inchangée : elle couvre les projets de test reconnus, et cette entrée réduit ce qui se trouve en
+dehors plutôt qu'elle ne ferme la frontière. Cette formulation bornée est elle-même la raison d'être
+de cette entrée — le document disait autrefois « jamais un faux vert » — et elle le reste.
 
 **Nos tests.** `ProjectFactsTests` épingle la table de vérité dans les deux sens : `xunit.v3.assert`
 sur une bibliothèque, un exécutable qui référence `xunit.v3.extensibility.core`, un exécutable qui ne
