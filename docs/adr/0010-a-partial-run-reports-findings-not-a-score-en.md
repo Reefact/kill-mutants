@@ -151,8 +151,14 @@ claim is the one we are entitled to.
 
 It prints the count of each status, so nothing is hidden; the new findings, named, with everything
 needed to reproduce each one; and a verdict that is binary, because the question a partial run
-answers is binary. A full run asks *how good is this suite?* A partial run asks *did this change
-introduce untested behaviour?* Only the first of those has a percentage for an answer.
+answers is binary.
+
+A full run asks *how good is this suite?* A partial run asks *did the selected scope produce an
+undetected mutant?* - the scope being the changed production code plus the test-side widening above,
+and not, despite the temptation to say so, every way a change could introduce untested behaviour.
+RB-025 names a shape it cannot see. The narrower question is the one the run can actually answer, and
+a document about not overclaiming has to ask it in the words it can defend. Neither question has a
+percentage for an answer, but only the first would even be entitled to one.
 
 **The verdict fails on any new *undetected* mutant, not only on a survivor.** A mutant no test
 reaches is `NoCoverage`, not `Survived` — and a change that adds code nothing tests at all produces
