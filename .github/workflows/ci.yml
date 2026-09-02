@@ -110,7 +110,14 @@ jobs:
 
           # Three dots: what this branch changed since it left the target, rather than every
           # difference between two commits - which would include whatever landed on main meanwhile.
-          changed="$(git diff --name-only "$BASE...$HEAD")"
+          #
+          # --no-renames matters more than it looks. Rename detection is on by default, and it
+          # reports a rename as the destination path alone: moving src/C.cs to docs/C.md comes back
+          # as just "docs/C.md", which reads as documentation, skips every platform, and passes the
+          # gate - while a compiled source file has been deleted. Measured against git 2.43:
+          # `--name-only` gives one path, `--name-status` gives `R100 src/C.cs docs/C.md`, and
+          # `--no-renames` gives both paths, so the source file is classified and the build happens.
+          changed="$(git diff --no-renames --name-only "$BASE...$HEAD")"
 
           [ -n "$changed" ] || build "No files changed; building anyway."
 
