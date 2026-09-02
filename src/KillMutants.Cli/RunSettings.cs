@@ -102,7 +102,9 @@ internal sealed record RunSettings(
                 $"to test again, zero or more ('verifyKills' in {ConfigurationFile.Name}).");
         }
 
-        if (file.BreakAt is { } breakAt && (breakAt < 0 || breakAt > 100))
+        // IsFinite for the same reason as on the command line: every comparison with NaN is false,
+        // so a threshold that is not a number passes every range check and then the verdict too.
+        if (file.BreakAt is { } breakAt && (!double.IsFinite(breakAt) || breakAt < 0 || breakAt > 100))
         {
             throw new ArgumentException(
                 $"'{breakAt.ToString(CultureInfo.InvariantCulture)}' is not a percentage between " +

@@ -42,6 +42,17 @@ internal sealed class MutationTestSession
         ArgumentNullException.ThrowIfNull(testRunner);
         ArgumentException.ThrowIfNullOrWhiteSpace(configuration);
 
+        // Refused here, not only where the command line is parsed. A caller reaching this
+        // constructor directly - the library API, a test, anything that is not the CLI - used to
+        // get all the way to a run with no workers at all, which builds no sandbox and then indexes
+        // the first one: an IndexOutOfRangeException in place of an answer.
+        if (workerCount is { } workers)
+        {
+            ArgumentOutOfRangeException.ThrowIfLessThan(workers, 1);
+        }
+
+        ArgumentOutOfRangeException.ThrowIfNegative(verifyKills);
+
         _testRunner = testRunner;
         _configuration = configuration;
         _timeoutPolicy = timeoutPolicy ?? TimeoutPolicy.Default;
