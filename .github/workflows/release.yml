@@ -172,9 +172,11 @@ jobs:
             echo "::error::Invalid version '$VERSION'; expected a SemVer value like 1.2.3 or 1.2.3-beta.1. Leading zeroes (01.2.3) and build metadata ('+...') are both rejected: NuGet normalizes them away, so the package identity would not match the tag."
             exit 1
           fi
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "train=$TRAIN" >> "$GITHUB_OUTPUT"
-          echo "tag=$(prefix_of "$TRAIN")${VERSION}" >> "$GITHUB_OUTPUT"
+          {
+            echo "version=$VERSION"
+            echo "train=$TRAIN"
+            echo "tag=$(prefix_of "$TRAIN")${VERSION}"
+          } >> "$GITHUB_OUTPUT"
           echo "Resolved $TRAIN release version: $VERSION"
 
       # An existing tag decides which commit this version already means, so it has to be checked
@@ -276,10 +278,24 @@ jobs:
           SOLUTION: ${{ steps.solution.outputs.path }}
         run: dotnet build "$SOLUTION" -c Release --no-restore -p:Version="$VERSION"
 
+      # Two corrections, and the second is why the first was not enough.
+      #
+      # --solution, not a positional argument: the .NET 10 SDK refuses `dotnet test <solution>` with
+      # "Specifying a solution for 'dotnet test' should be via '--solution'" and exits 1 before
+      # running anything.
+      #
+      # And no --logger. This solution runs on Microsoft.Testing.Platform, where the VSTest logger
+      # option is not understood: measured, `--logger "console;verbosity=normal"` fails with "Get
+      # projects properties with MSBuild didn't execute properly with exit code: 1" - again before a
+      # single test runs. Fixing only the first would have left this step failing on every tag while
+      # CI went green on a command that differed from it.
+      #
+      # So the command is now character for character the one ci.yml runs on every pull request,
+      # which is the only thing that keeps the two from drifting apart again.
       - name: Test
         env:
           SOLUTION: ${{ steps.solution.outputs.path }}
-        run: dotnet test "$SOLUTION" -c Release --no-build --logger "console;verbosity=normal"
+        run: dotnet test --solution "$SOLUTION" -c Release --no-build
 
       # Pack only the train this release targets, so an engine release never republishes the tool
       # and vice versa. The projects on the train are the ones declaring it; the packed set, the
