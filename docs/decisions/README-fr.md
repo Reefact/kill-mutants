@@ -43,18 +43,26 @@ anticipé ou décidé ce jour-là. Tout cela peut cesser d'être vrai plus tard 
   information aide-t-elle à comprendre pourquoi la décision a été prise à ce moment-là ?* Sinon, elle
   relève d'un autre document.
 
-**Une exception, consignée ici plutôt que laissée implicite.** Le 2026-09-02, les neuf
-enregistrements existants ont été remis à ce format et renumérotés d'`ADR-NNNN` en `DECNNNN`, alors
-qu'ils étaient acceptés. C'était une migration d'amorçage portant sur la présentation de la base, et
-non une remise en cause de quoi que ce soit : le texte a été déplacé d'une section à l'autre, les
-sections sans matière consignée le disent plutôt que d'être comblées, et aucune ligne de statut n'a
-été ajoutée puisque aucune décision n'a changé d'état. Deux décisions se lisent tout de même
-différemment, et les deux changements sont la migration elle-même — le DEC0001 nomme le dossier et
-l'identifiant qui ont été renommés, et le DEC0009 a été réécrit dans la phrase unique qu'impose le
-format, son tableau de codes de sortie étant une documentation utilisateur qui vit déjà dans le
-`README.md` du dépôt. La règle ci-dessus gouverne la base à partir de ce jour-là. Une base de neuf
-enregistrements était le dernier moment où les convertir coûtait moins que vivre avec deux formats
-pour de bon.
+**Une exception, bornée ici plutôt que laissée implicite.** Le 2026-09-02, les dix enregistrements
+existants — d'`ADR-0001` à `ADR-0010`, tous acceptés — ont été migrés vers ce format et renumérotés
+d'`ADR-NNNN` en `DECNNNN`. L'exception, c'est cette migration entière, et rien en dehors d'elle.
+
+L'essentiel relevait de la présentation : le texte a été déplacé d'une section à l'autre, les sections
+sans matière consignée le disent plutôt que d'être comblées, et aucune ligne de statut n'a été ajoutée
+puisque aucune décision n'a changé d'état. Trois enregistrements se lisent différemment, et chacun de
+ces changements est la migration elle-même. Le DEC0001 nomme le dossier et l'identifiant qui ont été
+renommés. Le DEC0009 a été réécrit dans la phrase unique qu'impose le format, son tableau de codes de
+sortie étant une documentation utilisateur qui vit déjà dans le `README.md` du dépôt. Et l'`ADR-0010`
+a été **découpé en deux enregistrements** — le DEC0010 pour ce qu'une exécution partielle affiche, le
+DEC0011 pour ce qu'elle sélectionne — parce qu'il portait deux décisions indépendamment réversibles,
+dont les alternatives appartiennent à l'une ou à l'autre, jamais aux deux.
+
+Ce découpage est structurel et non cosmétique, et c'est la raison pour laquelle cette exception est
+écrite comme une frontière et non comme un principe. Il ne tient pas à l'âge du record : il n'existe
+aucune période de grâce pendant laquelle un enregistrement accepté resterait réécrivable, et en
+déduire une de cette migration serait la lire à l'envers. **À partir du merge de cette migration, un
+enregistrement accepté n'est plus jamais réécrit** — une décision qui évolue donne un nouvel
+enregistrement, et l'ancien reçoit une ligne de statut.
 
 ## D'où vient le format
 
