@@ -99,7 +99,7 @@ internal sealed class GitRepository
 
         // --no-renames on purpose. Git reports a rename by its destination alone, and the source is
         // exactly what the selection needs: moving a test file away removes the coverage it
-        // provided, and the destination says nothing about that. See ADR-0010.
+        // provided, and the destination says nothing about that. See DEC0011.
         string diff = await RunRawAsync(
                 Root,
                 ["diff", "--no-renames", "--name-status", "-z", baseRevision],

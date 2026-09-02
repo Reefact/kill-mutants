@@ -4,7 +4,7 @@ using KillMutants.Reporting;
 namespace KillMutants.Selection;
 
 /// <summary>
-/// Which mutants a change puts in scope, per ADR-0010.
+/// Which mutants a change puts in scope, per DEC0011.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -175,7 +175,7 @@ internal sealed class ChangeSelection
                 if (TestProjectOwning(change.Path) is { } testProject)
                 {
                     // An added file cannot have removed a coverage edge that predates it, so it
-                    // widens nothing. See ADR-0010, and the note there on what this implementation
+                    // widens nothing. See DEC0011, and the note there on what this implementation
                     // deliberately does not do in that case.
                     if (change.Kind != ChangeKind.Added)
                     {

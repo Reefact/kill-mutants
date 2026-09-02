@@ -46,7 +46,7 @@ public static class ConsoleReportWriter
     /// A full run ends with its score, as it always has. A partial run ends with its scope instead
     /// and with the reason it prints no percentage - stated in the report rather than left to
     /// documentation, because the reader who would draw a trend from two partial runs is exactly the
-    /// reader who never opened the documentation. See ADR-0010.
+    /// reader who never opened the documentation. See DEC0010.
     /// </remarks>
     private static void WriteScopeAndScore(TextWriter writer, MutationTestReport report)
     {
@@ -64,7 +64,7 @@ public static class ConsoleReportWriter
         foreach (string line in Wrap(
                      "No mutation score: a partial run's population is the change itself, chosen " +
                      "against a base revision per run, so a percentage over it cannot be compared " +
-                     "with any other run. See ADR-0010.",
+                     "with any other run. See DEC0010.",
                      width: 88))
         {
             writer.WriteLine(line);
