@@ -817,6 +817,168 @@ public class SinceRunTests
         Assert.Contains("Money.cs", MutatedFiles(report));
     }
 
+    /// <summary>
+    /// A file a project the run leaves out links in from elsewhere still widens through it.
+    /// </summary>
+    /// <remarks>
+    /// Review found that a project reached but excluded was evaluated lazily, and its inputs never
+    /// recorded - so a file it linked in from outside its own folder was attributed to nothing, no
+    /// suite was marked touched, and the run passed over the production code that suite reaches.
+    /// </remarks>
+    [Fact]
+    public async Task A_changed_file_an_excluded_project_links_in_widens_through_it()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        // Outside every project's directory, so only evaluated membership can attribute it.
+        Directory.CreateDirectory(Path.Combine(fixture.Root, "shared"));
+        File.WriteAllText(
+            Path.Combine(fixture.Root, "shared", "Helper.cs"),
+            """
+            namespace Domain;
+
+            internal static class Helper
+            {
+                public static int Twice(int value) => value * 2;
+            }
+            """);
+
+        Reference(
+            fixture,
+            "Domain",
+            "Domain.csproj",
+            reference: null,
+            item: "<Compile Include=\"../shared/Helper.cs\" Link=\"Helper.cs\" />");
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+        Touch(fixture, "shared", "Helper.cs");
+
+        MutationTestReport report = await MutationTesting.RunAsync(
+            fixture.Root,
+            exclude: ["Domain/*"],
+            mutators: Families,
+            since: "HEAD",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // Domain is excluded, so nothing in it is mutable and the file selects no mutants of its
+        // own. What it must do is widen: Domain.Tests reaches Core through the excluded project.
+        Assert.Contains("Money.cs", MutatedFiles(report));
+    }
+
+    /// <summary>
+    /// A reference removed by a changed production project file loses that project its coverage.
+    /// </summary>
+    /// <remarks>
+    /// Review found the hole one layer in from the one DEC0011 argues. Removing the reference from a
+    /// suite to a project is caught because the changed file belongs to a test project; removing it
+    /// from a production project in the middle - <c>Tests -&gt; Domain -&gt; Core</c> becoming
+    /// <c>Tests -&gt; Domain</c> - puts no test-side file in the diff at all, so nothing asked the
+    /// base revision and <c>Core</c> left the targets in silence.
+    /// </remarks>
+    [Fact]
+    public async Task A_reference_a_changed_production_project_removed_costs_that_project_its_coverage()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        // Core.Tests would keep Core covered whatever Domain does, and the case is about Core
+        // having no other way to be reached.
+        Directory.Delete(Path.Combine(fixture.Root, "Core.Tests"), recursive: true);
+
+        // Narrowed before the base commit, so that dropping the part of Basket that uses Core does
+        // not oblige the change to touch a test file - which would mark the suite touched by the
+        // ordinary rule and hide the very hole this pins. Verified: with this rewritten after the
+        // commit instead, the test passed against the unfixed code.
+        File.WriteAllText(
+            Path.Combine(fixture.Root, "Domain.Tests", "BasketTests.cs"),
+            """
+            using Domain;
+
+            namespace Domain.Tests;
+
+            public class BasketTests
+            {
+                [Fact]
+                public void The_total_is_the_unit_price_times_the_quantity()
+                {
+                    Assert.Equal(12, Basket.Total(3, 4));
+                }
+            }
+            """);
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+
+        string project = Path.Combine(fixture.Root, "Domain", "Domain.csproj");
+
+        File.WriteAllText(
+            project,
+            File.ReadAllText(project).Replace(
+                "<ProjectReference Include=\"../Core/Core.csproj\" />",
+                string.Empty,
+                StringComparison.Ordinal));
+
+        // The reference goes with what used it, as it would in a real change. Two files in the
+        // diff, both production: nothing here is test-side.
+        File.WriteAllText(
+            Path.Combine(fixture.Root, "Domain", "Basket.cs"),
+            """
+            namespace Domain;
+
+            public static class Basket
+            {
+                public static int Total(int unitPrice, int quantity)
+                {
+                    return unitPrice * quantity;
+                }
+            }
+            """);
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        Assert.True(report.LostCoverage);
+        Assert.Contains(
+            report.CoverageLost,
+            path => path.EndsWith("Core.csproj", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// A project outside the directory the run was pointed at never lost coverage it never had.
+    /// </summary>
+    /// <remarks>
+    /// Review found that the coverage-loss check asked four questions and not the fifth. Point the
+    /// run at one directory of a repository and a suite inside it may reference a project outside:
+    /// the base graph returns it, discovery never saw it, and it read as newly uncovered - so every
+    /// partial run in such a repository failed, on a fact that never changes between runs.
+    /// </remarks>
+    [Fact]
+    public async Task A_project_outside_the_scope_of_the_run_is_not_reported_as_having_lost_coverage()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        // Domain and its suite move together, so the reference between them still resolves; only
+        // Domain's reference to Core now leaves the directory the run will be pointed at.
+        MoveUnder(fixture, "app", "Domain");
+        MoveUnder(fixture, "app", "Domain.Tests");
+
+        string project = Path.Combine(fixture.Root, "app", "Domain", "Domain.csproj");
+
+        File.WriteAllText(
+            project,
+            File.ReadAllText(project).Replace("\"../Core/", "\"../../Core/", StringComparison.Ordinal));
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+        Touch(fixture, "app", "Domain.Tests", "BasketTests.cs");
+
+        MutationTestReport report = await MutationTesting.RunAsync(
+            Path.Combine(fixture.Root, "app"),
+            mutators: Families,
+            since: "HEAD",
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // The widening did happen - this is not a run that selected nothing and passed by accident.
+        Assert.Contains("Basket.cs", MutatedFiles(report));
+        Assert.False(report.LostCoverage);
+    }
+
     private static Task<MutationTestReport> RunSinceHeadAsync(FixtureCopy fixture) =>
         MutationTesting.RunAsync(
             fixture.Root,
@@ -846,6 +1008,27 @@ public class SinceRunTests
             File.WriteAllText(
                 Path.Combine(to, Path.GetFileName(file)),
                 File.ReadAllText(file).Replace("\"../", "\"../../", StringComparison.Ordinal));
+        }
+
+        Directory.Delete(from, recursive: true);
+    }
+
+    /// <summary>Moves a project one level down, under a directory of the given name.</summary>
+    /// <remarks>
+    /// References are left exactly as written, unlike <see cref="MoveIntoTestsDirectory"/>: this is
+    /// used to move a group of projects together, where a reference inside the group still resolves
+    /// and only one leaving it needs rewriting - by the test, which knows which.
+    /// </remarks>
+    private static void MoveUnder(FixtureCopy fixture, string directory, string project)
+    {
+        string from = Path.Combine(fixture.Root, project);
+        string to = Path.Combine(fixture.Root, directory, project);
+
+        Directory.CreateDirectory(to);
+
+        foreach (string file in Directory.EnumerateFiles(from))
+        {
+            File.Copy(file, Path.Combine(to, Path.GetFileName(file)));
         }
 
         Directory.Delete(from, recursive: true);

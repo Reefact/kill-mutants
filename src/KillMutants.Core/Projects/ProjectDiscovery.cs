@@ -278,8 +278,16 @@ internal sealed class ProjectDiscovery
     /// path is not an excluded project of this run.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// No framework is named: only the references and the "is this a test project" answer are
     /// needed, and neither depends on which framework the project is evaluated for.
+    /// </para>
+    /// <para>
+    /// Its inputs are recorded like any other project's. Review found them missing here: a project
+    /// reached but left out still consumes files, and one it links in from outside its own folder is
+    /// attributed by nothing else. A change to such a file then marked no suite as touched and
+    /// widened nothing, which is the silent pass the widening exists to prevent.
+    /// </para>
     /// </remarks>
     private async Task<ProjectFacts?> FactsOfExcludedAsync(
         string path,
@@ -295,6 +303,11 @@ internal sealed class ProjectDiscovery
             ? await _msBuild.GetProjectFactsAsync(path, cancellationToken: cancellationToken)
                 .ConfigureAwait(false)
             : null;
+
+        if (facts is not null)
+        {
+            _inputs[facts.ProjectPath] = facts.InputFiles;
+        }
 
         cache[path] = facts;
 
