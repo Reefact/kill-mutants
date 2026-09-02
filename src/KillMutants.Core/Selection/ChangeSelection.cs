@@ -241,12 +241,21 @@ internal sealed class ChangeSelection
                     continue;
                 }
 
+                // Every role the file plays, not the first one that matches. Review found that
+                // checking the test side first and moving on suppressed the other: in a nested
+                // layout - tests/A/A.Tests.csproj beside tests/A/FixtureLib/FixtureLib.csproj - an
+                // added production file was attributed to the enclosing suite, added files widen
+                // nothing, and so newly added untested code produced an empty, passing run.
+                bool attributed = false;
+
                 IReadOnlyList<string> owningTests = await TestProjectsOwningAsync(
                         change.Path, cancellationToken)
                     .ConfigureAwait(false);
 
                 if (owningTests.Count > 0)
                 {
+                    attributed = true;
+
                     // An added file cannot have removed a coverage edge that predates it, so it
                     // widens nothing. See DEC0011, and the note there on what this implementation
                     // deliberately does not do in that case.
@@ -257,33 +266,34 @@ internal sealed class ChangeSelection
                             touchedTestProjects.Add(testProject);
                         }
                     }
-
-                    continue;
                 }
 
                 if (IsCSharp(change.Path))
                 {
+                    // Harmless when the file is a test's own: a test project's compilation is never
+                    // mutated, so its files simply never match one. What it stops is a production
+                    // file being dropped because a suite happened to own the directory above it.
                     changedFiles.Add(change.Path);
-
-                    continue;
+                    attributed = true;
                 }
-
-                List<ProjectUnderTest> mutable = MutableProjectsOwning(change.Path);
-
-                if (mutable.Count > 0)
+                else
                 {
+                    List<ProjectUnderTest> mutable = MutableProjectsOwning(change.Path);
+
                     // Not a source file, but inside a project: a project file, a resource, an input
                     // the code reads. Any of them can change what the assembly does or what it is
                     // built from, and none of them says which lines.
                     foreach (ProjectUnderTest project in mutable)
                     {
                         widened.Add(project.ProjectPath);
+                        attributed = true;
                     }
-
-                    continue;
                 }
 
-                unattributed.Add(change);
+                if (!attributed)
+                {
+                    unattributed.Add(change);
+                }
             }
 
             foreach (FileChange change in unattributed)
@@ -502,28 +512,31 @@ internal sealed class ChangeSelection
             string path,
             CancellationToken cancellationToken)
         {
-            List<string> byDirectory = Owning(_testProjectsByDirectory, path);
-
-            if (byDirectory.Count > 0)
-            {
-                return byDirectory;
-            }
-
             Dictionary<string, HashSet<string>> inputs = await TestProjectInputsAsync(cancellationToken)
                 .ConfigureAwait(false);
 
             string full = Path.GetFullPath(path);
 
-            return [.. inputs.Where(entry => entry.Value.Contains(full)).Select(entry => entry.Key)];
+            // Both, always. Returning the directory's owners as soon as there were any made the two
+            // rules alternatives rather than a union - review found it, and the case is real: a file
+            // that sits in one suite's folder and is linked into another would have widened only the
+            // first, leaving production code that only the second exercises out of the run.
+            return
+            [
+                .. Owning(_testProjectsByDirectory, path)
+                    .Concat(inputs.Where(entry => entry.Value.Contains(full)).Select(entry => entry.Key))
+                    .Distinct(ProjectPaths.Comparer),
+            ];
         }
 
         /// <summary>
         /// What each test project compiles or carries, read once and only when a change needs it.
         /// </summary>
         /// <remarks>
-        /// One MSBuild evaluation per test project, on a partial run only, and only once a change
-        /// has landed outside every test project's directory. A full run never pays it, and neither
-        /// does a partial run whose files all sit where their projects do.
+        /// One MSBuild evaluation per test project, cached for the run, on a partial run only - a
+        /// full run never pays it. It is read on the first change classified rather than only for a
+        /// file no directory claims: the two rules are a union, so the answer is needed for every
+        /// file, and paying for it lazily per file would have meant not paying for it at all.
         /// </remarks>
         private async Task<Dictionary<string, HashSet<string>>> TestProjectInputsAsync(
             CancellationToken cancellationToken)
