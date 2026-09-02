@@ -1,0 +1,26 @@
+<Project>
+
+  <!-- Central Package Management: projects reference a package without a version, and the version is
+       resolved from here. One source of truth for every NuGet version in the repository. -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup Label="Engine">
+    <!-- Roslyn. The engine parses and rewrites C#, so this is the one dependency it cannot do without. -->
+    <PackageVersion Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Tests">
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
+    <PackageVersion Include="xunit.v3" Version="3.2.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
+
+  <ItemGroup Label="Packaging">
+    <!-- Referenced from Directory.Build.targets for any project declaring a release train, so that
+         -p:GenerateSBOM=true embeds the SPDX inventory the release asserts is present. -->
+    <PackageVersion Include="Microsoft.Sbom.Targets" Version="4.1.5" />
+  </ItemGroup>
+
+</Project>

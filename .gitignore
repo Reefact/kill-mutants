@@ -1,0 +1,14 @@
+# Build output
+bin/
+obj/
+
+# What tools/packaging/pack.sh writes, and what the release publishes from.
+artifacts/
+
+# Rehearsal staging (release-dryrun.yml)
+dryrun-artifacts/
+
+# User-specific
+*.user
+.vs/
+.idea/

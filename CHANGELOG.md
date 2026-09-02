@@ -16,6 +16,10 @@ release rather than shipping undocumented.
 
 ### Added
 
+- `KillMutants.Core`: the mutation engine's first stage — given C# source, it finds
+  every mutant the file admits and reports each with its operator, its position and
+  the text that replaces it. Binary operators (arithmetic, relational, equality,
+  logical) and boolean literals.
 - Release pipeline: tag-triggered publish to NuGet with OIDC trusted publishing,
   SLSA build provenance attestation, embedded SPDX SBOM, and a side-effect-free
   rehearsal (`release-dryrun`) on every pull request.

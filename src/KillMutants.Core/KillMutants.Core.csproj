@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>KillMutants.Core</AssemblyName>
+    <RootNamespace>KillMutants</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <!-- The engine ships on the lib train. Declaring it here is the whole membership
+       (Directory.Build.targets), and it is what makes the project packable. -->
+  <PropertyGroup>
+    <ReleaseTrain>lib</ReleaseTrain>
+    <PackageId>KillMutants.Core</PackageId>
+    <Description>The KillMutants mutation engine: finds the mutants a C# source file admits.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+  </ItemGroup>
+
+</Project>

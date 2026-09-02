@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/KillMutants.Core/KillMutants.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/KillMutants.Core.UnitTests/KillMutants.Core.UnitTests.csproj" />
+  </Folder>
+</Solution>
