@@ -332,6 +332,29 @@ internal sealed class FixtureCopy : IDisposable
             """);
     }
 
+    /// <summary>Adds a method no test calls, holding a literal nothing else in the fixture holds.</summary>
+    /// <remarks>
+    /// Uncovered on purpose, and identifiable on purpose: a test that wants to know what the run
+    /// does with a mutant nothing reaches needs a site it can point at without ambiguity.
+    /// </remarks>
+    public void AddUncoveredCode()
+    {
+        File.WriteAllText(
+            Path.Combine(Root, "Sample.Library", "Forgotten.cs"),
+            """
+            namespace Sample.Library;
+
+            public static class Forgotten
+            {
+                public static bool IsAncient(int age)
+                {
+                    return age >= 4242;
+                }
+            }
+
+            """);
+    }
+
     /// <summary>Copies the single-project sample fixture into a fresh temporary directory.</summary>
     public static FixtureCopy Create() => CopyOf(SourceFixtureDirectory);
 

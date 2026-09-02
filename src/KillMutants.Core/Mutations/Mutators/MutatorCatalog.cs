@@ -31,6 +31,14 @@ internal sealed class MutatorCatalog
     /// <summary>The rules in this catalog.</summary>
     public IReadOnlyList<IMutator> Mutators { get; }
 
+    /// <summary>Builds a catalogue from rules supplied directly, for tests that need a deliberate one.</summary>
+    /// <remarks>
+    /// Every shipped mutator refuses a replacement that would not compile, which is the right
+    /// behaviour and makes an unbuildable mutant hard to come by on purpose. A test that needs one -
+    /// to prove what the run does with it - has to bring its own rule.
+    /// </remarks>
+    internal static MutatorCatalog Of(IReadOnlyList<IMutator> mutators) => new(mutators);
+
     /// <summary>Every family this tool knows, named, in the order the default catalog lists them.</summary>
     public static IReadOnlyList<MutatorName> Names { get; } =
         [.. Default.Mutators.Select(mutator => mutator.Name)];
