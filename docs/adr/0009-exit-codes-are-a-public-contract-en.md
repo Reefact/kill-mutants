@@ -26,9 +26,15 @@ said so.
 | code | meaning |
 |---|---|
 | **0** | Ran, and met the threshold if one was given |
-| **1** | Ran, but the mutation score is below `--break-at` |
+| **1** | Ran, and found what you asked it to fail on |
 | **2** | Could not run; the reason is on standard error |
 | **64** | The command line was not understood |
+
+`1` began life as *the score is below `--break-at`* and was broadened by
+[ADR-0010](0010-a-partial-run-reports-findings-not-a-score-en.md), which adds a partial run that has
+no score and fails on a newly undetected mutant instead. The row above is the general form its
+reasoning always implied; the two cases are the score below a threshold, and a new undetected mutant
+in a partial run. A build script reading `1` learns "findings", which is what it acts on.
 
 `--break-at` is **opt-in**. With no threshold, a low score is reported and the run still exits 0.
 A default threshold would make adopting KillMutants a breaking change for every build that added it.
