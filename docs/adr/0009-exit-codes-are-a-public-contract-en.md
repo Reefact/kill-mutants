@@ -26,15 +26,22 @@ said so.
 | code | meaning |
 |---|---|
 | **0** | Ran, and met the threshold if one was given |
-| **1** | Ran, and found what you asked it to fail on |
+| **1** | Ran, and the gate you asked for did not pass |
 | **2** | Could not run; the reason is on standard error |
 | **64** | The command line was not understood |
 
-`1` began life as *the score is below `--break-at`* and was broadened by
-[ADR-0010](0010-a-partial-run-reports-findings-not-a-score-en.md), which adds a partial run that has
-no score and fails on a newly undetected mutant instead. The row above is the general form its
-reasoning always implied; the two cases are the score below a threshold, and a new undetected mutant
-in a partial run. A build script reading `1` learns "findings", which is what it acts on.
+`1` is named for the gate, not for one of its causes, and it already had more than one before
+`--since` was thought of. Its cases:
+
+1. the mutation score is below `--break-at`;
+2. the score is **undefined** because nothing could be tested, which cannot be shown to meet a
+   threshold - shipped behaviour, in `Program.Verdict`, since before
+   [ADR-0010](0010-a-partial-run-reports-findings-not-a-score-en.md);
+3. a partial run found what the caller asked it to fail on, or could establish nothing at all.
+
+All three are *what you asked me to check did not pass*, which is what a build script branches on;
+standard error says which. That is why the constant is `GateNotPassed` rather than
+`ScoreBelowThreshold` - the old name was already wrong for case 2.
 
 `--break-at` is **opt-in**. With no threshold, a low score is reported and the run still exits 0.
 A default threshold would make adopting KillMutants a breaking change for every build that added it.

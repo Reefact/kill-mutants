@@ -11,7 +11,7 @@ namespace KillMutants.EndToEnd.Tests;
 public class CommandLineTests
 {
     private const int Success = 0;
-    private const int ScoreBelowThreshold = 1;
+    private const int GateNotPassed = 1;
     private const int CouldNotRun = 2;
     private const int BadUsage = 64;
 
@@ -213,7 +213,7 @@ public class CommandLineTests
 
         (int exitCode, string output, string message) = await RunAsync(fixture.Root, "--break-at", "100");
 
-        Assert.Equal(ScoreBelowThreshold, exitCode);
+        Assert.Equal(GateNotPassed, exitCode);
         Assert.Contains("below the 100% threshold", message, StringComparison.Ordinal);
         Assert.Contains("No coverage:", output, StringComparison.Ordinal);
     }
@@ -239,13 +239,13 @@ public class CommandLineTests
         using var fixture = FixtureCopy.Create();
         fixture.AddPartlyTestedCode();
 
-        (int belowThreshold, _, string thresholdMessage) =
+        (int gateNotPassed, _, string thresholdMessage) =
             await RunAsync(fixture.Root, "--break-at", "100");
         (int brokenRun, _, string brokenMessage) = await RunAsync("/killmutants-no-such-directory");
 
         // The distinction that earns its keep: "your tests are weaker than you asked for" and
         // "this tool did not work" call for different reactions from a CI job.
-        Assert.Equal(ScoreBelowThreshold, belowThreshold);
+        Assert.Equal(GateNotPassed, gateNotPassed);
         Assert.Equal(CouldNotRun, brokenRun);
         Assert.Contains("below the 100% threshold", thresholdMessage, StringComparison.Ordinal);
         Assert.Contains("is not a directory", brokenMessage, StringComparison.Ordinal);

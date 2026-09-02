@@ -117,7 +117,7 @@ internal static class Program
             Console.Error.WriteLine(
                 $"No mutant could be tested, so the {wanted}% threshold cannot be shown to be met.");
 
-            return ExitCode.ScoreBelowThreshold;
+            return ExitCode.GateNotPassed;
         }
 
         double achieved = report.Score.Value * 100d;
@@ -127,7 +127,7 @@ internal static class Program
             Console.Error.WriteLine(
                 $"Mutation score {report.Score} is below the {wanted}% threshold.");
 
-            return ExitCode.ScoreBelowThreshold;
+            return ExitCode.GateNotPassed;
         }
 
         return ExitCode.Success;
