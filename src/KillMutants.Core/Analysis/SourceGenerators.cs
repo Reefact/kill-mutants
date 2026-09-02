@@ -1,5 +1,7 @@
 using System.Collections.Immutable;
 using System.Reflection;
+using System.Reflection.Metadata;
+using System.Reflection.PortableExecutable;
 using System.Runtime.Loader;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -22,10 +24,12 @@ internal sealed class SourceGenerators
 {
     private SourceGenerators(
         IReadOnlyList<ISourceGenerator> generators,
-        IReadOnlyList<string> unloadable)
+        IReadOnlyList<string> unloadable,
+        IReadOnlyList<string> unreadable)
     {
         Generators = generators;
         Unloadable = unloadable;
+        Unreadable = unreadable;
     }
 
     /// <summary>The generators found on the command line.</summary>
@@ -38,12 +42,23 @@ internal sealed class SourceGenerators
     /// </remarks>
     public IReadOnlyList<string> Unloadable { get; }
 
+    /// <summary>
+    /// Analyzer assemblies that could not be inspected and do carry a generator, by file name.
+    /// </summary>
+    /// <remarks>
+    /// The difference from <see cref="Unloadable"/> is the whole point. An analyzer that only
+    /// reports diagnostics contributes nothing to the assembly, so failing to inspect it changes
+    /// nothing about what is emitted and must not stop a run - refusing every unloadable analyzer
+    /// would make this tool unusable on any project pinning a newer Roslyn for its linters.
+    /// </remarks>
+    public IReadOnlyList<string> Unreadable { get; }
+
     /// <summary>True when there is nothing to run.</summary>
     public bool IsEmpty => Generators.Count == 0;
 
     /// <summary>Wraps generators supplied directly, for tests that need one that misbehaves.</summary>
     internal static SourceGenerators Of(IReadOnlyList<ISourceGenerator> generators) =>
-        new(generators, []);
+        new(generators, [], []);
 
     /// <summary>Loads the generators named by the compiler command line.</summary>
     public static SourceGenerators LoadFrom(CSharpCommandLineArguments arguments)
@@ -52,6 +67,7 @@ internal sealed class SourceGenerators
 
         List<ISourceGenerator> generators = [];
         List<string> unloadable = [];
+        List<string> unreadable = [];
         var loader = new AnalyzerLoader();
 
         foreach (CommandLineAnalyzerReference reference in arguments.AnalyzerReferences)
@@ -64,13 +80,86 @@ internal sealed class SourceGenerators
             }
             catch (Exception exception) when (exception is not OutOfMemoryException)
             {
-                // An analyzer built against a newer compiler cannot be inspected by this one.
-                // That is a fact about the project, not a failure of the run.
+                // An analyzer built against a newer compiler cannot be inspected by this one. What
+                // that costs depends entirely on whether it was going to contribute code, and the
+                // metadata answers that without loading anything.
                 unloadable.Add(Path.GetFileName(path));
+
+                if (CarriesAGenerator(path) is not false)
+                {
+                    unreadable.Add(Path.GetFileName(path));
+                }
             }
         }
 
-        return new SourceGenerators(generators, unloadable);
+        return new SourceGenerators(generators, unloadable, unreadable);
+    }
+
+    /// <summary>
+    /// Whether an assembly declares a type marked <c>[Generator]</c>, read from its metadata, or
+    /// null when the file cannot be read at all.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Reading the metadata rather than loading the assembly is what makes this answerable: the
+    /// assembly is here precisely because loading it failed. Nothing in it is executed, no context
+    /// is polluted, and the question - does this contribute source? - is exactly the one that
+    /// decides whether failing to inspect it matters.
+    /// </para>
+    /// <para>
+    /// Null means the file could not be read, and null is treated like yes by the caller. Refusing
+    /// to guess in the safe direction is the whole posture of this tool.
+    /// </para>
+    /// </remarks>
+    internal static bool? CarriesAGeneratorForTests(string path) => CarriesAGenerator(path);
+
+    private static bool? CarriesAGenerator(string path)
+    {
+        try
+        {
+            using FileStream stream = File.OpenRead(path);
+            using var portableExecutable = new PEReader(stream);
+
+            MetadataReader metadata = portableExecutable.GetMetadataReader();
+
+            foreach (TypeDefinitionHandle handle in metadata.TypeDefinitions)
+            {
+                foreach (CustomAttributeHandle attributeHandle in
+                         metadata.GetTypeDefinition(handle).GetCustomAttributes())
+                {
+                    if (IsGeneratorAttribute(metadata, metadata.GetCustomAttribute(attributeHandle)))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Names the attribute without resolving it, since resolving is what failed.</summary>
+    private static bool IsGeneratorAttribute(MetadataReader metadata, CustomAttribute attribute)
+    {
+        if (attribute.Constructor.Kind != HandleKind.MemberReference)
+        {
+            return false;
+        }
+
+        MemberReference member = metadata.GetMemberReference((MemberReferenceHandle)attribute.Constructor);
+
+        if (member.Parent.Kind != HandleKind.TypeReference)
+        {
+            return false;
+        }
+
+        TypeReference declaring = metadata.GetTypeReference((TypeReferenceHandle)member.Parent);
+
+        return metadata.GetString(declaring.Name) == "GeneratorAttribute";
     }
 
     /// <summary>
