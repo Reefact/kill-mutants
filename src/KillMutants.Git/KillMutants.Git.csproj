@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../KillMutants.Core/KillMutants.Core.csproj" />
+    <ProjectReference Include="../KillMutants.Platform/KillMutants.Platform.csproj" />
   </ItemGroup>
 
   <ItemGroup>

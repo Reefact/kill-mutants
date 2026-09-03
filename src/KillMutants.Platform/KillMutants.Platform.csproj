@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    What the tool needs from the operating system, and nothing else: run an external process under a
+    time budget, and delete a temporary directory without ever failing the run over it.
+
+    It exists so that no assembly has to name another to share them. The core declares IChangeSource
+    and must not know who implements it - and an InternalsVisibleTo naming an implementation is such
+    knowledge, written into the core's own build. Adding a second source would have meant editing the
+    core to name it too. Both sides reference this instead, and neither names the other.
+
+    Public, deliberately. These are shared by assemblies rather than within one, which is what a
+    public type is for; the alternative was to keep them internal and pay for it with that reference.
+  -->
+
+</Project>
