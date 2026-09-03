@@ -39,6 +39,22 @@ internal sealed class ChangeSelection
     /// package versions, with which constants. Documentation, workflows and everything else outside a
     /// project are ignored, so a docs change selects nothing and finishes at once.
     /// </remarks>
+    /// <summary>True when a file decides how projects around it are built.</summary>
+    /// <remarks>
+    /// Shared by the selection, which widens what sits beneath such a file, and by the base graph,
+    /// which refuses when the export left one out: an omitted <c>Directory.Build.props</c> can carry
+    /// the project references the graph is about to read, and every <c>.csproj</c> can be present
+    /// while the answer is still wrong. Review found that second use missing.
+    /// </remarks>
+    internal static bool IsSharedBuildFile(string path)
+    {
+        string name = Path.GetFileName(path);
+
+        return SharedBuildFiles.Contains(name, StringComparer.OrdinalIgnoreCase) ||
+               name.EndsWith(".props", StringComparison.OrdinalIgnoreCase) ||
+               name.EndsWith(".targets", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static readonly string[] SharedBuildFiles =
     [
         "Directory.Build.props",
@@ -602,9 +618,29 @@ internal sealed class ChangeSelection
 
             return File.Exists(absolute) &&
                    InScope(repositoryPath) &&
-                   !discovered.LeftOut.ContainsKey(absolute) &&
-                   !discovered.TestProjectPaths.Contains(absolute);
+                   !ExcludedByConfiguration(absolute);
         }
+
+        /// <summary>
+        /// True when the run was told to leave this project alone, rather than told so by the diff.
+        /// </summary>
+        /// <remarks>
+        /// The distinction review found missing, and it is the same shape as a changed
+        /// <c>killmutants.json</c>: an opt-out the change being judged introduced cannot be taken at
+        /// face value. Excluding a project comes from the run's configuration, which a change cannot
+        /// alter without the run refusing to judge it at all. Declaring a project test support, or
+        /// turning it into a test project, comes from a project file the diff may have just written
+        /// - and both take it out of the targets exactly as losing its last test would.
+        /// <para>
+        /// Asking the base revision is unnecessary because it has already answered: the base-side
+        /// traversal returns production projects only, walking through test support and stopping at
+        /// test projects, so anything it reached was an ordinary production project then. If it is
+        /// opted out now, this diff is what opted it out.
+        /// </para>
+        /// </remarks>
+        private bool ExcludedByConfiguration(string absolute) =>
+            discovered.LeftOut.ContainsKey(absolute) &&
+            !discovered.DeclaredTestSupport.Contains(absolute);
 
         /// <summary>
         /// Projects that existed at the base revision, own one of these files, and are not test
@@ -830,15 +866,6 @@ internal sealed class ChangeSelection
 
         private static bool IsCSharp(string path) =>
             path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase);
-
-        private static bool IsSharedBuildFile(string path)
-        {
-            string name = Path.GetFileName(path);
-
-            return SharedBuildFiles.Contains(name, StringComparer.OrdinalIgnoreCase) ||
-                   name.EndsWith(".props", StringComparison.OrdinalIgnoreCase) ||
-                   name.EndsWith(".targets", StringComparison.OrdinalIgnoreCase);
-        }
 
         private static string Short(string revision) => revision.Length > 8 ? revision[..8] : revision;
     }

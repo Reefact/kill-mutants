@@ -214,7 +214,11 @@ internal sealed class MsBuildQuery
     /// <c>EmbeddedResource</c> and <c>AdditionalFiles</c> to the three this started with: a test
     /// project can consume a case list as an embedded resource, and a generator reads its inputs as
     /// additional files, and either can change what an existing test does without a line of C#
-    /// moving.
+    /// moving. Then <c>EditorConfigFiles</c>, because a generator can read
+    /// <c>AnalyzerConfigOptionsProvider</c> and change what it emits from an option written there.
+    /// Measured before adding it, since evaluation-time availability is never a given here: it
+    /// answers with no build and no restore, and names the repository-root file that sits outside
+    /// every project directory - so membership attributes it where the directory rule cannot.
     /// </para>
     /// <para>
     /// It is a list of what MSBuild can be asked for cheaply, not a proof of completeness. A project
@@ -222,7 +226,7 @@ internal sealed class MsBuildQuery
     /// </para>
     /// </remarks>
     private static readonly string[] InputItemNames =
-        ["Compile", "None", "Content", "EmbeddedResource", "AdditionalFiles"];
+        ["Compile", "None", "Content", "EmbeddedResource", "AdditionalFiles", "EditorConfigFiles"];
 
     /// <summary>
     /// Every file a project compiles or carries, as absolute paths, read from evaluation alone.

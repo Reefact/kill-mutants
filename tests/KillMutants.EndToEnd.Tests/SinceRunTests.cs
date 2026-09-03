@@ -1171,6 +1171,119 @@ public class SinceRunTests
         Assert.Contains("submodule", failure.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A project the change itself declares to be test support has still lost its coverage.
+    /// </summary>
+    /// <remarks>
+    /// The same shape as a changed <c>killmutants.json</c>, and review found it open: the
+    /// coverage-loss check trusted an opt-out read at HEAD, so a pull request could take a project
+    /// out of the targets by writing one line in its own project file and pass. What separates this
+    /// from the legitimate case is where the opt-out comes from — the run's configuration, which a
+    /// change cannot alter without the run refusing to judge it, or a project file the diff may have
+    /// just written.
+    /// </remarks>
+    [Fact]
+    public async Task A_project_this_change_declares_test_support_is_still_reported_as_uncovered()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+
+        string project = Path.Combine(fixture.Root, "Core", "Core.csproj");
+
+        File.WriteAllText(
+            project,
+            File.ReadAllText(project).Replace(
+                "<Nullable>enable</Nullable>",
+                "<Nullable>enable</Nullable>" +
+                Environment.NewLine +
+                "    <KillMutantsTestSupport>true</KillMutantsTestSupport>",
+                StringComparison.Ordinal));
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        Assert.True(report.LostCoverage);
+        Assert.Contains(
+            report.CoverageLost,
+            path => path.EndsWith("Core.csproj", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Analyzer configuration is an input like any other, because a generator can read it.
+    /// </summary>
+    /// <remarks>
+    /// A generator reading <c>AnalyzerConfigOptionsProvider</c> emits different code for a different
+    /// option, so a diff touching only an <c>.editorconfig</c> changes the assembly under test. That
+    /// file sits outside every project directory, so only evaluated membership can attribute it —
+    /// and measured before relying on it, <c>EditorConfigFiles</c> answers from evaluation alone and
+    /// names the repository-root file.
+    /// </remarks>
+    [Fact]
+    public async Task A_changed_editorconfig_widens_the_projects_that_read_it()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        string editorconfig = Path.Combine(fixture.Root, ".editorconfig");
+
+        File.WriteAllText(editorconfig, $"root = true{Environment.NewLine}");
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+
+        File.AppendAllText(
+            editorconfig,
+            $"{Environment.NewLine}[*.cs]{Environment.NewLine}dotnet_diagnostic.CA1000.severity = none{Environment.NewLine}");
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        Assert.Contains("Money.cs", MutatedFiles(report));
+        Assert.Contains("Basket.cs", MutatedFiles(report));
+    }
+
+    /// <summary>
+    /// A build file the base export leaves out stops the run, even when every project file is there.
+    /// </summary>
+    /// <remarks>
+    /// The per-project guard fires only for a <c>.csproj</c> the graph goes looking for, and review
+    /// found what that leaves open: a <c>Directory.Build.props</c> can carry the project references
+    /// the graph is about to read, and <c>export-ignore</c> can leave it out while every project
+    /// file is present. Evaluation then succeeds against an incomplete tree and answers with edges
+    /// missing — under-widening arrived at by a route the project files cannot show.
+    /// </remarks>
+    [Fact]
+    public async Task A_build_file_the_base_export_omits_stops_the_run()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        MoveIntoTestsDirectory(fixture, "Domain.Tests");
+
+        string props = Path.Combine(fixture.Root, "tests", "Directory.Build.props");
+
+        File.WriteAllText(
+            props,
+            """
+            <Project>
+              <PropertyGroup>
+                <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        // Kept out of a git archive, which is how a repository omits its tests from a release
+        // tarball - and which leaves the base graph reading a tree the revision does not describe.
+        File.WriteAllText(
+            Path.Combine(fixture.Root, ".gitattributes"),
+            $"tests/Directory.Build.props export-ignore{Environment.NewLine}");
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+        Touch(fixture, "tests", "Domain.Tests", "BasketTests.cs");
+
+        ChangeSelectionException failure = await Assert.ThrowsAsync<ChangeSelectionException>(
+            () => RunSinceHeadAsync(fixture));
+
+        Assert.Contains("Directory.Build.props", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("export-ignore", failure.Message, StringComparison.Ordinal);
+    }
+
     private static Task<MutationTestReport> RunSinceHeadAsync(FixtureCopy fixture) =>
         MutationTesting.RunAsync(
             fixture.Root,
