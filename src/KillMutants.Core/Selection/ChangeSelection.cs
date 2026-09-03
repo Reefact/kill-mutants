@@ -1,3 +1,4 @@
+using KillMutants.Filtering;
 using KillMutants.Projects;
 using KillMutants.Reporting;
 
@@ -134,6 +135,7 @@ internal sealed class ChangeSelection
     /// <param name="searchDirectory">The directory the run was pointed at.</param>
     /// <param name="configuration">The build configuration, for reading the earlier graph.</param>
     /// <param name="discovered">What discovery found now, and what it consumes.</param>
+    /// <param name="exclusions">What the run was told to leave alone.</param>
     /// <param name="progress">Told when the earlier state is being read, which is the slow part.</param>
     /// <param name="cancellationToken">Cancels the resolution.</param>
     /// <exception cref="ChangeSelectionException">
@@ -145,11 +147,13 @@ internal sealed class ChangeSelection
         string searchDirectory,
         string configuration,
         DiscoveredProjects discovered,
+        PathFilter exclusions,
         IProgress<MutationTestProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(discovered);
+        ArgumentNullException.ThrowIfNull(exclusions);
 
         ChangeSet change = await source.ChangesAsync(cancellationToken).ConfigureAwait(false);
 
@@ -164,6 +168,7 @@ internal sealed class ChangeSelection
             configuration,
             Path.GetFullPath(searchDirectory),
             discovered,
+            exclusions,
             progress);
 
         return await resolver.ResolveAsync(scope, change.Changes, cancellationToken).ConfigureAwait(false);
@@ -218,6 +223,7 @@ internal sealed class ChangeSelection
         string configuration,
         string searchDirectory,
         DiscoveredProjects discovered,
+        PathFilter exclusions,
         IProgress<MutationTestProgress>? progress)
     {
         /// <summary>Every project discovery read, by the directory it sits in.</summary>
@@ -617,10 +623,17 @@ internal sealed class ChangeSelection
         /// test projects, so anything it reached was an ordinary production project then. If it is
         /// opted out now, this diff is what opted it out.
         /// </para>
+        /// <para>
+        /// The configuration is asked directly rather than through what discovery left out, and
+        /// review found why it has to be. What was left out is a list a traversal fills as it walks;
+        /// a change that removes the last reference to an excluded project leaves that walk nowhere
+        /// to reach it, so the list is empty of it and the earlier state's graph brings it back as
+        /// newly uncovered. The gate then failed over a project the user had taken out of mutation
+        /// testing - the one false positive it had. The patterns are the instruction, and they say
+        /// the same thing whether or not anything still points at the project.
+        /// </para>
         /// </remarks>
-        private bool ExcludedByConfiguration(string absolute) =>
-            discovered.LeftOut.ContainsKey(absolute) &&
-            !discovered.DeclaredTestSupport.Contains(absolute);
+        private bool ExcludedByConfiguration(string absolute) => exclusions.Excludes(absolute);
 
         /// <summary>
         /// Projects that existed in the earlier state, own one of these files, and are not test
