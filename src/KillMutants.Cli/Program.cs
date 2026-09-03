@@ -1,6 +1,7 @@
 using System.Globalization;
 using KillMutants.Coverage;
 using KillMutants.Execution;
+using KillMutants.Git;
 using KillMutants.Projects;
 using KillMutants.Reporting;
 using KillMutants.Selection;
@@ -87,11 +88,18 @@ internal static class Program
         using var progress = new ConsoleProgressReporter(
             Console.Error, rewritesInPlace: !Console.IsErrorRedirected);
 
+        // The one place that knows both halves: the option names a git revision, so the CLI is
+        // where a git-backed change source is built. The core is handed the source and never learns
+        // what produced it.
+        IChangeSource? changes = settings.Since is null
+            ? null
+            : await GitChangeSource.ForAsync(settings.Directory, settings.Since).ConfigureAwait(false);
+
         MutationTestReport report = await MutationTesting
             .RunAsync(
                 settings.Directory, settings.Configuration, settings.WorkerCount,
                 settings.MeasureCoverage, settings.Exclude, settings.Mutators,
-                settings.WithoutMutators, settings.VerifyKills, settings.Since, progress)
+                settings.WithoutMutators, settings.VerifyKills, changes, progress)
             .ConfigureAwait(false);
 
         // Progress goes to stderr and the report to stdout, so piping the report somewhere useful

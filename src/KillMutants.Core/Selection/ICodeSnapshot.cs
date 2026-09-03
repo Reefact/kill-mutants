@@ -17,7 +17,7 @@ namespace KillMutants.Selection;
 /// the directory would not undo.
 /// </para>
 /// </remarks>
-internal interface ICodeSnapshot : IDisposable
+public interface ICodeSnapshot : IDisposable
 {
     /// <summary>The directory the code was laid out in.</summary>
     string Root { get; }
