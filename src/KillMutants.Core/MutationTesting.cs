@@ -48,8 +48,9 @@ public static class MutationTesting
     /// <param name="changes">
     /// Where to learn what changed and what the code was before it, or null to mutate the whole
     /// codebase. Such a run reports findings and a binary verdict rather than a mutation score: see
-    /// DEC0010, and <see cref="Reporting.MutationTestReport.Scope"/>. A source backed by git lives
-    /// in <c>KillMutants.Git</c>; this assembly neither provides one nor knows what does.
+    /// DEC0010, and <see cref="Reporting.MutationTestReport.Scope"/>. The caller supplies one; this
+    /// assembly provides none, and nothing here depends on where an implementation comes from or on
+    /// what it reads to answer.
     /// </param>
     /// <param name="progress">Told where the run has got to, so a caller can show it.</param>
     /// <param name="cancellationToken">Cancels the run.</param>

@@ -3,7 +3,7 @@ using System.Diagnostics;
 namespace KillMutants.Processes;
 
 /// <summary>Runs an external process to completion under a time budget, capturing both streams.</summary>
-internal static class ProcessRunner
+public static class ProcessRunner
 {
     /// <summary>Runs <paramref name="fileName"/> and waits for it to exit.</summary>
     /// <remarks>

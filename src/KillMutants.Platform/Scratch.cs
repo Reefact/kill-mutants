@@ -6,7 +6,7 @@ namespace KillMutants;
 /// sandboxes, the coverage recorder's output and the runner's result files all end this way, and
 /// four copies of the same three-line <c>try</c> block invited one of them to drift into throwing.
 /// </remarks>
-internal static class Scratch
+public static class Scratch
 {
     /// <summary>Deletes a file, ignoring the fact that it could not be deleted.</summary>
     public static void DeleteFile(string path)

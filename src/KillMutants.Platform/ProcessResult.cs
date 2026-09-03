@@ -6,7 +6,7 @@ namespace KillMutants.Processes;
 /// <param name="StandardError">Everything written to stderr.</param>
 /// <param name="Duration">How long the process ran.</param>
 /// <param name="TimedOut">True when the process was killed for exceeding its time budget.</param>
-internal sealed record ProcessResult(
+public sealed record ProcessResult(
     int ExitCode,
     string StandardOutput,
     string StandardError,
