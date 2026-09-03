@@ -336,12 +336,15 @@ internal sealed class ChangeSelection
         /// resource or a project file can change what the assembly does without saying which lines.
         /// </para>
         /// <para>
-        /// The exception for an added file is narrower than it was. A new <em>test</em> cannot remove
-        /// a coverage edge that predates it, which is what DEC0011 argues; a new fixture, case list or
-        /// settings file consumed by existing tests can change what they do, and review was right
-        /// that the rationale does not stretch to cover it. So only an added C# file keeps the
-        /// exception. What remains is that an added C# file could hold shared setup or a module
-        /// initializer rather than a test - recorded in DEC0011 rather than assumed away.
+        /// The exception for an added file is narrower than it was, in two directions review pushed
+        /// it. A new <em>test</em> cannot remove a coverage edge that predates it, which is what
+        /// DEC0011 argues; a new fixture, case list or settings file consumed by existing tests can
+        /// change what they do, so only an added C# file keeps the exception. And it is an argument
+        /// about tests, so it applies to a test project's own files and to nothing else: a support
+        /// library the run left out is explicitly not a test project, and its files are helpers every
+        /// suite compiles against. What remains is that an added C# file in a suite could hold shared
+        /// setup or a module initializer rather than a test - recorded in DEC0011 rather than assumed
+        /// away.
         /// </para>
         /// </remarks>
         private bool Attribute(
@@ -362,14 +365,17 @@ internal sealed class ChangeSelection
                 return true;
             }
 
+            // No added-file exception on this branch, and review was right that it never belonged.
+            // A project the run left out is not a test project; its files are helpers every suite
+            // compiles against, so an added one - a module initializer, an assembly attribute, a new
+            // part of an existing partial type - changes what the existing tests do with no test
+            // file in the diff at all. The generator path already refused the exception for the same
+            // reason.
             if (discovered.LeftOut.TryGetValue(project, out IReadOnlyList<string>? reachedBy))
             {
-                if (!addedSource)
+                foreach (string testProject in reachedBy)
                 {
-                    foreach (string testProject in reachedBy)
-                    {
-                        touchedTestProjects.Add(testProject);
-                    }
+                    touchedTestProjects.Add(testProject);
                 }
 
                 return true;

@@ -399,6 +399,46 @@ public class SinceRunTests
     }
 
     /// <summary>
+    /// An added file in a support library is not an added test either.
+    /// </summary>
+    /// <remarks>
+    /// Review found the last place the exception reached that it had no business reaching. "A new
+    /// test cannot remove an edge that predates it" is an argument about tests, and a declared
+    /// support library is explicitly not a test project - its files are helpers every suite compiles
+    /// against. A module initializer, an assembly attribute or a new part of an existing partial
+    /// helper changes what the existing tests do, with no test file in the diff at all. The same
+    /// reasoning already kept the exception off the generator path; it belongs off this one too.
+    /// </remarks>
+    [Fact]
+    public async Task An_added_file_in_a_support_library_widens_even_though_it_is_added()
+    {
+        using var fixture = FixtureCopy.CreateTestSupportProject();
+
+        fixture.DeclareTheSupportProject();
+        FixtureRepository.InitialiseAt(fixture.Root);
+
+        File.WriteAllText(
+            Path.Combine(fixture.Root, "Sample.Support", "Defaults.cs"),
+            """
+            using System.Runtime.CompilerServices;
+
+            namespace Sample.Support;
+
+            internal static class Defaults
+            {
+                internal static bool Ready;
+
+                [ModuleInitializer]
+                internal static void Prepare() => Ready = true;
+            }
+            """);
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        Assert.Contains("Money.cs", MutatedFiles(report));
+    }
+
+    /// <summary>
     /// An added fixture is not an added test, and the exception does not stretch to cover it.
     /// </summary>
     /// <remarks>
