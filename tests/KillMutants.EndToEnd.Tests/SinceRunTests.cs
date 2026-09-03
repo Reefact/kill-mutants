@@ -432,16 +432,26 @@ public class SinceRunTests
     }
 
     /// <summary>
-    /// An export that left a tracked project out is refused, not read as a project that never was.
+    /// A project marked <c>export-ignore</c> is read as it was, not refused and not read as absent.
     /// </summary>
     /// <remarks>
-    /// Review found two ways for `git archive` to be an unfaithful copy of a revision:
-    /// `export-ignore` in `.gitattributes`, which is a common way to keep tests out of a release
-    /// archive, and a submodule, which it records as a gitlink without recursing into. Either leaves
-    /// a project silently absent, and the base graph would drop the edge that ran through it.
+    /// <para>
+    /// This asserted a refusal, and the refusal was the wrong answer to the right observation.
+    /// Review had found that <c>git archive</c> is an unfaithful copy of a revision - it honours
+    /// <c>export-ignore</c>, a common way to keep tests out of a release archive - so a project
+    /// could be silently absent and the graph would drop the edge running through it. Detecting
+    /// that and stopping the run was a way of not lying about it.
+    /// </para>
+    /// <para>
+    /// Reading the code properly is better than refusing to. <c>export-ignore</c> shapes an archive
+    /// and means nothing to a checkout, so a worktree simply has the project. What was a refusal is
+    /// now an ordinary run, and this asserts the reading: <c>Domain.Tests</c> touched, and
+    /// <c>Basket.cs</c> - which lives in the directory the attribute excludes from archives - judged
+    /// through the base graph like any other.
+    /// </para>
     /// </remarks>
     [Fact]
-    public async Task A_base_export_that_omitted_a_tracked_project_is_refused()
+    public async Task A_project_marked_export_ignore_is_still_read_as_it_was()
     {
         using var fixture = FixtureCopy.CreateMultiProject();
 
@@ -450,10 +460,9 @@ public class SinceRunTests
         FixtureRepository.InitialiseAt(fixture.Root);
         Touch(fixture, "Domain.Tests", "BasketTests.cs");
 
-        ChangeSelectionException refusal = await Assert.ThrowsAsync<ChangeSelectionException>(
-            () => RunSinceHeadAsync(fixture));
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
 
-        Assert.Contains("export-ignore", refusal.Message, StringComparison.Ordinal);
+        Assert.Contains("Basket.cs", MutatedFiles(report));
     }
 
     /// <summary>
