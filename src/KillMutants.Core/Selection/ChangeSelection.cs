@@ -11,13 +11,13 @@ namespace KillMutants.Selection;
 /// Two halves. The changed production code is selected precisely, file by file, matched against the
 /// syntax trees each compilation was actually built from. Anything touching an existing file in a
 /// test project widens instead, to every mutable project that test project exercises - because what
-/// a change to a test removes is a coverage <em>edge</em>, and HEAD cannot be asked about an edge
+/// a change to a test removes is a coverage <em>edge</em>, and the current state cannot be asked about an edge
 /// that is no longer there.
 /// </para>
 /// <para>
-/// The relation is read at both revisions, <c>targets(base) ∪ targets(head)</c>. Reading HEAD alone
+/// The relation is read at both states, <c>targets(before) ∪ targets(now)</c>. Reading the current one alone
 /// would let the same hole reappear one layer down: remove the <c>ProjectReference</c> from
-/// <c>Tests</c> to <c>ProjectA</c> in the change being judged, and HEAD no longer says <c>Tests</c>
+/// <c>Tests</c> to <c>ProjectA</c> in the change being judged, and the current graph no longer says <c>Tests</c>
 /// exercises <c>ProjectA</c>.
 /// </para>
 /// <para>
@@ -34,7 +34,7 @@ internal sealed class ChangeSelection
     /// </summary>
     /// <remarks>
     /// A change to one of these widens every project beneath it, which in the usual case of a
-    /// repository-root <c>Directory.Build.props</c> means all of them - a partial run that is briefly
+    /// root <c>Directory.Build.props</c> means all of them - a partial run that is briefly
     /// a full one. That is the honest answer: these files decide what is compiled, against which
     /// package versions, with which constants. Documentation, workflows and everything else outside a
     /// project are ignored, so a docs change selects nothing and finishes at once.
@@ -84,7 +84,7 @@ internal sealed class ChangeSelection
     public RunScope Scope { get; }
 
     /// <summary>
-    /// Projects the base revision's tests exercised, that still exist, and that no test project
+    /// Projects the earlier state's tests exercised, that still exist, and that no test project
     /// reaches any more.
     /// </summary>
     /// <remarks>
@@ -133,11 +133,11 @@ internal sealed class ChangeSelection
     /// <param name="source">Where the change, and the code before it, are read from.</param>
     /// <param name="searchDirectory">The directory the run was pointed at.</param>
     /// <param name="configuration">The build configuration, for reading the earlier graph.</param>
-    /// <param name="discovered">What discovery found at HEAD, and what it consumes.</param>
-    /// <param name="progress">Told when the base revision is being read, which is the slow part.</param>
+    /// <param name="discovered">What discovery found now, and what it consumes.</param>
+    /// <param name="progress">Told when the earlier state is being read, which is the slow part.</param>
     /// <param name="cancellationToken">Cancels the resolution.</param>
     /// <exception cref="ChangeSelectionException">
-    /// The change, or the base revision's project graph, could not be read - or the change touches
+    /// The change, or the earlier state's project graph, could not be read - or the change touches
     /// the run's own configuration, which a partial run cannot judge.
     /// </exception>
     public static async Task<ChangeSelection> ResolveAsync(
@@ -156,11 +156,11 @@ internal sealed class ChangeSelection
         RefuseIfTheGateItselfChanged(change.Changes, Path.GetFullPath(searchDirectory));
 
         var scope = new RunScope(
-            change.BaseRevision, change.HeadRevision, change.WorkingTreeDiffers, change.Changes.Count);
+            change.ComparedFrom, change.ComparedTo, change.ComparedToIsExact, change.Changes.Count);
 
         var resolver = new Resolver(
             source,
-            change.BaseRevision,
+            change.ComparedFrom,
             configuration,
             Path.GetFullPath(searchDirectory),
             discovered,
@@ -181,7 +181,7 @@ internal sealed class ChangeSelection
     /// report a clean partial run over its own disarming.
     /// </para>
     /// <para>
-    /// Comparing the two revisions' settings and keeping whatever the change removed would be the
+    /// Comparing the two states' settings and keeping whatever the change removed would be the
     /// precise answer. This is the honest one: a partial run cannot judge a change to its own
     /// configuration, so it declines to, and says to run without <c>--since</c>. Declining to answer
     /// is a thing this tool is allowed to do; answering as though the question were unchanged is not.
@@ -191,7 +191,7 @@ internal sealed class ChangeSelection
         IReadOnlyList<FileChange> changes,
         string searchDirectory)
     {
-        // The file this run actually reads, not any file of that name in the repository. Review
+        // The file this run actually reads, not any file of that name in the codebase. Review
         // found the difference: a monorepo measured one component at a time had every partial run
         // refused by a change to a sibling component's settings, which decide nothing here.
         string settings = Path.Combine(searchDirectory, "killmutants.json");
@@ -214,7 +214,7 @@ internal sealed class ChangeSelection
     /// </summary>
     private sealed class Resolver(
         IChangeSource source,
-        string baseRevision,
+        string comparedFrom,
         string configuration,
         string searchDirectory,
         DiscoveredProjects discovered,
@@ -250,8 +250,9 @@ internal sealed class ChangeSelection
 
             foreach (FileChange change in changes)
             {
-                // A directory, not a file: git reports a submodule bump as its gitlink path alone -
-                // measured, `M libs/Core` and nothing beneath it. Everything after this reads the
+                // A directory, not a file: a source names a whole component this way when it cannot
+                // say more - a component whose contents it tracks as one opaque unit reports the
+                // component's own path and nothing beneath it. Everything after this reads the
                 // path's parent directory, which for a directory is the wrong project entirely, so
                 // the whole subtree is taken conservatively before anything else looks at it.
                 if (Directory.Exists(change.Path))
@@ -299,7 +300,7 @@ internal sealed class ChangeSelection
             // Everything in `widened` at this point was widened by a change to something other than
             // a source file - a project file, a resource, a shared build file - because a changed
             // `.cs` file goes to the selected set instead. Those are exactly the changes that can
-            // delete a project reference, so the suites reaching them are read at the base revision
+            // delete a project reference, so the suites reaching them are read at the earlier state
             // as well. Review found the hole: `Tests -> Facade -> Core` becoming `Tests -> Facade`
             // puts only `Facade.csproj` in the diff, no test project is touched, the base graph is
             // never consulted, and `Core` leaves the targets without anyone noticing.
@@ -446,7 +447,7 @@ internal sealed class ChangeSelection
         }
 
         /// <summary>
-        /// The test projects that exercise any of these production projects at HEAD.
+        /// The test projects that exercise any of these production projects now.
         /// </summary>
         /// <remarks>
         /// Read from the targets rather than from the project graph, because a target already pairs
@@ -467,14 +468,14 @@ internal sealed class ChangeSelection
         }
 
         /// <summary>
-        /// Widens to every project the touched test projects exercise, at both revisions.
+        /// Widens to every project the touched test projects exercise, in both states.
         /// </summary>
         /// <param name="widened">The projects taken whole, added to as the base graph is read.</param>
         /// <param name="touchedTestProjects">
-        /// Suites a change touched. Each widens what it exercises at HEAD, and is read at the base.
+        /// Suites a change touched. Each widens what it exercises now, and is read at the earlier state.
         /// </param>
         /// <param name="tracedAtBase">
-        /// Suites read at the base revision only. A change to a target's project file can delete a
+        /// Suites read at the earlier state only. A change to a target's project file can delete a
         /// reference the suite still has - so the old graph has to be asked - without changing
         /// anything about the rest of what that suite exercises, which is why these do not widen.
         /// </param>
@@ -505,15 +506,15 @@ internal sealed class ChangeSelection
             }
 
             progress?.Report(new MutationTestProgress(
-                MutationTestPhase.SelectingChanges, Subject: Short(baseRevision)));
+                MutationTestPhase.SelectingChanges, Subject: Short(comparedFrom)));
 
             ICodeSnapshot before = await source
                 .OpenCodeBeforeAsync(cancellationToken)
                 .ConfigureAwait(false);
 
-            using BaseProjectGraph graph = BaseProjectGraph.Open(before, baseRevision, configuration);
+            using BaseProjectGraph graph = BaseProjectGraph.Open(before, comparedFrom, configuration);
 
-            // Files that belong to no test project at HEAD may belong to one at the base revision -
+            // Files that belong to no test project now may belong to one in the earlier state -
             // the coverage edge vanishing one layer further out again. Asked of the graph, which
             // already knows every project that state held, rather than of the source a second time.
             IReadOnlyList<string> formerTestProjects = FormerTestProjects(unattributed, graph);
@@ -524,7 +525,7 @@ internal sealed class ChangeSelection
             // suite read only because a project it reaches had its project file changed widens
             // nothing - the change says nothing about the rest of what that suite exercises, and
             // adding it would fail a change confined to A on an old survivor in B.
-            List<string> widening = [.. touchedTestProjects.Select(RepositoryPathOf).OfType<string>()];
+            List<string> widening = [.. touchedTestProjects.Select(RelativePathOf).OfType<string>()];
 
             foreach (string candidate in formerTestProjects)
             {
@@ -534,12 +535,12 @@ internal sealed class ChangeSelection
                 }
             }
 
-            HashSet<string> wideningRoots = new(widening, RepositoryPath.Comparer);
+            HashSet<string> wideningRoots = new(widening, RelativePath.Comparer);
             SortedSet<string> coverageLost = new(StringComparer.Ordinal);
 
             IEnumerable<string> roots = widening
-                .Concat(tracedAtBase.Select(RepositoryPathOf).OfType<string>())
-                .Distinct(RepositoryPath.Comparer);
+                .Concat(tracedAtBase.Select(RelativePathOf).OfType<string>())
+                .Distinct(RelativePath.Comparer);
 
             foreach (string testProject in roots)
             {
@@ -549,7 +550,7 @@ internal sealed class ChangeSelection
                              .ProductionProjectsReachedFromAsync(testProject, cancellationToken)
                              .ConfigureAwait(false))
                 {
-                    if (HeadTargetAt(reached) is { } target)
+                    if (CurrentTargetAt(reached) is { } target)
                     {
                         if (widens)
                         {
@@ -570,33 +571,33 @@ internal sealed class ChangeSelection
         }
 
         /// <summary>
-        /// True when a project the base revision's tests reached is still there and no longer
+        /// True when a project the earlier state's tests reached is still there and no longer
         /// measured by anything.
         /// </summary>
         /// <remarks>
         /// <para>
         /// Five questions, and each excludes a different innocent case. Gone from disk: the change
-        /// deleted it, and there is nothing left to cover. A target at HEAD: still measured. A test
-        /// project at HEAD: it became the yardstick rather than the subject. Left out on purpose:
+        /// deleted it, and there is nothing left to cover. A target now: still measured. A test
+        /// project now: it became the yardstick rather than the subject. Left out on purpose:
         /// excluded, or declaring itself test support, which is the user saying not to measure it.
         /// What remains is a project that still exists, that nothing was told to ignore, and that no
         /// suite reaches any more.
         /// </para>
         /// <para>
-        /// The fifth is the run's own scope, and review found it missing. A repository is not
+        /// The fifth is the run's own scope, and review found it missing. A codebase is not
         /// always measured whole: point the run at one directory and a suite inside it may reference
         /// a project outside, which the base graph returns and discovery never saw. Absent from the
         /// targets and from what was left out on purpose, it read as newly uncovered - and since
-        /// nothing about it changes between runs, every partial run in such a repository failed.
+        /// nothing about it changes between runs, every partial run in such a codebase failed.
         /// Out of scope is not uncovered; it was never this run's to measure.
         /// </para>
         /// </remarks>
-        private bool StoppedBeingCovered(string repositoryPath)
+        private bool StoppedBeingCovered(string relativePath)
         {
-            string absolute = RepositoryPath.In(source.Root, repositoryPath);
+            string absolute = RelativePath.In(source.Root, relativePath);
 
             return File.Exists(absolute) &&
-                   InScope(repositoryPath) &&
+                   InScope(relativePath) &&
                    !ExcludedByConfiguration(absolute);
         }
 
@@ -611,7 +612,7 @@ internal sealed class ChangeSelection
         /// turning it into a test project, comes from a project file the diff may have just written
         /// - and both take it out of the targets exactly as losing its last test would.
         /// <para>
-        /// Asking the base revision is unnecessary because it has already answered: the base-side
+        /// Asking the earlier state is unnecessary because it has already answered: that
         /// traversal returns production projects only, walking through test support and stopping at
         /// test projects, so anything it reached was an ordinary production project then. If it is
         /// opted out now, this diff is what opted it out.
@@ -622,8 +623,8 @@ internal sealed class ChangeSelection
             !discovered.DeclaredTestSupport.Contains(absolute);
 
         /// <summary>
-        /// Projects that existed at the base revision, own one of these files, and are not test
-        /// projects at HEAD.
+        /// Projects that existed in the earlier state, own one of these files, and are not test
+        /// projects now.
         /// </summary>
         /// <remarks>
         /// Not "and no longer exist", which is what this asked at first and what review corrected. A
@@ -640,36 +641,36 @@ internal sealed class ChangeSelection
                 return [];
             }
 
-            HashSet<string> testProjectsAtHead = new(
-                discovered.TestProjectPaths.Select(RepositoryPathOf).OfType<string>(),
-                RepositoryPath.Comparer);
+            HashSet<string> testProjectsNow = new(
+                discovered.TestProjectPaths.Select(RelativePathOf).OfType<string>(),
+                RelativePath.Comparer);
 
             // Inside the run's scope, like the coverage-loss check above. Review found the same
             // omission here: a changed project file in a sibling directory was read as a former
-            // test project purely because HEAD discovery, pointed elsewhere, had never seen it -
-            // and if it reached an in-scope target at the base revision, an unrelated change next
+            // test project purely because discovery, pointed elsewhere, had never seen it - and
+            // if it reached an in-scope target in the earlier state, an unrelated change next
             // door widened that target and could fail the gate on its existing mutants.
             string[] candidates = [.. graph.ProjectFiles
                 .Where(InScope)
-                .Where(path => !testProjectsAtHead.Contains(path))];
+                .Where(path => !testProjectsNow.Contains(path))];
 
             if (candidates.Length == 0)
             {
                 return [];
             }
 
-            HashSet<string> owning = new(RepositoryPath.Comparer);
+            HashSet<string> owning = new(RelativePath.Comparer);
 
             foreach (FileChange change in unattributed)
             {
-                if (RepositoryPathOf(change.Path) is not { } relative)
+                if (RelativePathOf(change.Path) is not { } relative)
                 {
                     continue;
                 }
 
                 foreach (string project in candidates)
                 {
-                    if (RepositoryPath.IsUnder(relative, RepositoryPath.DirectoryOf(project)))
+                    if (RelativePath.IsUnder(relative, RelativePath.DirectoryOf(project)))
                     {
                         owning.Add(project);
                     }
@@ -679,21 +680,21 @@ internal sealed class ChangeSelection
             return [.. owning];
         }
 
-        /// <summary>True when a repository path is under the directory the run was pointed at.</summary>
-        private bool InScope(string repositoryPath) =>
+        /// <summary>True when a relative path is under the directory the run was pointed at.</summary>
+        private bool InScope(string relativePath) =>
             IsUnder(
-                Path.GetDirectoryName(RepositoryPath.In(source.Root, repositoryPath)),
+                Path.GetDirectoryName(RelativePath.In(source.Root, relativePath)),
                 searchDirectory);
 
-        private string? HeadTargetAt(string repositoryPath)
+        private string? CurrentTargetAt(string relativePath)
         {
-            string absolute = RepositoryPath.In(source.Root, repositoryPath);
+            string absolute = RelativePath.In(source.Root, relativePath);
 
             return discovered.TargetPaths.FirstOrDefault(
                 path => ProjectPaths.Comparer.Equals(path, absolute));
         }
 
-        private string? RepositoryPathOf(string path) => RepositoryPath.Of(source.Root, path);
+        private string? RelativePathOf(string path) => RelativePath.Of(source.Root, path);
 
         /// <summary>
         /// Every project that consumes <paramref name="path"/>: by what it evaluates, and by where
@@ -844,6 +845,6 @@ internal sealed class ChangeSelection
         private static bool IsCSharp(string path) =>
             path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase);
 
-        private static string Short(string revision) => revision.Length > 8 ? revision[..8] : revision;
+        private static string Short(string label) => label.Length > 12 ? label[..12] : label;
     }
 }

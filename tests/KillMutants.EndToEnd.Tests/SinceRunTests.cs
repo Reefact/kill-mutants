@@ -51,7 +51,7 @@ public class SinceRunTests
     /// The report has to say which population was inspected, or it cannot be told from a full run.
     /// </summary>
     [Fact]
-    public async Task The_report_records_the_run_mode_and_the_revisions_it_resolved()
+    public async Task The_report_records_the_run_mode_and_the_states_it_compared()
     {
         using var fixture = FixtureCopy.CreateMultiProject();
 
@@ -62,10 +62,14 @@ public class SinceRunTests
 
         Assert.True(report.Scope.IsPartial);
 
-        // Resolved, not as the run was asked for them: 'HEAD' names a different commit tomorrow.
-        Assert.Equal(40, report.Scope.BaseRevision?.Length);
-        Assert.Equal(40, report.Scope.HeadRevision?.Length);
-        Assert.True(report.Scope.WorkingTreeDiffers);
+        // Resolved by the source, not as the run was asked for them: 'HEAD' names something else
+        // tomorrow. Asserted as full-length git object names, because that is what this source
+        // supplies - the core itself makes no claim about their shape.
+        Assert.Equal(40, report.Scope.ComparedFrom?.Length);
+        Assert.Equal(40, report.Scope.ComparedTo?.Length);
+
+        // The fixture has uncommitted work, so what was measured is not exactly the named state.
+        Assert.False(report.Scope.ComparedToIsExact);
         Assert.True(report.Scope.ChangedFiles > 0);
     }
 

@@ -3,15 +3,15 @@ using KillMutants.Projects;
 namespace KillMutants.Selection;
 
 /// <summary>
-/// The project graph as it was at the base revision, read from a throwaway export of that tree.
+/// The project graph as it was before the change, read from a snapshot of that state.
 /// </summary>
 /// <remarks>
 /// <para>
-/// DEC0011 requires the widening relation to be read at both revisions, <c>targets(base) ∪
-/// targets(head)</c>, and this is the base half. Remove the <c>ProjectReference</c> from
-/// <c>Tests</c> to <c>ProjectA</c> in the very change being judged and the HEAD graph no longer says
-/// <c>Tests</c> exercises <c>ProjectA</c>: asking HEAD alone is asking a question whose answer the
-/// change has already deleted.
+/// DEC0011 requires the widening relation to be read at both states, <c>targets(before) ∪
+/// targets(now)</c>, and this is the earlier half. Remove the <c>ProjectReference</c> from
+/// <c>Tests</c> to <c>ProjectA</c> in the very change being judged and the current graph no longer
+/// says <c>Tests</c> exercises <c>ProjectA</c>: asking the current state alone is asking a question
+/// whose answer the change has already deleted.
 /// </para>
 /// <para>
 /// Read with MSBuild rather than by parsing the project files, because a <c>ProjectReference</c> can
@@ -23,7 +23,7 @@ namespace KillMutants.Selection;
 /// </para>
 /// <para>
 /// Projects are read one at a time and cached, walking out from the test project asked about, so a
-/// repository pays for the part of its graph the change actually touches rather than for all of it.
+/// codebase pays for the part of its graph the change actually touches rather than for all of it.
 /// A change with nothing test-side in it never constructs this at all.
 /// </para>
 /// </remarks>
@@ -32,24 +32,24 @@ internal sealed class BaseProjectGraph : IDisposable
     private readonly MsBuildQuery _msBuild;
     private readonly ICodeSnapshot _snapshot;
     private readonly string _root;
-    private readonly string _revision;
+    private readonly string _label;
     private readonly Dictionary<string, ProjectFacts?> _facts;
 
     private BaseProjectGraph(
         MsBuildQuery msBuild,
         ICodeSnapshot snapshot,
-        string revision,
+        string label,
         IReadOnlyCollection<string> projectFiles)
     {
         _msBuild = msBuild;
         _snapshot = snapshot;
         _root = snapshot.Root;
-        _revision = revision;
+        _label = label;
         _facts = [];
-        ProjectFiles = new HashSet<string>(projectFiles, RepositoryPath.Comparer);
+        ProjectFiles = new HashSet<string>(projectFiles, RelativePath.Comparer);
     }
 
-    /// <summary>Every C# project that existed at the base revision, by repository path.</summary>
+    /// <summary>Every C# project that existed before the change, by relative path.</summary>
     public IReadOnlySet<string> ProjectFiles { get; }
 
     /// <summary>Indexes the projects of a snapshot of the code as it was.</summary>
@@ -57,9 +57,9 @@ internal sealed class BaseProjectGraph : IDisposable
     /// The code before the change, already laid out. Owned from here on: disposing the graph
     /// disposes it.
     /// </param>
-    /// <param name="revision">What to call that state in a message.</param>
+    /// <param name="label">What to call that state in a message.</param>
     /// <param name="configuration">The build configuration to evaluate against.</param>
-    public static BaseProjectGraph Open(ICodeSnapshot snapshot, string revision, string configuration)
+    public static BaseProjectGraph Open(ICodeSnapshot snapshot, string label, string configuration)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
@@ -67,12 +67,12 @@ internal sealed class BaseProjectGraph : IDisposable
         {
             string[] projects = [.. Directory
                 .EnumerateFiles(snapshot.Root, "*.csproj", SearchOption.AllDirectories)
-                .Select(path => RepositoryPath.Of(snapshot.Root, path))
+                .Select(path => RelativePath.Of(snapshot.Root, path))
                 .Where(path => path is not null)
                 .Select(path => path!)
                 .Order(StringComparer.Ordinal)];
 
-            return new BaseProjectGraph(new MsBuildQuery(configuration), snapshot, revision, projects);
+            return new BaseProjectGraph(new MsBuildQuery(configuration), snapshot, label, projects);
         }
         catch
         {
@@ -82,29 +82,29 @@ internal sealed class BaseProjectGraph : IDisposable
         }
     }
 
-    /// <summary>True when the project at that path was a test project at the base revision.</summary>
+    /// <summary>True when the project at that path was a test project before the change.</summary>
     public async Task<bool> IsTestProjectAsync(
-        string repositoryPath,
+        string relativePath,
         CancellationToken cancellationToken = default) =>
-        await FactsOfAsync(repositoryPath, cancellationToken).ConfigureAwait(false)
+        await FactsOfAsync(relativePath, cancellationToken).ConfigureAwait(false)
             is { IsTestProject: true };
 
     /// <summary>
-    /// Every mutable project a test project reached at the base revision, by repository path.
+    /// Every mutable project a test project reached before the change, by relative path.
     /// </summary>
     /// <remarks>
     /// The same traversal as <see cref="ProjectDiscovery"/>'s, deliberately: other test projects are
     /// not targets, a declared test-support library is walked through rather than returned, and a
-    /// project that has since disappeared is simply not in the head graph to select. What this
-    /// cannot know is which projects the run excludes - that is a property of the
-    /// run, not of the revision - so an excluded project can be named here and is dropped when the
-    /// answer is matched against the head targets.
+    /// project that has since disappeared is simply not in the current graph to select. What this
+    /// cannot know is which projects the run excludes - that is a property of the run, not of the
+    /// state - so an excluded project can be named here and is dropped when the answer is matched
+    /// against the current targets.
     /// </remarks>
     public async Task<IReadOnlyList<string>> ProductionProjectsReachedFromAsync(
-        string repositoryPath,
+        string relativePath,
         CancellationToken cancellationToken = default)
     {
-        ProjectFacts? testProject = await FactsOfAsync(repositoryPath, cancellationToken)
+        ProjectFacts? testProject = await FactsOfAsync(relativePath, cancellationToken)
             .ConfigureAwait(false);
 
         if (testProject is null)
@@ -113,7 +113,7 @@ internal sealed class BaseProjectGraph : IDisposable
         }
 
         List<string> reached = [];
-        HashSet<string> seen = new(RepositoryPath.Comparer);
+        HashSet<string> seen = new(RelativePath.Comparer);
         Queue<string> pending = new(Relative(testProject.ProjectReferences));
 
         while (pending.Count > 0)
@@ -155,10 +155,10 @@ internal sealed class BaseProjectGraph : IDisposable
     public void Dispose() => _snapshot.Dispose();
 
     private async Task<ProjectFacts?> FactsOfAsync(
-        string repositoryPath,
+        string relativePath,
         CancellationToken cancellationToken)
     {
-        if (_facts.TryGetValue(repositoryPath, out ProjectFacts? known))
+        if (_facts.TryGetValue(relativePath, out ProjectFacts? known))
         {
             return known;
         }
@@ -168,51 +168,53 @@ internal sealed class BaseProjectGraph : IDisposable
         // A project inside a component the snapshot could not lay out is not "there was no such
         // project": it is a question this comparison cannot answer. Reading the absence as an
         // answer would drop the edge that ran through it and go green over coverage never checked.
-        // Everything else is what that state held - a snapshot is a checkout, not a filtered copy -
+        // Everything else is what that state held - a snapshot restores code, it does not filter it -
         // so an absence anywhere else is a real absence.
-        if (!ProjectFiles.Contains(repositoryPath) &&
-            _snapshot.Missing.Any(part => RepositoryPath.IsUnder(repositoryPath, part)))
+        if (!ProjectFiles.Contains(relativePath) &&
+            _snapshot.Missing.Any(part => RelativePath.IsUnder(relativePath, part)))
         {
             throw new ChangeSelectionException(
-                $"'{repositoryPath}' belongs to a component this run could not read as it was at " +
-                $"{Short(_revision)}, so KillMutants cannot tell which projects that state's tests " +
-                "exercised. A component whose contents live in another repository has to be present " +
+                $"'{relativePath}' belongs to a component this run could not read as it was at " +
+                $"{Short(_label)}, so KillMutants cannot tell which projects that state's tests " +
+                "exercised. A component whose contents live elsewhere has to be present " +
                 "locally for a partial run to compare against it. Run without --since to measure " +
                 "the whole codebase instead.");
         }
 
-        if (ProjectFiles.Contains(repositoryPath))
+        if (ProjectFiles.Contains(relativePath))
         {
             try
             {
                 facts = await _msBuild
                     .GetProjectFactsAsync(
-                        RepositoryPath.In(_root, repositoryPath), cancellationToken: cancellationToken)
+                        RelativePath.In(_root, relativePath), cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (ProjectAnalysisException exception)
             {
-                // Not falling back to HEAD, which is the whole point: a partial run whose base graph
-                // could not be read would widen too little, and would look exactly like a run that
-                // had nothing to widen. DEC0011 says such a run is not to be trusted.
+                // Not falling back to the current state, which is the whole point: a partial run
+                // whose earlier side could not be read would widen too little, and would look
+                // exactly like a run that had nothing to widen. DEC0011 says such a run is not to
+                // be trusted.
                 throw new ChangeSelectionException(
-                    $"KillMutants could not read '{repositoryPath}' as it was at {Short(_revision)}, " +
-                    "so it cannot tell which projects that revision's tests exercised. A partial run " +
-                    "needs both revisions to be readable; run without --since to measure the whole " +
+                    $"KillMutants could not read '{relativePath}' as it was at {Short(_label)}, " +
+                    "so it cannot tell which projects that state's tests exercised. A partial run " +
+                    "needs both states to be readable; run without --since to measure the whole " +
                     $"codebase instead.{Environment.NewLine}{exception.Message}",
                     exception);
             }
         }
 
-        _facts[repositoryPath] = facts;
+        _facts[relativePath] = facts;
 
         return facts;
     }
 
-    /// <summary>Turns the absolute paths MSBuild answers with back into repository names.</summary>
+    /// <summary>Turns the absolute paths MSBuild answers with back into relative names.</summary>
     private IEnumerable<string> Relative(IEnumerable<string> absolute) =>
-        absolute.Select(path => RepositoryPath.Of(_root, path)).OfType<string>();
+        absolute.Select(path => RelativePath.Of(_root, path)).OfType<string>();
 
-    private static string Short(string revision) =>
-        revision.Length > 8 ? revision[..8] : revision;
+    /// <summary>Cuts a state's name down for a message, without pretending to understand it.</summary>
+    private static string Short(string label) =>
+        label.Length > 12 ? label[..12] : label;
 }

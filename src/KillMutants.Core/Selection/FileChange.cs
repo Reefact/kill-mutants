@@ -1,22 +1,22 @@
 namespace KillMutants.Selection;
 
-/// <summary>What happened to a file between the base revision and the tree about to be built.</summary>
+/// <summary>What happened to a file between the earlier state and the code about to be built.</summary>
 /// <remarks>
-/// Three kinds, not git's full alphabet. A rename is asked for as a deletion plus an addition -
-/// <c>--no-renames</c> - because the two paths mean different things here: the old path may have
-/// been a test file whose disappearance widens the selection, and reporting only the destination
-/// would lose that. Copies, type changes and merge conflicts are all read as modifications, which
-/// is the conservative reading of each.
+/// Three kinds, and a source is expected to reduce whatever vocabulary it has to these. A rename
+/// is two of them - a deletion and an addition - because the two paths mean different things here:
+/// the old path may have been a test file whose disappearance widens the selection, and reporting
+/// only the destination would lose that. Anything a source cannot classify belongs in
+/// <see cref="ChangeKind.Modified"/>, which is the conservative reading.
 /// </remarks>
 public enum ChangeKind
 {
-    /// <summary>The file does not exist at the base revision.</summary>
+    /// <summary>The file does not exist in the earlier state.</summary>
     Added,
 
-    /// <summary>The file exists at both revisions and differs.</summary>
+    /// <summary>The file exists in both states and differs.</summary>
     Modified,
 
-    /// <summary>The file exists at the base revision and not in the tree to be built.</summary>
+    /// <summary>The file exists in the earlier state and not in the code to be built.</summary>
     Deleted,
 }
 

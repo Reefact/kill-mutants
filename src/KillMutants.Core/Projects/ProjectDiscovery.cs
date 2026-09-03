@@ -49,8 +49,8 @@ internal sealed class ProjectDiscovery
     /// A test project that reaches no mutable project appears in no <see cref="MutationTestTarget"/>,
     /// because there is nothing to pair it with. That is right for a run and wrong for a partial one:
     /// a change can be what emptied it - remove a test project's last project reference and it
-    /// exercises nothing at HEAD - and the selection has to recognise its files as test-side in order
-    /// to ask the base revision what it used to cover. Reading the test projects back off the targets
+    /// exercises nothing now - and the selection has to recognise its files as test-side in order
+    /// to ask the earlier state what it used to cover. Reading the test projects back off the targets
     /// missed exactly that case, and an end-to-end test found it.
     /// </remarks>
     public IReadOnlyList<TestProject> TestProjects { get; private set; } = [];
@@ -168,7 +168,7 @@ internal sealed class ProjectDiscovery
         // only the first is what let two test suites on different frameworks share one target.
         Dictionary<string, SortedSet<string>> frameworksByProject = new(ProjectPaths.Comparer);
 
-        // Filled only when a test project actually reaches an excluded project, so a repository
+        // Filled only when a test project actually reaches an excluded project, so a codebase
         // that excludes directories nothing references pays nothing for it.
         Dictionary<string, ProjectFacts?> beyondExclusions = new(ProjectPaths.Comparer);
 

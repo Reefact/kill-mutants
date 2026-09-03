@@ -13,8 +13,9 @@ namespace KillMutants.Git;
 /// <para>
 /// The change is measured to the <em>working tree</em> rather than to the head commit, because the
 /// working tree is what gets built and mutated. On a clean checkout - every CI job - they are the
-/// same thing. On a laptop with uncommitted work they are not, and measuring the commit while
-/// mutating the tree would report on code that was never built.
+/// same thing; on a laptop with uncommitted work they are not, and measuring the commit while
+/// mutating the tree would report on code that was never built. That is what the core is told
+/// through <c>ComparedToIsExact</c>, so the report can say which of the two it was.
 /// </para>
 /// </remarks>
 public sealed class GitChangeSource : IChangeSource
@@ -67,11 +68,13 @@ public sealed class GitChangeSource : IChangeSource
             .ChangesSinceAsync(_before, cancellationToken)
             .ConfigureAwait(false);
 
+        // Inverted on the way out: the core asks whether what it will measure is exactly the state
+        // named, and git answers the opposite question.
         bool dirty = await _repository
             .HasUncommittedChangesAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        return new ChangeSet(_before, head, dirty, changes);
+        return new ChangeSet(_before, head, !dirty, changes);
     }
 
     /// <inheritdoc />

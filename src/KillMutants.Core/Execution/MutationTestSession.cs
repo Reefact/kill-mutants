@@ -373,7 +373,7 @@ internal sealed class MutationTestSession
         }
 
         // Spread across the run rather than taken from the front, so a sample says something about
-        // the whole of it. Deterministic, so two runs of one commit sample the same mutants.
+        // the whole of it. Deterministic, so two runs of the same code sample the same mutants.
         int[] killed = [.. Enumerable
             .Range(0, results.Length)
             .Where(index => results[index].Status == MutantStatus.Killed)];

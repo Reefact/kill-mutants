@@ -14,7 +14,7 @@ namespace KillMutants.Reporting;
 /// <remarks>
 /// <para>
 /// Two reports without this are not comparable, and nobody notices. The case that earned it: the
-/// same commit measured on a CI runner and in a container disagreed on seventeen mutants, and the
+/// same code measured on a CI runner and in a container disagreed on seventeen mutants, and the
 /// first day of the investigation went on establishing what the two runs had actually differed in -
 /// SDK, concurrency, cores - none of which either report stated.
 /// </para>

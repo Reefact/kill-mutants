@@ -109,7 +109,7 @@ public sealed class MutationTestReport
     /// <summary>The share of judged mutants the suite detected.</summary>
     /// <remarks>
     /// Computed whatever the scope, and <em>reported</em> only for a full run. A partial run's
-    /// population is defined against a base revision chosen per run, so a percentage over it answers
+    /// population is defined against an earlier state chosen per run, so a percentage over it answers
     /// "how well did the suite do on this change?" and no question at all that spans two runs.
     /// DEC0010 decides that such a number is not printed; it is not hidden from a caller holding
     /// this object, which knows from <see cref="Scope"/> what it is looking at.
@@ -120,7 +120,7 @@ public sealed class MutationTestReport
     public RunScope Scope { get; }
 
     /// <summary>
-    /// Projects the change stopped covering: exercised at the base revision, still there, and
+    /// Projects the change stopped covering: exercised in the earlier state, still there, and
     /// reached by no test project any more.
     /// </summary>
     /// <remarks>
