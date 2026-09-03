@@ -527,13 +527,11 @@ internal sealed class ChangeSelection
             progress?.Report(new MutationTestProgress(
                 MutationTestPhase.SelectingChanges, Subject: Short(baseRevision)));
 
-            IReadOnlyList<string> filesAtBase = await repository
-                .ListFilesAsync(baseRevision, cancellationToken)
+            ICodeSnapshot before = await repository
+                .OpenCodeBeforeAsync(baseRevision, cancellationToken)
                 .ConfigureAwait(false);
 
-            using BaseProjectGraph graph = await BaseProjectGraph
-                .ExportAsync(repository, baseRevision, configuration, filesAtBase, cancellationToken)
-                .ConfigureAwait(false);
+            using BaseProjectGraph graph = BaseProjectGraph.Open(before, baseRevision, configuration);
 
             // Two kinds of root, and review found that treating them alike undid the point of
             // separating them in the first place. A suite the change touched, or one that stopped
