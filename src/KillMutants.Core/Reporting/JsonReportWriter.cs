@@ -89,13 +89,15 @@ public static class JsonReportWriter
     {
         mode = scope.IsPartial ? "partial" : "full",
 
-        // Resolved, not as the user wrote them: 'main' means a different commit next week, and a
-        // report that names it has recorded nothing anyone can go back to.
-        baseRevision = scope.BaseRevision,
-        headRevision = scope.HeadRevision,
+        // Whole, and as whatever supplied them resolved them - not as the user wrote them. A name
+        // like 'main' means something different next week, and a report that records it has recorded
+        // nothing anyone can go back to. Kept at full length here, where nothing has to fit on a
+        // line, so the two states stay usable for reproducing the selection.
+        comparedFrom = scope.ComparedFrom,
+        comparedTo = scope.ComparedTo,
 
-        // A partial run measures the tree it builds, which on a laptop is not always the commit.
-        workingTreeDiffers = scope.WorkingTreeDiffers,
+        // A run measures what it builds, which is not always exactly the state it names.
+        comparedToIsExact = scope.ComparedToIsExact,
         changedFiles = scope.ChangedFiles,
     };
 

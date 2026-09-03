@@ -1,14 +1,14 @@
 namespace KillMutants.Selection;
 
 /// <summary>
-/// A partial run could not be set up: the change could not be read, or the base revision's project
+/// A partial run could not be set up: the change could not be read, or the earlier state's project
 /// graph could not be resolved.
 /// </summary>
 /// <remarks>
-/// Always a refusal to start, never a finding. A partial run rests on two revisions being readable,
-/// and DEC0011 is explicit that when the base side cannot be resolved the run is not to be trusted
-/// to HEAD alone. Falling back to HEAD would produce a green run for exactly the reason the base
-/// side exists, so the run stops instead and says what to fix.
+/// Always a refusal to start, never a finding. A partial run rests on both states being readable,
+/// and DEC0011 is explicit that when the earlier side cannot be resolved the run is not to be
+/// trusted on the current code alone. Falling back to it would produce a green run for exactly the
+/// reason the earlier side exists, so the run stops instead and says what to fix.
 /// </remarks>
 public sealed class ChangeSelectionException : Exception
 {

@@ -3,19 +3,19 @@ using KillMutants.Projects;
 namespace KillMutants.Selection;
 
 /// <summary>
-/// Paths as a repository names them: relative to its root and written with <c>/</c>.
+/// Paths as a root names them: relative to it, and written with <c>/</c>.
 /// </summary>
 /// <remarks>
 /// A partial run compares two trees that are not in the same place on disk - the working copy and
-/// the base revision exported beside it - so a project can only be recognised across them by the
-/// name the repository gives it. Everything else about the two paths differs.
+/// the earlier state laid out beside it - so a project can only be recognised across them by the
+/// name each root gives it. Everything else about the two paths differs.
 /// </remarks>
-internal static class RepositoryPath
+internal static class RelativePath
 {
-    /// <summary>How two repository paths are compared: the filesystem's rule, as everywhere else.</summary>
+    /// <summary>How two relative paths are compared: the filesystem's rule, as everywhere else.</summary>
     public static StringComparer Comparer => ProjectPaths.Comparer;
 
-    /// <summary>The repository name of a path, or null when it is outside <paramref name="root"/>.</summary>
+    /// <summary>The relative name of a path, or null when it is outside <paramref name="root"/>.</summary>
     public static string? Of(string root, string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(root);
@@ -24,11 +24,11 @@ internal static class RepositoryPath
         string relative = Path.GetRelativePath(Path.GetFullPath(root), Path.GetFullPath(path));
 
         // GetRelativePath climbs out with "..", and returns the path unchanged when the two are on
-        // different volumes. Both mean the same thing here: not in this repository.
+        // different volumes. Both mean the same thing here: not under this root.
         //
         // The parent segment, not the prefix: review pointed out that a directory legally named
         // "..tests" starts with those two characters without climbing anywhere, and was being read
-        // as outside the repository.
+        // as outside the root.
         return ClimbsOut(relative) || Path.IsPathRooted(relative)
             ? null
             : Normalise(relative);
@@ -47,11 +47,11 @@ internal static class RepositoryPath
                relative[2] == Path.AltDirectorySeparatorChar;
     }
 
-    /// <summary>The absolute path a repository name points at inside <paramref name="root"/>.</summary>
+    /// <summary>The absolute path a relative name points at inside <paramref name="root"/>.</summary>
     public static string In(string root, string relative) =>
         Path.GetFullPath(Path.Combine(root, relative));
 
-    /// <summary>The directory part of a repository name, or the empty string at the top.</summary>
+    /// <summary>The directory part of a relative name, or the empty string at the top.</summary>
     public static string DirectoryOf(string relative)
     {
         int slash = relative.LastIndexOf('/');

@@ -6,7 +6,7 @@ namespace KillMutants.Core.Tests.Selection;
 /// A partial run compares two trees that are not in the same place on disk, so a project can only be
 /// recognised across them by the name the repository gives it.
 /// </summary>
-public class RepositoryPathTests
+public class RelativePathTests
 {
     private static readonly string Root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "repo"));
 
@@ -15,7 +15,7 @@ public class RepositoryPathTests
     {
         Assert.Equal(
             "src/Core/Money.cs",
-            RepositoryPath.Of(Root, Path.Combine(Root, "src", "Core", "Money.cs")));
+            RelativePath.Of(Root, Path.Combine(Root, "src", "Core", "Money.cs")));
     }
 
     /// <summary>
@@ -29,27 +29,27 @@ public class RepositoryPathTests
     [Fact]
     public void A_path_outside_the_repository_has_no_repository_name()
     {
-        Assert.Null(RepositoryPath.Of(Root, Path.Combine(Path.GetTempPath(), "elsewhere", "Money.cs")));
+        Assert.Null(RelativePath.Of(Root, Path.Combine(Path.GetTempPath(), "elsewhere", "Money.cs")));
     }
 
     [Fact]
     public void The_directory_of_a_repository_name_is_everything_before_the_last_slash()
     {
-        Assert.Equal("src/Core", RepositoryPath.DirectoryOf("src/Core/Money.cs"));
-        Assert.Equal(string.Empty, RepositoryPath.DirectoryOf("global.json"));
+        Assert.Equal("src/Core", RelativePath.DirectoryOf("src/Core/Money.cs"));
+        Assert.Equal(string.Empty, RelativePath.DirectoryOf("global.json"));
     }
 
     [Fact]
     public void Everything_is_under_the_top_of_the_repository()
     {
-        Assert.True(RepositoryPath.IsUnder("src/Core/Money.cs", string.Empty));
+        Assert.True(RelativePath.IsUnder("src/Core/Money.cs", string.Empty));
     }
 
     [Fact]
     public void A_path_is_under_a_directory_it_actually_sits_in()
     {
-        Assert.True(RepositoryPath.IsUnder("src/Core/Money.cs", "src/Core"));
-        Assert.True(RepositoryPath.IsUnder("src/Core/Money.cs", "src"));
+        Assert.True(RelativePath.IsUnder("src/Core/Money.cs", "src/Core"));
+        Assert.True(RelativePath.IsUnder("src/Core/Money.cs", "src"));
     }
 
     /// <summary>
@@ -62,13 +62,13 @@ public class RepositoryPathTests
     [Fact]
     public void A_sibling_whose_name_merely_starts_the_same_is_not_under_it()
     {
-        Assert.False(RepositoryPath.IsUnder("src/CoreTests/Thing.cs", "src/Core"));
+        Assert.False(RelativePath.IsUnder("src/CoreTests/Thing.cs", "src/Core"));
     }
 
     [Fact]
     public void A_directory_is_not_under_itself_as_a_file()
     {
-        Assert.False(RepositoryPath.IsUnder("src/Core", "src/Core"));
+        Assert.False(RelativePath.IsUnder("src/Core", "src/Core"));
     }
 
     /// <summary>
@@ -87,7 +87,7 @@ public class RepositoryPathTests
 
         Assert.Equal(
             "..tests/Suite.csproj",
-            RepositoryPath.Of(root, Path.Combine(root, "..tests", "Suite.csproj")));
+            RelativePath.Of(root, Path.Combine(root, "..tests", "Suite.csproj")));
     }
 
     [Fact]
@@ -95,6 +95,6 @@ public class RepositoryPathTests
     {
         string root = Path.Combine(Path.GetTempPath(), "repo");
 
-        Assert.Null(RepositoryPath.Of(root, Path.Combine(Path.GetTempPath(), "elsewhere", "Suite.csproj")));
+        Assert.Null(RelativePath.Of(root, Path.Combine(Path.GetTempPath(), "elsewhere", "Suite.csproj")));
     }
 }

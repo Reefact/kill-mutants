@@ -63,7 +63,7 @@ public static class ConsoleReportWriter
 
         foreach (string line in Wrap(
                      "No mutation score: a partial run's population is the change itself, chosen " +
-                     "against a base revision per run, so a percentage over it cannot be compared " +
+                     "against an earlier state, per run, so a percentage over it cannot be compared " +
                      "with any other run. See DEC0010.",
                      width: 88))
         {
