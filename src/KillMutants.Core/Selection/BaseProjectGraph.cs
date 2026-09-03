@@ -30,121 +30,55 @@ namespace KillMutants.Selection;
 internal sealed class BaseProjectGraph : IDisposable
 {
     private readonly MsBuildQuery _msBuild;
+    private readonly ICodeSnapshot _snapshot;
     private readonly string _root;
     private readonly string _revision;
     private readonly Dictionary<string, ProjectFacts?> _facts;
-    private readonly HashSet<string> _tracked;
-    private readonly IReadOnlyList<string> _submodules;
 
     private BaseProjectGraph(
         MsBuildQuery msBuild,
-        string root,
+        ICodeSnapshot snapshot,
         string revision,
-        IReadOnlyCollection<string> projectFiles,
-        IReadOnlyCollection<string> tracked,
-        IReadOnlyList<string> submodules)
+        IReadOnlyCollection<string> projectFiles)
     {
         _msBuild = msBuild;
-        _root = root;
+        _snapshot = snapshot;
+        _root = snapshot.Root;
         _revision = revision;
         _facts = [];
-        _tracked = new HashSet<string>(tracked, RepositoryPath.Comparer);
-        _submodules = submodules;
         ProjectFiles = new HashSet<string>(projectFiles, RepositoryPath.Comparer);
     }
 
     /// <summary>Every C# project that existed at the base revision, by repository path.</summary>
     public IReadOnlySet<string> ProjectFiles { get; }
 
-    /// <summary>Exports the base revision beside the working copy and indexes its projects.</summary>
-    /// <param name="repository">The working copy to export from.</param>
-    /// <param name="revision">The commit to export.</param>
-    /// <param name="configuration">The build configuration to evaluate against.</param>
-    /// <param name="tracked">
-    /// Every path the revision tracks, so the export can be checked against what it should have
-    /// contained rather than trusted. A path inside a submodule is not one of these, which is why
-    /// the gitlinks are read as well.
+    /// <summary>Indexes the projects of a snapshot of the code as it was.</summary>
+    /// <param name="snapshot">
+    /// The code before the change, already laid out. Owned from here on: disposing the graph
+    /// disposes it.
     /// </param>
-    /// <param name="cancellationToken">Cancels the export.</param>
-    public static async Task<BaseProjectGraph> ExportAsync(
-        GitRepository repository,
-        string revision,
-        string configuration,
-        IReadOnlyList<string> tracked,
-        CancellationToken cancellationToken = default)
+    /// <param name="revision">What to call that state in a message.</param>
+    /// <param name="configuration">The build configuration to evaluate against.</param>
+    public static BaseProjectGraph Open(ICodeSnapshot snapshot, string revision, string configuration)
     {
-        ArgumentNullException.ThrowIfNull(repository);
-        ArgumentNullException.ThrowIfNull(tracked);
-
-        IReadOnlyList<string> submodules = await repository
-            .ListSubmodulePathsAsync(revision, cancellationToken)
-            .ConfigureAwait(false);
-
-        string root = Path.Combine(Path.GetTempPath(), $"killmutants-base-{Guid.NewGuid():N}");
+        ArgumentNullException.ThrowIfNull(snapshot);
 
         try
         {
-            await repository.ExportAsync(revision, root, cancellationToken).ConfigureAwait(false);
-
             string[] projects = [.. Directory
-                .EnumerateFiles(root, "*.csproj", SearchOption.AllDirectories)
-                .Select(path => RepositoryPath.Of(root, path))
+                .EnumerateFiles(snapshot.Root, "*.csproj", SearchOption.AllDirectories)
+                .Select(path => RepositoryPath.Of(snapshot.Root, path))
                 .Where(path => path is not null)
                 .Select(path => path!)
                 .Order(StringComparer.Ordinal)];
 
-            RefuseIfABuildFileIsMissing(root, revision, tracked);
-
-            return new BaseProjectGraph(
-                new MsBuildQuery(configuration), root, revision, projects, tracked, submodules);
+            return new BaseProjectGraph(new MsBuildQuery(configuration), snapshot, revision, projects);
         }
         catch
         {
-            Scratch.DeleteDirectory(root);
+            snapshot.Dispose();
 
             throw;
-        }
-    }
-
-    /// <summary>
-    /// Stops before reading anything when the export is missing a file that decides how projects
-    /// are built.
-    /// </summary>
-    /// <remarks>
-    /// The per-project check below fires only for a <c>.csproj</c> the graph goes looking for, and
-    /// review found what that leaves open: a <c>Directory.Build.props</c> can carry the
-    /// <c>ProjectReference</c> items the graph is about to read, and <c>export-ignore</c> can leave
-    /// it out while every project file is present. Evaluation then succeeds against an incomplete
-    /// tree and answers with a graph missing edges - the silent under-widening, arrived at by a
-    /// route the project files themselves cannot show.
-    /// <para>
-    /// Checked up front rather than per project, because a missing build file affects an unknown set
-    /// of projects: there is no path at which to notice it lazily. What this does not cover is a
-    /// <c>.props</c> imported under some other name, which no evaluation-time question can enumerate
-    /// - <c>MSBuildAllProjects</c> comes back empty on an SDK project, measured. DEC0011 carries
-    /// that as a stated risk. Nor a build file inside a submodule, which the outer tree never names:
-    /// that half is the refusal in <see cref="FactsOfAsync"/>.
-    /// </para>
-    /// </remarks>
-    private static void RefuseIfABuildFileIsMissing(
-        string root,
-        string revision,
-        IReadOnlyList<string> tracked)
-    {
-        foreach (string path in tracked)
-        {
-            if (!ChangeSelection.IsSharedBuildFile(path) ||
-                File.Exists(RepositoryPath.In(root, path)))
-            {
-                continue;
-            }
-
-            throw new ChangeSelectionException(
-                $"'{path}' is tracked at {Short(revision)} but is not in the export of that " +
-                "revision, and a file like it can decide which projects reference which. Reading " +
-                "the project graph from an export without it would answer with edges missing. " +
-                "'export-ignore' in .gitattributes is what leaves a tracked file out of a git " +
-                "archive. Run without --since to measure the whole codebase instead.");
         }
     }
 
@@ -217,21 +151,8 @@ internal sealed class BaseProjectGraph : IDisposable
         return reached;
     }
 
-    /// <summary>Deletes the exported tree.</summary>
-    public void Dispose() => Scratch.DeleteDirectory(_root);
-
-    /// <summary>
-    /// True when the revision had something at that path, whether or not it named it one by one.
-    /// </summary>
-    /// <remarks>
-    /// Two questions, because a listing of tracked names answers only the first. A path the revision
-    /// tracks is there. A path <em>beneath a gitlink</em> is there too, and is named by nothing: the
-    /// outer tree records the submodule as one entry and stops. Review found the refusal below never
-    /// firing for exactly the case its own message claimed to cover.
-    /// </remarks>
-    private bool WasThereAtTheBase(string repositoryPath) =>
-        _tracked.Contains(repositoryPath) ||
-        _submodules.Any(submodule => RepositoryPath.IsUnder(repositoryPath, submodule));
+    /// <summary>Gives the snapshot back.</summary>
+    public void Dispose() => _snapshot.Dispose();
 
     private async Task<ProjectFacts?> FactsOfAsync(
         string repositoryPath,
@@ -244,20 +165,20 @@ internal sealed class BaseProjectGraph : IDisposable
 
         ProjectFacts? facts = null;
 
-        // Tracked at that revision and missing from the export is not "there was no such project":
-        // it is an export that did not say everything the revision does. `git archive` honours
-        // export-ignore in .gitattributes - a common way to keep tests out of a release archive -
-        // and records a submodule as a gitlink without recursing into it. Either would leave a
-        // project silently absent, the base graph would drop the edge that ran through it, and the
-        // run would go green over coverage it never checked. Review found both; the run refuses
-        // rather than under-widening in silence.
-        if (!ProjectFiles.Contains(repositoryPath) && WasThereAtTheBase(repositoryPath))
+        // A project inside a component the snapshot could not lay out is not "there was no such
+        // project": it is a question this comparison cannot answer. Reading the absence as an
+        // answer would drop the edge that ran through it and go green over coverage never checked.
+        // Everything else is what that state held - a snapshot is a checkout, not a filtered copy -
+        // so an absence anywhere else is a real absence.
+        if (!ProjectFiles.Contains(repositoryPath) &&
+            _snapshot.Missing.Any(part => RepositoryPath.IsUnder(repositoryPath, part)))
         {
             throw new ChangeSelectionException(
-                $"'{repositoryPath}' is tracked at {Short(_revision)} but is not in the export of " +
-                "that revision, so KillMutants cannot read the project graph it belongs to. " +
-                "'export-ignore' in .gitattributes and paths inside a submodule are both left out " +
-                "of a git archive. Run without --since to measure the whole codebase instead.");
+                $"'{repositoryPath}' belongs to a component this run could not read as it was at " +
+                $"{Short(_revision)}, so KillMutants cannot tell which projects that state's tests " +
+                "exercised. A component whose contents live in another repository has to be present " +
+                "locally for a partial run to compare against it. Run without --since to measure " +
+                "the whole codebase instead.");
         }
 
         if (ProjectFiles.Contains(repositoryPath))
