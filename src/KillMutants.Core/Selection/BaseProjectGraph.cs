@@ -93,6 +93,8 @@ internal sealed class BaseProjectGraph : IDisposable
                 .Select(path => path!)
                 .Order(StringComparer.Ordinal)];
 
+            RefuseIfABuildFileIsMissing(root, revision, tracked);
+
             return new BaseProjectGraph(
                 new MsBuildQuery(configuration), root, revision, projects, tracked, submodules);
         }
@@ -101,6 +103,48 @@ internal sealed class BaseProjectGraph : IDisposable
             Scratch.DeleteDirectory(root);
 
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Stops before reading anything when the export is missing a file that decides how projects
+    /// are built.
+    /// </summary>
+    /// <remarks>
+    /// The per-project check below fires only for a <c>.csproj</c> the graph goes looking for, and
+    /// review found what that leaves open: a <c>Directory.Build.props</c> can carry the
+    /// <c>ProjectReference</c> items the graph is about to read, and <c>export-ignore</c> can leave
+    /// it out while every project file is present. Evaluation then succeeds against an incomplete
+    /// tree and answers with a graph missing edges - the silent under-widening, arrived at by a
+    /// route the project files themselves cannot show.
+    /// <para>
+    /// Checked up front rather than per project, because a missing build file affects an unknown set
+    /// of projects: there is no path at which to notice it lazily. What this does not cover is a
+    /// <c>.props</c> imported under some other name, which no evaluation-time question can enumerate
+    /// - <c>MSBuildAllProjects</c> comes back empty on an SDK project, measured. DEC0011 carries
+    /// that as a stated risk. Nor a build file inside a submodule, which the outer tree never names:
+    /// that half is the refusal in <see cref="FactsOfAsync"/>.
+    /// </para>
+    /// </remarks>
+    private static void RefuseIfABuildFileIsMissing(
+        string root,
+        string revision,
+        IReadOnlyList<string> tracked)
+    {
+        foreach (string path in tracked)
+        {
+            if (!ChangeSelection.IsSharedBuildFile(path) ||
+                File.Exists(RepositoryPath.In(root, path)))
+            {
+                continue;
+            }
+
+            throw new ChangeSelectionException(
+                $"'{path}' is tracked at {Short(revision)} but is not in the export of that " +
+                "revision, and a file like it can decide which projects reference which. Reading " +
+                "the project graph from an export without it would answer with edges missing. " +
+                "'export-ignore' in .gitattributes is what leaves a tracked file out of a git " +
+                "archive. Run without --since to measure the whole codebase instead.");
         }
     }
 

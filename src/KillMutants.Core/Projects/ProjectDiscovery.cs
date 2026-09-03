@@ -14,6 +14,7 @@ internal sealed class ProjectDiscovery
     private readonly Dictionary<string, List<string>> _leftOut = new(ProjectPaths.Comparer);
     private readonly Dictionary<string, IReadOnlyList<string>> _inputs = new(ProjectPaths.Comparer);
     private readonly Dictionary<string, List<string>> _analyzerConsumers = new(ProjectPaths.Comparer);
+    private readonly HashSet<string> _declaredSupport = new(ProjectPaths.Comparer);
     private readonly MsBuildQuery _msBuild;
     private readonly string _configuration;
     private readonly PathFilter _exclusions;
@@ -74,6 +75,7 @@ internal sealed class ProjectDiscovery
             new HashSet<string>(
                 TestProjects.Select(test => test.ProjectPath), ProjectPaths.Comparer),
             ProjectsLeftOut,
+            DeclaredTestSupport,
             InputsByProject,
             AnalyzerConsumers);
 
@@ -86,6 +88,17 @@ internal sealed class ProjectDiscovery
     /// as a project under test.
     /// </remarks>
     public IReadOnlyDictionary<string, IReadOnlyList<string>> InputsByProject => _inputs;
+
+    /// <summary>
+    /// The projects left out because their own project file says they are test support.
+    /// </summary>
+    /// <remarks>
+    /// A subset of <see cref="ProjectsLeftOut"/>, and the distinction matters to a partial run.
+    /// Being excluded comes from the run's configuration, which a change cannot alter without the
+    /// run refusing to judge it. Declaring yourself test support comes from a project file, which
+    /// the change being judged may have written - so the two must not be trusted alike.
+    /// </remarks>
+    public IReadOnlySet<string> DeclaredTestSupport => _declaredSupport;
 
     /// <summary>Which projects consume each generator project, by the generator's path.</summary>
     /// <remarks>
@@ -276,6 +289,11 @@ internal sealed class ProjectDiscovery
                 }
 
                 reachedBy.Add(testProject.ProjectPath);
+
+                if (facts.IsTestSupport)
+                {
+                    _declaredSupport.Add(path);
+                }
             }
 
             foreach (string reference in facts.ProjectReferences)
@@ -320,12 +338,36 @@ internal sealed class ProjectDiscovery
 
         if (facts is not null)
         {
-            _inputs[facts.ProjectPath] = facts.InputFiles;
+            Record(facts);
         }
 
         cache[path] = facts;
 
         return facts;
+    }
+
+    /// <summary>
+    /// Indexes what a project consumes: its own inputs, and the generators it consumes.
+    /// </summary>
+    /// <remarks>
+    /// One method rather than two copies, because review found the second copy missing twice - first
+    /// the inputs of a lazily evaluated project, then its generators. A project reached but left out
+    /// consumes files and generators exactly like any other, and a change to one of them has to
+    /// reach the suites that see it through the facade.
+    /// </remarks>
+    private void Record(ProjectFacts facts)
+    {
+        _inputs[facts.ProjectPath] = facts.InputFiles;
+
+        foreach (string generator in facts.AnalyzerProjects)
+        {
+            if (!_analyzerConsumers.TryGetValue(generator, out List<string>? consumers))
+            {
+                _analyzerConsumers[generator] = consumers = [];
+            }
+
+            consumers.Add(facts.ProjectPath);
+        }
     }
 
     private async Task<IReadOnlyList<ProjectFacts>> ReadProjectsAsync(
@@ -370,18 +412,7 @@ internal sealed class ProjectDiscovery
                 .GetProjectFactsAsync(path, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
 
-            _inputs[facts.ProjectPath] = facts.InputFiles;
-
-            foreach (string generator in facts.AnalyzerProjects)
-            {
-                if (!_analyzerConsumers.TryGetValue(generator, out List<string>? consumers))
-                {
-                    _analyzerConsumers[generator] = consumers = [];
-                }
-
-                consumers.Add(facts.ProjectPath);
-            }
-
+            Record(facts);
             projects.Add(facts);
         }
 
