@@ -1,3 +1,4 @@
+using KillMutants.Git;
 using KillMutants.Mutations;
 using KillMutants.Reporting;
 using KillMutants.Selection;
@@ -173,7 +174,7 @@ public class SinceRunTests
             fixture.Root,
             exclude: ["Domain/*"],
             mutators: Families,
-            since: "HEAD",
+            changes: await ChangesSinceHeadAsync(fixture.Root),
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(report.LostCoverage);
@@ -857,7 +858,7 @@ public class SinceRunTests
             fixture.Root,
             exclude: ["Domain/*"],
             mutators: Families,
-            since: "HEAD",
+            changes: await ChangesSinceHeadAsync(fixture.Root),
             cancellationToken: TestContext.Current.CancellationToken);
 
         // Domain is excluded, so nothing in it is mutable and the file selects no mutants of its
@@ -971,7 +972,7 @@ public class SinceRunTests
         MutationTestReport report = await MutationTesting.RunAsync(
             Path.Combine(fixture.Root, "app"),
             mutators: Families,
-            since: "HEAD",
+            changes: await ChangesSinceHeadAsync(Path.Combine(fixture.Root, "app")),
             cancellationToken: TestContext.Current.CancellationToken);
 
         // The widening did happen - this is not a run that selected nothing and passed by accident.
@@ -1106,7 +1107,7 @@ public class SinceRunTests
         MutationTestReport report = await MutationTesting.RunAsync(
             Path.Combine(fixture.Root, "app"),
             mutators: Families,
-            since: "HEAD",
+            changes: await ChangesSinceHeadAsync(Path.Combine(fixture.Root, "app")),
             cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Empty(MutatedFiles(report));
@@ -1167,12 +1168,24 @@ public class SinceRunTests
         Assert.Contains("Ages.cs", MutatedFiles(report));
     }
 
-    private static Task<MutationTestReport> RunSinceHeadAsync(FixtureCopy fixture) =>
-        MutationTesting.RunAsync(
+    private static async Task<MutationTestReport> RunSinceHeadAsync(FixtureCopy fixture) =>
+        await MutationTesting.RunAsync(
             fixture.Root,
             mutators: Families,
-            since: "HEAD",
+            changes: await ChangesSinceHeadAsync(fixture.Root),
             cancellationToken: TestContext.Current.CancellationToken);
+
+    /// <summary>
+    /// A git-backed change source over the fixture, which is what the CLI builds for --since.
+    /// </summary>
+    /// <remarks>
+    /// Built here rather than named by a string, because the core no longer takes a revision: it
+    /// takes something that can say what changed and hand over the code as it was. These tests
+    /// exercise the git implementation of that on real repositories; the selection logic itself
+    /// needs no git at all.
+    /// </remarks>
+    private static Task<IChangeSource> ChangesSinceHeadAsync(string directory) =>
+        GitChangeSource.ForAsync(directory, "HEAD", TestContext.Current.CancellationToken);
 
     /// <summary>
     /// Moves a test project one level down, into a <c>tests/</c> directory of its own.

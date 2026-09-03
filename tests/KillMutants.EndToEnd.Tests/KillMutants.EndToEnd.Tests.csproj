@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../src/KillMutants.Core/KillMutants.Core.csproj" />
+    <ProjectReference Include="../../src/KillMutants.Git/KillMutants.Git.csproj" />
     <!--
       The exit codes are a public contract, so they are tested by running the real command-line tool
       rather than the policy behind it. The reference also gives the settings-resolution tests the

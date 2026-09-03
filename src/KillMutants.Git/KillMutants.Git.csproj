@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="../KillMutants.Core/KillMutants.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="KillMutants.Core.Tests" />
+    <InternalsVisibleTo Include="KillMutants.EndToEnd.Tests" />
+  </ItemGroup>
+
+</Project>

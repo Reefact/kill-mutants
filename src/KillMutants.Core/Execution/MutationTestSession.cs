@@ -27,7 +27,7 @@ internal sealed class MutationTestSession
     private readonly IReadOnlyList<string> _exclude;
     private readonly MutatorCatalog _catalog;
     private readonly int _verifyKills;
-    private readonly string? _since;
+    private readonly IChangeSource? _changes;
     private readonly IProgress<MutationTestProgress>? _progress;
 
     public MutationTestSession(
@@ -39,7 +39,7 @@ internal sealed class MutationTestSession
         IEnumerable<string>? exclude = null,
         MutatorCatalog? catalog = null,
         int verifyKills = 0,
-        string? since = null,
+        IChangeSource? changes = null,
         IProgress<MutationTestProgress>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(testRunner);
@@ -64,7 +64,7 @@ internal sealed class MutationTestSession
         _exclude = [.. exclude ?? []];
         _catalog = catalog ?? MutatorCatalog.Default;
         _verifyKills = verifyKills;
-        _since = since;
+        _changes = changes;
         _progress = progress;
     }
 
@@ -89,7 +89,7 @@ internal sealed class MutationTestSession
         // run was pointed at, which only this call knows.
         PathFilter exclusions = PathFilter.Excluding(searchDirectory, _exclude);
         var discovery = new ProjectDiscovery(
-            _configuration, exclusions, _progress, readInputFiles: _since is not null);
+            _configuration, exclusions, _progress, readInputFiles: _changes is not null);
 
         IReadOnlyList<MutationTestTarget> targets = await discovery
             .DiscoverAsync(searchDirectory, cancellationToken)
@@ -99,11 +99,11 @@ internal sealed class MutationTestSession
         // found - which projects are test projects, and which mutable projects each of them
         // exercises - and before anything is built, because a change that selects nothing must not
         // cost a build.
-        ChangeSelection? selection = _since is null
+        ChangeSelection? selection = _changes is null
             ? null
             : await ChangeSelection
                 .ResolveAsync(
-                    _since, searchDirectory, _configuration, discovery.Everything(targets),
+                    _changes, searchDirectory, _configuration, discovery.Everything(targets),
                     _progress, cancellationToken)
                 .ConfigureAwait(false);
 

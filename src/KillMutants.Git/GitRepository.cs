@@ -1,7 +1,9 @@
 using System.Formats.Tar;
 using KillMutants.Processes;
 
-namespace KillMutants.Selection;
+using KillMutants.Selection;
+
+namespace KillMutants.Git;
 
 /// <summary>
 /// The git working copy a partial run reads its change from.

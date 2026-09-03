@@ -14,7 +14,7 @@ namespace KillMutants.Selection;
 /// commit while mutating the working tree would report on code that was never built. The report
 /// says which of the two it was, so a reader can tell a reproducible run from a local one.
 /// </remarks>
-internal sealed record ChangeSet(
+public sealed record ChangeSet(
     string BaseRevision,
     string HeadRevision,
     bool WorkingTreeDiffers,

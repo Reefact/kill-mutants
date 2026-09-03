@@ -8,7 +8,7 @@ namespace KillMutants.Selection;
 /// would lose that. Copies, type changes and merge conflicts are all read as modifications, which
 /// is the conservative reading of each.
 /// </remarks>
-internal enum ChangeKind
+public enum ChangeKind
 {
     /// <summary>The file does not exist at the base revision.</summary>
     Added,
@@ -26,4 +26,4 @@ internal enum ChangeKind
 /// how a test file that used to exist is still visible to the selection.
 /// </param>
 /// <param name="Kind">What happened to it.</param>
-internal sealed record FileChange(string Path, ChangeKind Kind);
+public sealed record FileChange(string Path, ChangeKind Kind);

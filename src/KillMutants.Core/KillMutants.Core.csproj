@@ -5,6 +5,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!--
+      Shared utilities, not an API: running a process and cleaning up after it are implementation
+      details every part of this tool needs and nobody outside should depend on. The direction of
+      the dependency is unchanged - KillMutants.Git references the core, never the other way round.
+    -->
+    <InternalsVisibleTo Include="KillMutants.Git" />
     <InternalsVisibleTo Include="KillMutants.Core.Tests" />
     <InternalsVisibleTo Include="KillMutants.EndToEnd.Tests" />
   </ItemGroup>

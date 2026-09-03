@@ -130,9 +130,9 @@ internal sealed class ChangeSelection
     }
 
     /// <summary>Reads the change and works out what it puts in scope.</summary>
-    /// <param name="since">The revision to measure the change from.</param>
+    /// <param name="source">Where the change, and the code before it, are read from.</param>
     /// <param name="searchDirectory">The directory the run was pointed at.</param>
-    /// <param name="configuration">The build configuration, for reading the base revision's graph.</param>
+    /// <param name="configuration">The build configuration, for reading the earlier graph.</param>
     /// <param name="discovered">What discovery found at HEAD, and what it consumes.</param>
     /// <param name="progress">Told when the base revision is being read, which is the slow part.</param>
     /// <param name="cancellationToken">Cancels the resolution.</param>
@@ -141,46 +141,32 @@ internal sealed class ChangeSelection
     /// the run's own configuration, which a partial run cannot judge.
     /// </exception>
     public static async Task<ChangeSelection> ResolveAsync(
-        string since,
+        IChangeSource source,
         string searchDirectory,
         string configuration,
         DiscoveredProjects discovered,
         IProgress<MutationTestProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(since);
+        ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(discovered);
 
-        GitRepository repository = await GitRepository
-            .ContainingAsync(searchDirectory, cancellationToken)
-            .ConfigureAwait(false);
+        ChangeSet change = await source.ChangesAsync(cancellationToken).ConfigureAwait(false);
 
-        string head = await repository.ResolveAsync("HEAD", cancellationToken).ConfigureAwait(false);
-        string named = await repository.ResolveAsync(since, cancellationToken).ConfigureAwait(false);
-        string baseRevision = await repository.MergeBaseAsync(named, head, cancellationToken)
-            .ConfigureAwait(false);
-
-        IReadOnlyList<FileChange> changes = await repository
-            .ChangesSinceAsync(baseRevision, cancellationToken)
-            .ConfigureAwait(false);
-
-        RefuseIfTheGateItselfChanged(changes, Path.GetFullPath(searchDirectory));
+        RefuseIfTheGateItselfChanged(change.Changes, Path.GetFullPath(searchDirectory));
 
         var scope = new RunScope(
-            baseRevision,
-            head,
-            await repository.HasUncommittedChangesAsync(cancellationToken).ConfigureAwait(false),
-            changes.Count);
+            change.BaseRevision, change.HeadRevision, change.WorkingTreeDiffers, change.Changes.Count);
 
         var resolver = new Resolver(
-            repository,
-            baseRevision,
+            source,
+            change.BaseRevision,
             configuration,
             Path.GetFullPath(searchDirectory),
             discovered,
             progress);
 
-        return await resolver.ResolveAsync(scope, changes, cancellationToken).ConfigureAwait(false);
+        return await resolver.ResolveAsync(scope, change.Changes, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -227,7 +213,7 @@ internal sealed class ChangeSelection
     /// Everything the resolution needs to keep in hand while it classifies one change's files.
     /// </summary>
     private sealed class Resolver(
-        GitRepository repository,
+        IChangeSource source,
         string baseRevision,
         string configuration,
         string searchDirectory,
@@ -498,7 +484,7 @@ internal sealed class ChangeSelection
             HashSet<string> widened,
             HashSet<string> touchedTestProjects,
             List<string> tracedAtBase,
-            IReadOnlyList<FileChange> unattributed,
+            List<FileChange> unattributed,
             CancellationToken cancellationToken)
         {
             foreach (string testProject in touchedTestProjects)
@@ -511,15 +497,9 @@ internal sealed class ChangeSelection
                 }
             }
 
-            // Files that belong to no test project at HEAD may belong to one at the base revision -
-            // which is the coverage edge vanishing one layer further out again.
-            IReadOnlyList<string> formerTestProjects = await FormerTestProjectsAsync(
-                    unattributed, cancellationToken)
-                .ConfigureAwait(false);
-
             if (touchedTestProjects.Count == 0 &&
-                formerTestProjects.Count == 0 &&
-                tracedAtBase.Count == 0)
+                tracedAtBase.Count == 0 &&
+                unattributed.Count == 0)
             {
                 return [];
             }
@@ -527,11 +507,16 @@ internal sealed class ChangeSelection
             progress?.Report(new MutationTestProgress(
                 MutationTestPhase.SelectingChanges, Subject: Short(baseRevision)));
 
-            ICodeSnapshot before = await repository
-                .OpenCodeBeforeAsync(baseRevision, cancellationToken)
+            ICodeSnapshot before = await source
+                .OpenCodeBeforeAsync(cancellationToken)
                 .ConfigureAwait(false);
 
             using BaseProjectGraph graph = BaseProjectGraph.Open(before, baseRevision, configuration);
+
+            // Files that belong to no test project at HEAD may belong to one at the base revision -
+            // the coverage edge vanishing one layer further out again. Asked of the graph, which
+            // already knows every project that state held, rather than of the source a second time.
+            IReadOnlyList<string> formerTestProjects = FormerTestProjects(unattributed, graph);
 
             // Two kinds of root, and review found that treating them alike undid the point of
             // separating them in the first place. A suite the change touched, or one that stopped
@@ -608,7 +593,7 @@ internal sealed class ChangeSelection
         /// </remarks>
         private bool StoppedBeingCovered(string repositoryPath)
         {
-            string absolute = RepositoryPath.In(repository.Root, repositoryPath);
+            string absolute = RepositoryPath.In(source.Root, repositoryPath);
 
             return File.Exists(absolute) &&
                    InScope(repositoryPath) &&
@@ -646,9 +631,9 @@ internal sealed class ChangeSelection
         /// project - flip its <c>OutputType</c>, declare it test support, drop the package - and the
         /// suite is just as disabled as if it had been deleted.
         /// </remarks>
-        private async Task<IReadOnlyList<string>> FormerTestProjectsAsync(
-            IReadOnlyList<FileChange> unattributed,
-            CancellationToken cancellationToken)
+        private IReadOnlyList<string> FormerTestProjects(
+            List<FileChange> unattributed,
+            BaseProjectGraph graph)
         {
             if (unattributed.Count == 0)
             {
@@ -664,9 +649,7 @@ internal sealed class ChangeSelection
             // test project purely because HEAD discovery, pointed elsewhere, had never seen it -
             // and if it reached an in-scope target at the base revision, an unrelated change next
             // door widened that target and could fail the gate on its existing mutants.
-            string[] candidates = [.. (await repository
-                    .ListFilesAsync(baseRevision, cancellationToken).ConfigureAwait(false))
-                .Where(path => path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+            string[] candidates = [.. graph.ProjectFiles
                 .Where(InScope)
                 .Where(path => !testProjectsAtHead.Contains(path))];
 
@@ -699,18 +682,18 @@ internal sealed class ChangeSelection
         /// <summary>True when a repository path is under the directory the run was pointed at.</summary>
         private bool InScope(string repositoryPath) =>
             IsUnder(
-                Path.GetDirectoryName(RepositoryPath.In(repository.Root, repositoryPath)),
+                Path.GetDirectoryName(RepositoryPath.In(source.Root, repositoryPath)),
                 searchDirectory);
 
         private string? HeadTargetAt(string repositoryPath)
         {
-            string absolute = RepositoryPath.In(repository.Root, repositoryPath);
+            string absolute = RepositoryPath.In(source.Root, repositoryPath);
 
             return discovered.TargetPaths.FirstOrDefault(
                 path => ProjectPaths.Comparer.Equals(path, absolute));
         }
 
-        private string? RepositoryPathOf(string path) => RepositoryPath.Of(repository.Root, path);
+        private string? RepositoryPathOf(string path) => RepositoryPath.Of(source.Root, path);
 
         /// <summary>
         /// Every project that consumes <paramref name="path"/>: by what it evaluates, and by where
