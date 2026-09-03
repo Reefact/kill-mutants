@@ -158,6 +158,49 @@ internal sealed class GitRepository
         return [.. Split(listing)];
     }
 
+    /// <summary>The submodule paths a revision records, as repository paths.</summary>
+    /// <remarks>
+    /// A submodule is a gitlink: one entry of mode <c>160000</c> naming a commit in another
+    /// repository. <c>ls-tree -r</c> does not descend into it - it cannot, the objects are not here -
+    /// so a listing of file names contains <c>libs/Core</c> and nothing beneath it. Measured:
+    /// <code>
+    /// $ git ls-tree -r HEAD
+    /// 100644 blob e25f1814…  Root.csproj
+    /// 160000 commit 0013cc50…  libs/Core
+    /// </code>
+    /// That is why a path inside a submodule is missing from a file listing and from a
+    /// <c>git archive</c> alike, and why checking exact tracked names cannot notice its absence.
+    /// Review found the refusal that name check was supposed to raise never firing.
+    /// </remarks>
+    public async Task<IReadOnlyList<string>> ListSubmodulePathsAsync(
+        string revision,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(revision);
+
+        string listing = await RunRawAsync(
+                Root,
+                ["ls-tree", "-r", "-z", revision],
+                $"The tree at '{revision}' could not be listed.",
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        List<string> gitlinks = [];
+
+        // "<mode> SP <type> SP <object> TAB <path>", one record per NUL.
+        foreach (string record in Split(listing))
+        {
+            int tab = record.IndexOf('\t', StringComparison.Ordinal);
+
+            if (tab > 0 && record.StartsWith("160000 ", StringComparison.Ordinal))
+            {
+                gitlinks.Add(record[(tab + 1)..]);
+            }
+        }
+
+        return gitlinks;
+    }
+
     /// <summary>
     /// Writes the whole of <paramref name="revision"/> into <paramref name="destination"/>.
     /// </summary>

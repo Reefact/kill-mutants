@@ -34,19 +34,22 @@ internal sealed class BaseProjectGraph : IDisposable
     private readonly string _revision;
     private readonly Dictionary<string, ProjectFacts?> _facts;
     private readonly HashSet<string> _tracked;
+    private readonly IReadOnlyList<string> _submodules;
 
     private BaseProjectGraph(
         MsBuildQuery msBuild,
         string root,
         string revision,
         IReadOnlyCollection<string> projectFiles,
-        IReadOnlyCollection<string> tracked)
+        IReadOnlyCollection<string> tracked,
+        IReadOnlyList<string> submodules)
     {
         _msBuild = msBuild;
         _root = root;
         _revision = revision;
         _facts = [];
         _tracked = new HashSet<string>(tracked, RepositoryPath.Comparer);
+        _submodules = submodules;
         ProjectFiles = new HashSet<string>(projectFiles, RepositoryPath.Comparer);
     }
 
@@ -59,7 +62,8 @@ internal sealed class BaseProjectGraph : IDisposable
     /// <param name="configuration">The build configuration to evaluate against.</param>
     /// <param name="tracked">
     /// Every path the revision tracks, so the export can be checked against what it should have
-    /// contained rather than trusted.
+    /// contained rather than trusted. A path inside a submodule is not one of these, which is why
+    /// the gitlinks are read as well.
     /// </param>
     /// <param name="cancellationToken">Cancels the export.</param>
     public static async Task<BaseProjectGraph> ExportAsync(
@@ -71,6 +75,10 @@ internal sealed class BaseProjectGraph : IDisposable
     {
         ArgumentNullException.ThrowIfNull(repository);
         ArgumentNullException.ThrowIfNull(tracked);
+
+        IReadOnlyList<string> submodules = await repository
+            .ListSubmodulePathsAsync(revision, cancellationToken)
+            .ConfigureAwait(false);
 
         string root = Path.Combine(Path.GetTempPath(), $"killmutants-base-{Guid.NewGuid():N}");
 
@@ -86,7 +94,7 @@ internal sealed class BaseProjectGraph : IDisposable
                 .Order(StringComparer.Ordinal)];
 
             return new BaseProjectGraph(
-                new MsBuildQuery(configuration), root, revision, projects, tracked);
+                new MsBuildQuery(configuration), root, revision, projects, tracked, submodules);
         }
         catch
         {
@@ -168,6 +176,19 @@ internal sealed class BaseProjectGraph : IDisposable
     /// <summary>Deletes the exported tree.</summary>
     public void Dispose() => Scratch.DeleteDirectory(_root);
 
+    /// <summary>
+    /// True when the revision had something at that path, whether or not it named it one by one.
+    /// </summary>
+    /// <remarks>
+    /// Two questions, because a listing of tracked names answers only the first. A path the revision
+    /// tracks is there. A path <em>beneath a gitlink</em> is there too, and is named by nothing: the
+    /// outer tree records the submodule as one entry and stops. Review found the refusal below never
+    /// firing for exactly the case its own message claimed to cover.
+    /// </remarks>
+    private bool WasThereAtTheBase(string repositoryPath) =>
+        _tracked.Contains(repositoryPath) ||
+        _submodules.Any(submodule => RepositoryPath.IsUnder(repositoryPath, submodule));
+
     private async Task<ProjectFacts?> FactsOfAsync(
         string repositoryPath,
         CancellationToken cancellationToken)
@@ -186,7 +207,7 @@ internal sealed class BaseProjectGraph : IDisposable
         // project silently absent, the base graph would drop the edge that ran through it, and the
         // run would go green over coverage it never checked. Review found both; the run refuses
         // rather than under-widening in silence.
-        if (!ProjectFiles.Contains(repositoryPath) && _tracked.Contains(repositoryPath))
+        if (!ProjectFiles.Contains(repositoryPath) && WasThereAtTheBase(repositoryPath))
         {
             throw new ChangeSelectionException(
                 $"'{repositoryPath}' is tracked at {Short(_revision)} but is not in the export of " +
