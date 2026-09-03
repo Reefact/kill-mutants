@@ -388,24 +388,23 @@ internal sealed class ChangeSelection
             // the diff holds no line of their code, so the run selected nothing and passed. The
             // change is attributed to each consumer instead, which gives it whatever role that
             // project has.
+            bool attributed = false;
+
             if (discovered.AnalyzerConsumers.TryGetValue(project, out IReadOnlyList<string>? consumers))
             {
-                bool reached = false;
-
                 foreach (string consumer in consumers)
                 {
-                    reached |= AttributeToConsumer(change, consumer, widened, touchedTestProjects);
-                }
-
-                if (reached)
-                {
-                    return true;
+                    attributed |= AttributeToConsumer(change, consumer, widened, touchedTestProjects);
                 }
             }
 
+            // Additive here too, and review found the early return that was not. Being a generator
+            // and being a target are not exclusive: one suite can reference a project normally while
+            // another consumes it as an analyzer. Returning as soon as a consumer was reached
+            // re-ran the consumer and left the project's own changed compilation unmeasured.
             if (!discovered.TargetPaths.Contains(project))
             {
-                return false;
+                return attributed;
             }
 
             if (!IsCSharp(change.Path))
@@ -430,24 +429,21 @@ internal sealed class ChangeSelection
             HashSet<string> widened,
             HashSet<string> touchedTestProjects)
         {
+            // No added-file exception on this path, and review was right to separate them. That
+            // exception says a new *test* cannot remove an edge that predates it; a generator source
+            // the change adds is not a test, and it can change what every existing test compiles to.
             if (discovered.TestProjectPaths.Contains(consumer))
             {
-                if (change.Kind != ChangeKind.Added)
-                {
-                    touchedTestProjects.Add(consumer);
-                }
+                touchedTestProjects.Add(consumer);
 
                 return true;
             }
 
             if (discovered.LeftOut.TryGetValue(consumer, out IReadOnlyList<string>? reachedBy))
             {
-                if (change.Kind != ChangeKind.Added)
+                foreach (string testProject in reachedBy)
                 {
-                    foreach (string testProject in reachedBy)
-                    {
-                        touchedTestProjects.Add(testProject);
-                    }
+                    touchedTestProjects.Add(testProject);
                 }
 
                 return true;
