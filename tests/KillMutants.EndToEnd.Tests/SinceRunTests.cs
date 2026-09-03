@@ -185,6 +185,56 @@ public class SinceRunTests
     }
 
     /// <summary>
+    /// An excluded project stays excluded when the change removes the last reference to it.
+    /// </summary>
+    /// <remarks>
+    /// Review found this, and it is the only false positive the gate had: a run that fails over a
+    /// project the user deliberately took out of mutation testing. The two rules above met in a case
+    /// neither covered. Being left out was read from what a traversal <em>now</em> still reaches, so
+    /// a change that removes the last edge to an excluded project left nothing to read it from, and
+    /// the project came back through the earlier state's graph as newly uncovered. It was never
+    /// covered: the run was told to leave it alone, before this change and after it.
+    /// </remarks>
+    [Fact]
+    public async Task An_excluded_project_whose_last_reference_the_change_removes_is_not_reported()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+
+        string project = Path.Combine(fixture.Root, "Domain.Tests", "Domain.Tests.csproj");
+
+        File.WriteAllText(
+            project,
+            File.ReadAllText(project).Replace(
+                """<ItemGroup><ProjectReference Include="../Domain/Domain.csproj" /></ItemGroup>""",
+                string.Empty,
+                StringComparison.Ordinal));
+
+        File.WriteAllText(
+            Path.Combine(fixture.Root, "Domain.Tests", "BasketTests.cs"),
+            """
+            namespace Domain.Tests;
+
+            public class BasketTests
+            {
+                [Fact]
+                public void Nothing_is_asserted_about_the_basket_any_more() => Assert.True(true);
+            }
+            """);
+
+        MutationTestReport report = await MutationTesting.RunAsync(
+            fixture.Root,
+            exclude: ["Domain/*"],
+            mutators: Families,
+            changes: await ChangesSinceHeadAsync(fixture.Root),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(report.LostCoverage);
+        Assert.Empty(report.CoverageLost);
+    }
+
+    /// <summary>
     /// A build file above the suites reaches them, even when no production project sits beneath it.
     /// </summary>
     /// <remarks>
