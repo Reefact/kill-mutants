@@ -1112,6 +1112,65 @@ public class SinceRunTests
         Assert.Empty(MutatedFiles(report));
     }
 
+    /// <summary>
+    /// A base-side project inside a submodule stops the run rather than vanishing from the graph.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The export check this refusal rests on compared the missing path against the revision's
+    /// tracked file names, and review found that those cannot name a path inside a submodule.
+    /// Measured on a repository built for the purpose:
+    /// </para>
+    /// <code>
+    /// $ git ls-tree -r HEAD
+    /// 100644 blob e25f1814…  Root.csproj
+    /// 160000 commit 0013cc50…  libs/Core
+    /// </code>
+    /// <para>
+    /// The gitlink and nothing beneath it, because <c>ls-tree -r</c> cannot descend into objects
+    /// another repository holds. So <c>libs/Core/Core.csproj</c> was absent from the export and from
+    /// the tracked names alike, the refusal never fired, and the base graph quietly dropped the edge
+    /// running through it — the false green the refusal exists to prevent, in the very case its own
+    /// message named.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task A_base_project_inside_a_submodule_stops_the_run_rather_than_being_dropped()
+    {
+        using var outer = FixtureCopy.CreateMultiProject();
+        using var inner = FixtureCopy.Create();
+
+        FixtureRepository.InitialiseAt(inner.Root);
+        FixtureRepository.InitialiseAt(outer.Root);
+        FixtureRepository.AddSubmodule(outer.Root, inner.Root, "libs/Sample");
+
+        // At the base revision the suite reaches into the submodule.
+        Reference(
+            outer,
+            "Domain.Tests",
+            "Domain.Tests.csproj",
+            "../libs/Sample/Sample.Library/Sample.Library.csproj");
+
+        FixtureRepository.CommitAll(outer.Root, "the suite reaches into the submodule");
+
+        // The change removes it, so only the base revision can say the edge was ever there - and the
+        // base revision keeps that project where a git archive cannot follow.
+        string project = Path.Combine(outer.Root, "Domain.Tests", "Domain.Tests.csproj");
+
+        File.WriteAllText(
+            project,
+            File.ReadAllText(project).Replace(
+                """<ItemGroup><ProjectReference Include="../libs/Sample/Sample.Library/Sample.Library.csproj" /></ItemGroup>""",
+                string.Empty,
+                StringComparison.Ordinal));
+
+        ChangeSelectionException failure = await Assert.ThrowsAsync<ChangeSelectionException>(
+            () => RunSinceHeadAsync(outer));
+
+        Assert.Contains("Sample.Library.csproj", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("submodule", failure.Message, StringComparison.Ordinal);
+    }
+
     private static Task<MutationTestReport> RunSinceHeadAsync(FixtureCopy fixture) =>
         MutationTesting.RunAsync(
             fixture.Root,
