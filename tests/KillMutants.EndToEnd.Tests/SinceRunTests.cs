@@ -764,6 +764,67 @@ public class SinceRunTests
     }
 
     /// <summary>
+    /// A component reported as one opaque path carries the roles its projects hold from outside it.
+    /// </summary>
+    /// <remarks>
+    /// Review found this, and it is the gap the rule above left. Widening beneath the path knows two
+    /// roles - a target that sits under it, a suite that sits under it - which is everything when the
+    /// component is self-contained. A project inside it that something <em>outside</em> reaches has
+    /// neither: a library the run leaves out, or a generator, consumed from elsewhere in the tree. So
+    /// the component moved, the code it contributes changed, and nothing was selected.
+    /// <para>
+    /// Here <c>Domain.Tests</c> reaches into the submodule for a library the run excludes. Nothing
+    /// beneath <c>libs/Sample</c> is a target and no suite lives there, so the two loops find
+    /// nothing; the suite outside is what has to be marked touched, exactly as a changed file inside
+    /// that library would mark it.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task A_changed_component_widens_through_a_suite_that_reaches_into_it()
+    {
+        using var outer = FixtureCopy.CreateMultiProject();
+        using var inner = FixtureCopy.Create();
+
+        FixtureRepository.InitialiseAt(inner.Root);
+        FixtureRepository.InitialiseAt(outer.Root);
+        FixtureRepository.AddSubmodule(outer.Root, inner.Root, "libs/Sample");
+
+        // Committed before the bump, so the only thing in the diff is the submodule's own move.
+        string suite = Path.Combine(outer.Root, "Domain.Tests", "Domain.Tests.csproj");
+
+        File.WriteAllText(
+            suite,
+            File.ReadAllText(suite).Replace(
+                """<ItemGroup><ProjectReference Include="../Domain/Domain.csproj" /></ItemGroup>""",
+                """
+                <ItemGroup>
+                  <ProjectReference Include="../Domain/Domain.csproj" />
+                  <ProjectReference Include="../libs/Sample/Sample.Library/Sample.Library.csproj" />
+                </ItemGroup>
+                """,
+                StringComparison.Ordinal));
+
+        FixtureRepository.CommitAll(outer.Root, "the suite reaches into the component");
+
+        File.AppendAllText(
+            Path.Combine(inner.Root, "Sample.Library", "Ages.cs"),
+            $"{Environment.NewLine}// moved on{Environment.NewLine}");
+
+        FixtureRepository.CommitAll(inner.Root, "the component moves on");
+        FixtureRepository.BumpSubmodule(outer.Root, "libs/Sample");
+
+        MutationTestReport report = await MutationTesting.RunAsync(
+            outer.Root,
+            exclude: ["libs/*"],
+            mutators: Families,
+            changes: await ChangesSinceHeadAsync(outer.Root),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        // What Domain.Tests exercises, widened because the suite is what the component reaches.
+        Assert.Contains("Basket.cs", MutatedFiles(report));
+    }
+
+    /// <summary>
     /// Two projects can share a directory, and a partial run has to survive it.
     /// </summary>
     /// <remarks>
