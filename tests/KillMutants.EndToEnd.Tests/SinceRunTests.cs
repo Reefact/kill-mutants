@@ -917,10 +917,17 @@ public class SinceRunTests
         // The change: no longer a test project, and nothing else about it moves.
         string former = Path.Combine(fixture.Root, "Domain.Tests", "Domain.Tests.csproj");
 
+        // No line ending in any of these: the fixture is checked out with the platform's own, and a
+        // search string carrying one silently matches nothing. That is what it did - on Windows the
+        // OutputType survived while xUnit left, and the suite became an executable with no entry
+        // point. The assertion below is here because a Replace that finds nothing says nothing.
         File.WriteAllText(
             former,
             File.ReadAllText(former)
-                .Replace("    <OutputType>Exe</OutputType>\n", string.Empty, StringComparison.Ordinal)
+                .Replace(
+                    "<OutputType>Exe</OutputType>",
+                    "<OutputType>Library</OutputType>",
+                    StringComparison.Ordinal)
                 .Replace(
                     """<ItemGroup><Using Include="Xunit" /></ItemGroup>""",
                     string.Empty,
@@ -929,6 +936,11 @@ public class SinceRunTests
                     """<ItemGroup><PackageReference Include="xunit.v3.mtp-v2" Version="4.0.0" /></ItemGroup>""",
                     string.Empty,
                     StringComparison.Ordinal));
+
+        string rewritten = File.ReadAllText(former);
+
+        Assert.DoesNotContain("<OutputType>Exe</OutputType>", rewritten, StringComparison.Ordinal);
+        Assert.DoesNotContain("xunit", rewritten, StringComparison.OrdinalIgnoreCase);
 
         // Rewritten because its tests would not compile without xUnit, and a run that stops at the
         // build never reaches the selection this is about.
