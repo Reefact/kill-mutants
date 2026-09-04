@@ -151,14 +151,30 @@ internal sealed class GitRepository
     /// <c>git archive</c> alike, and why checking exact tracked names cannot notice its absence.
     /// Review found the refusal that name check was supposed to raise never firing.
     /// </remarks>
-    public async Task<IReadOnlyList<string>> ListSubmodulePathsAsync(
+    public Task<IReadOnlyList<string>> ListSubmodulePathsAsync(
         string revision,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(revision);
 
+        return ListSubmodulePathsAsync(Root, revision, cancellationToken);
+    }
+
+    /// <summary>The same listing, of any repository's tree - a submodule's own included.</summary>
+    /// <remarks>
+    /// Taking the repository as an argument is what lets the layout recurse. A gitlink recorded
+    /// <em>inside</em> a submodule is invisible to the parent's listing for the reason above, so
+    /// enumerating once from the parent found the first level and stopped - and review found the
+    /// consequence: the levels below were neither laid out nor reported, and the snapshot claimed to
+    /// be complete while a whole subtree of it was an empty directory.
+    /// </remarks>
+    private static async Task<IReadOnlyList<string>> ListSubmodulePathsAsync(
+        string gitDirectory,
+        string revision,
+        CancellationToken cancellationToken)
+    {
         string listing = await RunRawAsync(
-                Root,
+                gitDirectory,
                 ["ls-tree", "-r", "-z", revision],
                 $"The tree at '{revision}' could not be listed.",
                 cancellationToken)
@@ -230,26 +246,9 @@ internal sealed class GitRepository
                     cancellationToken)
                 .ConfigureAwait(false);
 
-            foreach (string path in await ListSubmodulePathsAsync(revision, cancellationToken)
-                         .ConfigureAwait(false))
-            {
-                if (await ModuleDirectoryOfAsync(path, cancellationToken).ConfigureAwait(false)
-                    is not { } moduleDirectory)
-                {
-                    missing.Add(path);
-
-                    continue;
-                }
-
-                // Recorded before the add is issued rather than after it returns. git registers a
-                // worktree as it starts, so one killed half way has already left a registration
-                // behind - and review found the record made on success only, which left exactly
-                // that case with nothing to remove it.
-                laidOut.Add(new Submodule(path, moduleDirectory));
-
-                await LayOutSubmoduleAsync(revision, path, moduleDirectory, destination, cancellationToken)
-                    .ConfigureAwait(false);
-            }
+            await LayOutComponentsAsync(
+                    Root, revision, string.Empty, destination, laidOut, missing, cancellationToken)
+                .ConfigureAwait(false);
         }
         catch
         {
@@ -277,7 +276,10 @@ internal sealed class GitRepository
     /// no amount of local work will produce them.
     /// </para>
     /// </remarks>
-    private async Task<string?> ModuleDirectoryOfAsync(string path, CancellationToken cancellationToken)
+    private async Task<string?> ModuleDirectoryOfAsync(
+        string path,
+        string outerGitDirectory,
+        CancellationToken cancellationToken)
     {
         string directory = Path.Combine(Root, path.Replace('/', Path.DirectorySeparatorChar));
 
@@ -287,7 +289,7 @@ internal sealed class GitRepository
         }
 
         string outer = await RunAsync(
-                Root,
+                outerGitDirectory,
                 ["rev-parse", "--absolute-git-dir"],
                 "The repository's own git directory could not be read.",
                 cancellationToken)
@@ -312,35 +314,70 @@ internal sealed class GitRepository
         return SamePath(inner, outer) ? null : inner;
     }
 
-    /// <summary>Lays one submodule out from its own object store.</summary>
+    /// <summary>Lays out every component a tree records, and every component inside those.</summary>
     /// <remarks>
-    /// Nothing is caught here any more, and review found what the catch was hiding. It turned three
-    /// different things into the same silent "not present locally": a checkout that outran the
-    /// budget, a failure to run git at all, and git's own diagnostic on a non-zero exit. Only the
-    /// first of those is about the objects being absent, it is already answered by
+    /// Recursive, and review found why it has to be. A gitlink recorded inside a submodule is
+    /// invisible to the parent's listing, so enumerating once from the parent found the first level
+    /// and stopped: the levels below were neither laid out nor reported, and the snapshot came back
+    /// claiming to be complete while a whole subtree of it was an empty directory - the one thing
+    /// this design exists to prevent, since the base graph would read that emptiness as an answer.
+    /// <para>
+    /// Nothing is caught here, and review found what the catch that used to be here was hiding. It
+    /// turned three different things into the same silent "not present locally": a checkout that
+    /// outran the budget, a failure to run git at all, and git's own diagnostic on a non-zero exit.
+    /// Only the first is about absent objects, it is already answered by
     /// <see cref="ModuleDirectoryOfAsync"/>, and the others are exactly the failures a user can act
     /// on - once they are told, which they were not.
+    /// </para>
     /// </remarks>
-    private async Task LayOutSubmoduleAsync(
+    private async Task LayOutComponentsAsync(
+        string gitDirectory,
         string revision,
-        string path,
-        string moduleDirectory,
+        string prefix,
         string destination,
+        List<Submodule> laidOut,
+        List<string> missing,
         CancellationToken cancellationToken)
     {
-        string commit = await RunAsync(
-                Root,
-                ["rev-parse", $"{revision}:{path}"],
-                $"The commit recorded for '{path}' could not be read.",
-                cancellationToken)
-            .ConfigureAwait(false);
+        foreach (string path in await ListSubmodulePathsAsync(gitDirectory, revision, cancellationToken)
+                     .ConfigureAwait(false))
+        {
+            // Named from the root throughout: that is the name the core knows a component by, and
+            // the one a listing inside a submodule does not give.
+            string full = prefix + path;
 
-        await RunRawAsync(
-                moduleDirectory,
-                ["worktree", "add", "--quiet", "--detach", Path.Combine(destination, path), commit],
-                $"The code of '{path}' could not be laid out for reading.",
-                cancellationToken)
-            .ConfigureAwait(false);
+            if (await ModuleDirectoryOfAsync(full, gitDirectory, cancellationToken).ConfigureAwait(false)
+                is not { } moduleDirectory)
+            {
+                missing.Add(full);
+
+                continue;
+            }
+
+            // Recorded before the add is issued rather than after it returns. git registers a
+            // worktree as it starts, so one killed half way has already left a registration behind -
+            // and review found the record made on success only, which left exactly that case with
+            // nothing to remove it.
+            laidOut.Add(new Submodule(full, moduleDirectory));
+
+            string commit = await RunAsync(
+                    gitDirectory,
+                    ["rev-parse", $"{revision}:{path}"],
+                    $"The commit recorded for '{full}' could not be read.",
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            await RunRawAsync(
+                    moduleDirectory,
+                    ["worktree", "add", "--quiet", "--detach", Path.Combine(destination, full), commit],
+                    $"The code of '{full}' could not be laid out for reading.",
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            await LayOutComponentsAsync(
+                    moduleDirectory, commit, $"{full}/", destination, laidOut, missing, cancellationToken)
+                .ConfigureAwait(false);
+        }
     }
 
     /// <summary>Two paths naming the same place, compared the way the filesystem would.</summary>
