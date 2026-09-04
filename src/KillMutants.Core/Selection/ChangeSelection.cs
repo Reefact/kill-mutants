@@ -605,15 +605,18 @@ internal sealed class ChangeSelection
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Five questions, and each excludes a different innocent case. Gone from disk: the change
-        /// deleted it, and there is nothing left to cover. A target now: still measured. A test
-        /// project now: it became the yardstick rather than the subject. Left out on purpose:
-        /// excluded, or declaring itself test support, which is the user saying not to measure it.
-        /// What remains is a project that still exists, that nothing was told to ignore, and that no
-        /// suite reaches any more.
+        /// Four questions, and each excludes a different innocent case. Gone from disk: the change
+        /// deleted it, and there is nothing left to cover. A target now: still measured. Left out on
+        /// purpose: the run's own exclusion patterns say so. What remains is a project that still
+        /// exists, that nothing was told to ignore, and that no suite reaches any more.
         /// </para>
         /// <para>
-        /// The fifth is the run's own scope, and review found it missing. A codebase is not
+        /// Becoming a test project is deliberately <em>not</em> among them, and review found the
+        /// remark still listing it. A diff can write that opt-out, so it is exactly what must not be
+        /// taken at face value - which is what the rule below says in as many words.
+        /// </para>
+        /// <para>
+        /// The fourth is the run's own scope, and review found it missing. A codebase is not
         /// always measured whole: point the run at one directory and a suite inside it may reference
         /// a project outside, which the base graph returns and discovery never saw. Absent from the
         /// targets and from what was left out on purpose, it read as newly uncovered - and since
