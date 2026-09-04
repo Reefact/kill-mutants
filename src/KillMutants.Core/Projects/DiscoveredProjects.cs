@@ -13,10 +13,6 @@ namespace KillMutants.Projects;
 /// reach it. Excluded by the user, or declaring themselves test support: not a target, and not an
 /// accident either.
 /// </param>
-/// <param name="DeclaredTestSupport">
-/// The subset of <paramref name="LeftOut"/> that declared itself test support in its own project
-/// file, as opposed to being excluded by the run's configuration.
-/// </param>
 /// <param name="Inputs">
 /// What each project consumes, by project path, empty unless discovery was asked to read it.
 /// </param>
@@ -35,7 +31,6 @@ internal sealed record DiscoveredProjects(
     IReadOnlyList<MutationTestTarget> Targets,
     IReadOnlySet<string> TestProjectPaths,
     IReadOnlyDictionary<string, IReadOnlyList<string>> LeftOut,
-    IReadOnlySet<string> DeclaredTestSupport,
     IReadOnlyDictionary<string, IReadOnlyList<string>> Inputs,
     IReadOnlyDictionary<string, IReadOnlyList<string>> AnalyzerConsumers)
 {

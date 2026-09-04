@@ -71,11 +71,20 @@ Concrètement, une exécution se déroule ainsi :
 
 ## 4. Correspondance entre les concepts et le code
 
-Les préoccupations ci-dessous sont maintenues distinctes en tant que namespaces et types. Elles ne
-sont délibérément **pas** maintenues distinctes en tant qu'assemblys : pour le milestone 1, cela
-ferait treize projets pour quelques centaines de lignes, c'est-à-dire exactement la structure
-prématurée que ce projet s'est fixé d'éviter. Découper plus tard coûte peu ; les frontières de
-namespace sont déjà placées là où passeraient les frontières d'assembly.
+Les préoccupations ci-dessous sont maintenues distinctes en tant que namespaces et types. La plupart
+partagent un même assembly : pour le milestone 1, treize projets pour quelques centaines de lignes
+auraient été exactement la structure prématurée que ce projet s'est fixé d'éviter, et les frontières
+de namespace sont placées là où passeraient les frontières d'assembly.
+
+Trois assemblys existent néanmoins, et ce découpage-là porte quelque chose plutôt que d'être
+cosmétique. `KillMutants.Core` déclare `IChangeSource` et `ICodeSnapshot` — ce qu'une exécution
+partielle attend de ce qui sait ce qui a changé — et n'implémente ni l'un ni l'autre ; il ne nomme
+aucune implémentation nulle part, donc il ne peut en atteindre aucune, même par accident.
+`KillMutants.Git` les implémente et référence le core. `KillMutants.Platform` porte ce dont les deux
+ont besoin du système d'exploitation — exécuter un processus sous un budget de temps, supprimer un
+répertoire temporaire sans jamais faire échouer une exécution pour autant — afin qu'aucun n'ait à
+nommer l'autre pour le partager. Le CLI est le seul endroit qui sache que git est ce qui répond
+aujourd'hui, et c'est là qu'appartient la composition. Voir DEC0011 pour ce à quoi sert ce contrat.
 
 | Préoccupation | Namespace | Remarques |
 |---|---|---|
