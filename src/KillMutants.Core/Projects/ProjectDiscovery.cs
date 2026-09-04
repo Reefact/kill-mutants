@@ -14,7 +14,6 @@ internal sealed class ProjectDiscovery
     private readonly Dictionary<string, List<string>> _leftOut = new(ProjectPaths.Comparer);
     private readonly Dictionary<string, IReadOnlyList<string>> _inputs = new(ProjectPaths.Comparer);
     private readonly Dictionary<string, List<string>> _analyzerConsumers = new(ProjectPaths.Comparer);
-    private readonly HashSet<string> _declaredSupport = new(ProjectPaths.Comparer);
     private readonly MsBuildQuery _msBuild;
     private readonly string _configuration;
     private readonly PathFilter _exclusions;
@@ -59,10 +58,16 @@ internal sealed class ProjectDiscovery
     /// Projects a test project reaches that this run deliberately does not mutate.
     /// </summary>
     /// <remarks>
-    /// Excluded by the user, or declaring themselves test support. Not a target, and not an accident
-    /// either - which is the distinction a partial run needs when it asks whether a project has
-    /// stopped being covered. "No test reaches it any more" and "you asked me to leave it alone" look
-    /// identical from the target list and mean opposite things.
+    /// Excluded by the user, or declaring themselves test support. Each is kept with the suites that
+    /// reach it, and that is what the property is for: a changed file in a project nothing mutates
+    /// still travels to those suites, so the production code they exercise is widened.
+    /// <para>
+    /// It used to answer a second question - whether a project had stopped being covered or had
+    /// simply been left alone - and no longer does. That one is put to the run's exclusion patterns
+    /// directly, because what a traversal still reaches is not the same thing as what the user asked
+    /// to be left alone: a change removing the last reference to an excluded project empties this
+    /// list of it while the instruction stands.
+    /// </para>
     /// </remarks>
     public IReadOnlyDictionary<string, IReadOnlyList<string>> ProjectsLeftOut =>
         _leftOut.ToDictionary(
@@ -75,7 +80,6 @@ internal sealed class ProjectDiscovery
             new HashSet<string>(
                 TestProjects.Select(test => test.ProjectPath), ProjectPaths.Comparer),
             ProjectsLeftOut,
-            DeclaredTestSupport,
             InputsByProject,
             AnalyzerConsumers);
 
@@ -88,17 +92,6 @@ internal sealed class ProjectDiscovery
     /// as a project under test.
     /// </remarks>
     public IReadOnlyDictionary<string, IReadOnlyList<string>> InputsByProject => _inputs;
-
-    /// <summary>
-    /// The projects left out because their own project file says they are test support.
-    /// </summary>
-    /// <remarks>
-    /// A subset of <see cref="ProjectsLeftOut"/>, and the distinction matters to a partial run.
-    /// Being excluded comes from the run's configuration, which a change cannot alter without the
-    /// run refusing to judge it. Declaring yourself test support comes from a project file, which
-    /// the change being judged may have written - so the two must not be trusted alike.
-    /// </remarks>
-    public IReadOnlySet<string> DeclaredTestSupport => _declaredSupport;
 
     /// <summary>Which projects consume each generator project, by the generator's path.</summary>
     /// <remarks>
@@ -298,10 +291,6 @@ internal sealed class ProjectDiscovery
 
                 reachedBy.Add(testProject.ProjectPath);
 
-                if (facts.IsTestSupport)
-                {
-                    _declaredSupport.Add(path);
-                }
             }
 
             foreach (string reference in facts.ProjectReferences)

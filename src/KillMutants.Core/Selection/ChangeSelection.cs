@@ -42,10 +42,11 @@ internal sealed class ChangeSelection
     /// </remarks>
     /// <summary>True when a file decides how projects around it are built.</summary>
     /// <remarks>
-    /// Shared by the selection, which widens what sits beneath such a file, and by the base graph,
-    /// which refuses when the export left one out: an omitted <c>Directory.Build.props</c> can carry
-    /// the project references the graph is about to read, and every <c>.csproj</c> can be present
-    /// while the answer is still wrong. Review found that second use missing.
+    /// Such a file speaks for the projects beneath it rather than for the one whose folder holds
+    /// it, which is why the selection widens what sits under it and why the former-suite question
+    /// takes it as speaking for those projects too. It had a second reader once, guarding an
+    /// incomplete export; the earlier state is restored rather than extracted now, and what guards
+    /// it is <see cref="ICodeSnapshot.Missing"/>.
     /// </remarks>
     internal static bool IsSharedBuildFile(string path)
     {
@@ -102,9 +103,11 @@ internal sealed class ChangeSelection
     /// component has not passed.
     /// </para>
     /// <para>
-    /// A project the run was told to leave alone - excluded, or declaring itself test support - is
-    /// not this. Those are deliberate, and <see cref="ProjectDiscovery.ProjectsLeftOut"/> is how the
-    /// two are told apart.
+    /// A project the run was told to leave alone is not this, and the run's own exclusion patterns
+    /// are what tell the two apart - not what a traversal still reaches, which review found saying
+    /// the opposite thing under a change that removes the last reference to such a project. One the
+    /// diff itself declares test support <em>is</em> reported, on purpose: that opt-out comes from a
+    /// project file the change may have just written.
     /// </para>
     /// </remarks>
     public IReadOnlyList<string> CoverageLost { get; }

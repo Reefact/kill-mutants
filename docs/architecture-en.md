@@ -62,10 +62,18 @@ Concretely, one run is:
 
 ## 4. How the conceptual concerns map onto code
 
-The concerns below are kept distinct as namespaces and types. They are deliberately **not** kept
-distinct as assemblies: for milestone 1 that would be thirteen projects for a few hundred lines,
-which is the premature structure this project set out to avoid. Splitting later is cheap; the
-namespace boundaries are already where the assembly boundaries would go.
+The concerns below are kept distinct as namespaces and types. Most of them share one assembly: for
+milestone 1, thirteen projects for a few hundred lines would have been the premature structure this
+project set out to avoid, and the namespace boundaries sit where assembly boundaries would go.
+
+Three assemblies do exist, and the split is load-bearing rather than cosmetic. `KillMutants.Core`
+declares `IChangeSource` and `ICodeSnapshot` — what a partial run needs from whatever knows what
+changed — and implements neither; it names no implementation anywhere, so it cannot reach one even
+by accident. `KillMutants.Git` implements them and references the core. `KillMutants.Platform` holds
+what both need from the operating system — running a process under a time budget, deleting a
+temporary directory without ever failing a run over it — so that neither has to name the other to
+share it. The CLI is the only place that knows git is what answers today, which is where composition
+belongs. See DEC0011 for what the contract is for.
 
 | Concern | Namespace | Notes |
 |---|---|---|
