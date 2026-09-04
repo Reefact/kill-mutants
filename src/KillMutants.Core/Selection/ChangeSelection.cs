@@ -393,7 +393,7 @@ internal sealed class ChangeSelection
             {
                 foreach (string consumer in consumers)
                 {
-                    attributed |= AttributeToConsumer(change, consumer, widened, touchedTestProjects);
+                    attributed |= WidenConsumer(consumer, widened, touchedTestProjects);
                 }
             }
 
@@ -422,8 +422,7 @@ internal sealed class ChangeSelection
         /// carry generated paths - so there is no precise selection to make here. What a changed
         /// generator can do is change every one of those trees, which is the whole project.
         /// </remarks>
-        private bool AttributeToConsumer(
-            FileChange change,
+        private bool WidenConsumer(
             string consumer,
             HashSet<string> widened,
             HashSet<string> touchedTestProjects)
@@ -807,7 +806,7 @@ internal sealed class ChangeSelection
             return consumers;
         }
 
-        /// <summary>Widens every project beneath a directory, and marks its suites touched.</summary>
+        /// <summary>Gives every project beneath a directory the role it holds, wherever from.</summary>
         private void WidenBeneath(
             HashSet<string> widened,
             HashSet<string> touchedTestProjects,
@@ -829,6 +828,34 @@ internal sealed class ChangeSelection
                 if (IsUnder(Path.GetDirectoryName(testProject), directory))
                 {
                     touchedTestProjects.Add(testProject);
+                }
+            }
+
+            // Two more roles, and review found them missing. The loops above know what sits under
+            // the path; these know what reaches into it from outside. A library the run leaves out,
+            // or a generator, is neither a target beneath nor a suite beneath - so a component that
+            // moved changed what its consumers compile, and nothing was selected. The role travels
+            // here exactly as it would for a changed file inside one of those projects, because a
+            // source that can only name the component has said the same thing about all of them.
+            foreach ((string project, IReadOnlyList<string> reachedBy) in discovered.LeftOut)
+            {
+                if (IsUnder(Path.GetDirectoryName(project), directory))
+                {
+                    foreach (string testProject in reachedBy)
+                    {
+                        touchedTestProjects.Add(testProject);
+                    }
+                }
+            }
+
+            foreach ((string generator, IReadOnlyList<string> consumers) in discovered.AnalyzerConsumers)
+            {
+                if (IsUnder(Path.GetDirectoryName(generator), directory))
+                {
+                    foreach (string consumer in consumers)
+                    {
+                        WidenConsumer(consumer, widened, touchedTestProjects);
+                    }
                 }
             }
         }
