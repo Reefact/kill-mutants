@@ -875,6 +875,141 @@ public class SinceRunTests
     }
 
     /// <summary>
+    /// A suite that stops being one is read as a former suite even when it becomes something else.
+    /// </summary>
+    /// <remarks>
+    /// Review found this. Whether a project stopped being a suite is a question about the earlier
+    /// state, and it was being asked only of changes nothing else had claimed. A project file that
+    /// disables its own suite usually claims nothing - which is why the rule worked - but the same
+    /// edit can hand the project another role in the same breath: <c>Domain.Tests</c> stops being a
+    /// test project and becomes a target for the suite that already referenced it. Its change is
+    /// then attributed to that target, and the question is never asked.
+    /// <para>
+    /// The cost is not a report that lies about mutants, it is a report that measures too few. The
+    /// earlier state's traversal from the surviving suite stops at <c>Domain.Tests</c>, because that
+    /// project was a suite then, so <c>Domain</c> - everything the disabled suite used to exercise -
+    /// is never widened.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task A_suite_that_becomes_a_target_is_still_read_as_a_former_suite()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        // The surviving suite already reaches the other one, which is what lets it become a target
+        // the moment it stops being a suite.
+        string surviving = Path.Combine(fixture.Root, "Core.Tests", "Core.Tests.csproj");
+
+        File.WriteAllText(
+            surviving,
+            File.ReadAllText(surviving).Replace(
+                """<ItemGroup><ProjectReference Include="../Core/Core.csproj" /></ItemGroup>""",
+                """
+                <ItemGroup>
+                  <ProjectReference Include="../Core/Core.csproj" />
+                  <ProjectReference Include="../Domain.Tests/Domain.Tests.csproj" />
+                </ItemGroup>
+                """,
+                StringComparison.Ordinal));
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+
+        // The change: no longer a test project, and nothing else about it moves.
+        string former = Path.Combine(fixture.Root, "Domain.Tests", "Domain.Tests.csproj");
+
+        File.WriteAllText(
+            former,
+            File.ReadAllText(former)
+                .Replace("    <OutputType>Exe</OutputType>\n", string.Empty, StringComparison.Ordinal)
+                .Replace(
+                    """<ItemGroup><Using Include="Xunit" /></ItemGroup>""",
+                    string.Empty,
+                    StringComparison.Ordinal)
+                .Replace(
+                    """<ItemGroup><PackageReference Include="xunit.v3.mtp-v2" Version="4.0.0" /></ItemGroup>""",
+                    string.Empty,
+                    StringComparison.Ordinal));
+
+        // Rewritten because its tests would not compile without xUnit, and a run that stops at the
+        // build never reaches the selection this is about.
+        File.WriteAllText(
+            Path.Combine(fixture.Root, "Domain.Tests", "BasketTests.cs"),
+            """
+            namespace Domain.Tests;
+
+            public static class BasketHelp
+            {
+                public static int Twice(int value) => value * 2;
+            }
+            """);
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        // What the disabled suite used to exercise, still a target through the surviving suite.
+        Assert.Contains("Basket.cs", MutatedFiles(report));
+    }
+
+    /// <summary>
+    /// A shared build file can stop a suite being a suite, from above it.
+    /// </summary>
+    /// <remarks>
+    /// The other half of the finding above, and it needed one more thing. A
+    /// <c>tests/Directory.Build.props</c> can set a property that disables every suite beneath it -
+    /// here <c>KillMutantsTestSupport</c>, which a suite does not set itself, so the file's value
+    /// survives. The file is claimed for the suites beneath it long before the former-suite question
+    /// is asked, and the projects it disabled are no longer among them, so it widened nothing and
+    /// nothing was left unclaimed: the run returned without reading the earlier state at all.
+    /// <para>
+    /// The containment runs the other way here. Elsewhere a change speaks for the project whose
+    /// folder holds it; a shared build file speaks for every project the folder <em>holds</em>.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task A_build_file_that_disables_a_suite_reports_the_coverage_it_took_away()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        MoveIntoTestsDirectory(fixture, "Domain.Tests");
+
+        string props = Path.Combine(fixture.Root, "tests", "Directory.Build.props");
+
+        File.WriteAllText(
+            props,
+            """
+            <Project>
+              <PropertyGroup>
+                <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+
+        // The change: every project beneath tests/ declares itself test support, so Domain.Tests
+        // stops being a suite without a line of its own moving. Core.Tests sits outside and keeps
+        // discovery valid, which is what makes the run look healthy.
+        File.WriteAllText(
+            props,
+            """
+            <Project>
+              <PropertyGroup>
+                <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+                <KillMutantsTestSupport>true</KillMutantsTestSupport>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        // Domain was exercised by that suite and by nothing else; the run has to say so rather than
+        // finish empty over the coverage the change removed.
+        Assert.True(report.LostCoverage);
+        Assert.Contains(
+            report.CoverageLost,
+            path => path.EndsWith("Domain.csproj", StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// Two projects can share a directory, and a partial run has to survive it.
     /// </summary>
     /// <remarks>
