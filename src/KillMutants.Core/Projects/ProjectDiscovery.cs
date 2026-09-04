@@ -214,6 +214,14 @@ internal sealed class ProjectDiscovery
                     mutablePath, frameworksByProject[mutablePath].Single(), cancellationToken)
                 .ConfigureAwait(false);
 
+            // And recorded, replacing what the framework-less evaluation said this project consumes.
+            // Measured: an item conditioned on '$(TargetFramework)' is absent from the outer build of
+            // a multi-targeted project, where that property is empty - asked for AdditionalFiles, the
+            // outer evaluation answers with the unconditioned file alone. A partial run has to
+            // attribute a changed file from the same evaluation the mutated compilation comes from,
+            // which is this one.
+            Record(facts);
+
             targets.Add(new MutationTestTarget(
                 new ProjectUnderTest(
                     facts.ProjectPath, facts.Directory, facts.AssemblyFileName, facts.TargetFramework),
@@ -366,7 +374,13 @@ internal sealed class ProjectDiscovery
                 _analyzerConsumers[generator] = consumers = [];
             }
 
-            consumers.Add(facts.ProjectPath);
+            // Guarded because a project can be recorded twice: once from the sweep, once for the
+            // framework its suites load. Widening is idempotent, so a duplicate changes no outcome,
+            // but this list is answered to callers and a repeated consumer is not an answer.
+            if (!consumers.Contains(facts.ProjectPath, ProjectPaths.Comparer))
+            {
+                consumers.Add(facts.ProjectPath);
+            }
         }
     }
 

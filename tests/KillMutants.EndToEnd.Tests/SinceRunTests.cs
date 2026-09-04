@@ -825,6 +825,56 @@ public class SinceRunTests
     }
 
     /// <summary>
+    /// What a project consumes is read for the framework its tests actually load.
+    /// </summary>
+    /// <remarks>
+    /// Review found this, and measuring it settled it. MSBuild evaluated without a
+    /// <c>TargetFramework</c> is the outer build of a multi-targeted project, where
+    /// <c>$(TargetFramework)</c> is empty and every item conditioned on it is simply absent:
+    /// asked for <c>AdditionalFiles</c>, the outer evaluation of this fixture answers with the
+    /// unconditioned file alone, while <c>-p:TargetFramework=net10.0</c> answers with both.
+    /// <para>
+    /// So a file the mutated compilation genuinely reads was invisible to the evaluation that
+    /// records what each project consumes, and changing it was attributed to nothing at all. The
+    /// facts resolved for the framework a suite loads are now recorded too, which is the same
+    /// evaluation the compilation under test comes from.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task A_framework_conditional_input_is_attributed_to_the_project_that_reads_it()
+    {
+        using var fixture = FixtureCopy.CreateMultiTargetedProject();
+
+        Directory.CreateDirectory(Path.Combine(fixture.Root, "shared"));
+        File.WriteAllText(Path.Combine(fixture.Root, "shared", "options.json"), "{}");
+
+        string project = Path.Combine(fixture.Root, "Sample.Library", "Sample.Library.csproj");
+
+        File.WriteAllText(
+            project,
+            File.ReadAllText(project).Replace(
+                "</Project>",
+                """
+                  <ItemGroup>
+                    <AdditionalFiles Include="../shared/options.json"
+                                     Condition="'$(TargetFramework)' == 'net10.0'" />
+                  </ItemGroup>
+                </Project>
+                """,
+                StringComparison.Ordinal));
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+
+        File.WriteAllText(
+            Path.Combine(fixture.Root, "shared", "options.json"),
+            """{ "rounding": "up" }""");
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        Assert.Contains("Ages.cs", MutatedFiles(report));
+    }
+
+    /// <summary>
     /// Two projects can share a directory, and a partial run has to survive it.
     /// </summary>
     /// <remarks>
