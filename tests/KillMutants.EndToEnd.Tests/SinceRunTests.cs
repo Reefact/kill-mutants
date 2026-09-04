@@ -539,9 +539,16 @@ public class SinceRunTests
     /// <para>
     /// Reading the code properly is better than refusing to. <c>export-ignore</c> shapes an archive
     /// and means nothing to a checkout, so a worktree simply has the project. What was a refusal is
-    /// now an ordinary run, and this asserts the reading: <c>Domain.Tests</c> touched, and
-    /// <c>Basket.cs</c> - which lives in the directory the attribute excludes from archives - judged
-    /// through the base graph like any other.
+    /// now an ordinary run.
+    /// </para>
+    /// <para>
+    /// The assertion asks something only the earlier state can answer, and review found that it did
+    /// not. It used to touch a <c>.cs</c> file in the suite, which the ordinary rule attributes: the
+    /// suite is marked touched and everything it exercises is widened from the current state alone,
+    /// before the earlier one is read at all. <c>Basket.cs</c> appeared whether or not the project
+    /// under <c>export-ignore</c> had been read, so the test proved only that the run did not throw.
+    /// The reference is removed instead, so nothing current reaches <c>Domain</c> and the coverage it
+    /// lost is knowable only from a graph that has the project in it.
     /// </para>
     /// </remarks>
     [Fact]
@@ -552,11 +559,36 @@ public class SinceRunTests
         File.WriteAllText(Path.Combine(fixture.Root, ".gitattributes"), "Domain/ export-ignore\n");
 
         FixtureRepository.InitialiseAt(fixture.Root);
-        Touch(fixture, "Domain.Tests", "BasketTests.cs");
+
+        // The reference goes, so nothing in the current state reaches Domain: whether it was ever
+        // covered is a question only the earlier state can answer, and only if Domain was read there.
+        string project = Path.Combine(fixture.Root, "Domain.Tests", "Domain.Tests.csproj");
+
+        File.WriteAllText(
+            project,
+            File.ReadAllText(project).Replace(
+                """<ItemGroup><ProjectReference Include="../Domain/Domain.csproj" /></ItemGroup>""",
+                string.Empty,
+                StringComparison.Ordinal));
+
+        File.WriteAllText(
+            Path.Combine(fixture.Root, "Domain.Tests", "BasketTests.cs"),
+            """
+            namespace Domain.Tests;
+
+            public class BasketTests
+            {
+                [Fact]
+                public void Nothing_is_asserted_about_the_basket_any_more() => Assert.True(true);
+            }
+            """);
 
         MutationTestReport report = await RunSinceHeadAsync(fixture);
 
-        Assert.Contains("Basket.cs", MutatedFiles(report));
+        Assert.True(report.LostCoverage);
+        Assert.Contains(
+            report.CoverageLost,
+            path => path.EndsWith("Domain.csproj", StringComparison.Ordinal));
     }
 
     /// <summary>
