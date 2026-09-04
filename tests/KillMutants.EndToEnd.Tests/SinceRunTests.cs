@@ -1302,6 +1302,82 @@ public class SinceRunTests
     }
 
     /// <summary>
+    /// A component carrying source and no project of its own still reaches its consumers.
+    /// </summary>
+    /// <remarks>
+    /// Review found the last way a component reaches out that widening beneath it did not know.
+    /// Every rule there is keyed on a <em>project</em> sitting under the path - a target beneath, a
+    /// suite beneath, a left-out library beneath, a generator beneath - and a component that holds
+    /// nothing but <c>.cs</c> files puts no project there at all. A
+    /// <c>&lt;Compile Include="../libs/Shared/*.cs" /&gt;</c> from outside is the whole relation, and
+    /// it is between a project and a <em>file</em>.
+    /// <para>
+    /// So the component moved, code the run genuinely compiles and mutates changed, and nothing was
+    /// selected. What reads a file is already indexed for ordinary changes; the component now asks
+    /// that index the same question about everything beneath it.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task A_component_carrying_only_source_widens_the_projects_that_compile_it()
+    {
+        using var outer = FixtureCopy.CreateMultiProject();
+        using var shared = FixtureCopy.Create();
+
+        // Stripped to source alone: this component carries code and owns no project, which is what
+        // makes every project-keyed rule blind to it.
+        foreach (string directory in Directory.GetDirectories(shared.Root))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+
+        foreach (string file in Directory.GetFiles(shared.Root))
+        {
+            File.Delete(file);
+        }
+
+        File.WriteAllText(
+            Path.Combine(shared.Root, "Shared.cs"),
+            """
+            namespace Shared;
+
+            public static class Rates
+            {
+                public static int Apply(int amount, int rate) => amount * rate;
+            }
+            """);
+
+        FixtureRepository.InitialiseAt(shared.Root);
+        FixtureRepository.InitialiseAt(outer.Root);
+        FixtureRepository.AddSubmodule(outer.Root, shared.Root, "libs/Shared");
+
+        string core = Path.Combine(outer.Root, "Core", "Core.csproj");
+
+        File.WriteAllText(
+            core,
+            File.ReadAllText(core).Replace(
+                "</Project>",
+                """
+                  <ItemGroup><Compile Include="../libs/Shared/*.cs" /></ItemGroup>
+                </Project>
+                """,
+                StringComparison.Ordinal));
+
+        FixtureRepository.CommitAll(outer.Root, "Core compiles the component's source");
+
+        // The component moves on: the outer diff is its own path and nothing beneath it.
+        File.AppendAllText(
+            Path.Combine(shared.Root, "Shared.cs"),
+            $"{Environment.NewLine}// moved on{Environment.NewLine}");
+
+        FixtureRepository.CommitAll(shared.Root, "the component moves on");
+        FixtureRepository.BumpSubmodule(outer.Root, "libs/Shared");
+
+        MutationTestReport report = await RunSinceHeadAsync(outer);
+
+        Assert.Contains("Shared.cs", MutatedFiles(report));
+    }
+
+    /// <summary>
     /// Two projects can share a directory, and a partial run has to survive it.
     /// </summary>
     /// <remarks>

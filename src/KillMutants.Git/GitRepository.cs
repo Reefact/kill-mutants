@@ -103,7 +103,7 @@ internal sealed class GitRepository
         // provided, and the destination says nothing about that. See DEC0011.
         string diff = await RunRawAsync(
                 Root,
-                ["diff", "--no-renames", "--name-status", "-z", baseRevision],
+                ["diff", "--no-renames", "--raw", "-z", baseRevision],
                 $"The change since '{baseRevision}' could not be read.",
                 cancellationToken)
             .ConfigureAwait(false);
@@ -115,7 +115,7 @@ internal sealed class GitRepository
                 cancellationToken)
             .ConfigureAwait(false);
 
-        List<FileChange> changes = [.. ReadNameStatus(diff)];
+        List<FileChange> changes = [.. ReadRaw(diff)];
 
         changes.AddRange(Split(untracked).Select(path => new FileChange(Absolute(path), ChangeKind.Added)));
 
@@ -443,16 +443,41 @@ internal sealed class GitRepository
     }
 
 
-    /// <summary>Reads git's <c>--name-status -z</c> output: a status, then a path, then repeat.</summary>
-    private IEnumerable<FileChange> ReadNameStatus(string output)
+    /// <summary>Reads git's <c>--raw -z</c> output: a record, then a path, then repeat.</summary>
+    /// <remarks>
+    /// <c>--raw</c> rather than <c>--name-status</c> for one field: the modes.
+    /// <code>
+    /// :160000 160000 b9ab3c1 0000000 M\0libs/Core\0
+    /// :100644 100644 13e7564 0000000 M\0o.txt\0
+    /// </code>
+    /// Mode <c>160000</c> is a gitlink, which is git's way of saying "a whole component lives here
+    /// and I am tracking it as one thing". Saying so is the source's job: the core used to infer it
+    /// from whether the path was a directory on disk, which cannot be right for a component the
+    /// change removed - measured, a removal reads <c>:160000 000000 … D</c>, and the old mode is
+    /// what still identifies it.
+    /// </remarks>
+    private IEnumerable<FileChange> ReadRaw(string output)
     {
         string[] fields = [.. Split(output)];
 
         for (int index = 0; index + 1 < fields.Length; index += 2)
         {
-            yield return new FileChange(Absolute(fields[index + 1]), KindOf(fields[index]));
+            string[] parts = fields[index].TrimStart(':').Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+            if (parts.Length < 5)
+            {
+                continue;
+            }
+
+            yield return new FileChange(
+                Absolute(fields[index + 1]),
+                KindOf(parts[^1]),
+                IsWholeComponent: parts[0] == Gitlink || parts[1] == Gitlink);
         }
     }
+
+    /// <summary>The mode git records for a gitlink: a component tracked as one entry.</summary>
+    private const string Gitlink = "160000";
 
     /// <summary>
     /// Reads one of git's status letters, conservatively.

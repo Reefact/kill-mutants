@@ -256,12 +256,15 @@ internal sealed class ChangeSelection
 
             foreach (FileChange change in changes)
             {
-                // A directory, not a file: a source names a whole component this way when it cannot
-                // say more - a component whose contents it tracks as one opaque unit reports the
-                // component's own path and nothing beneath it. Everything after this reads the
-                // path's parent directory, which for a directory is the wrong project entirely, so
-                // the whole subtree is taken conservatively before anything else looks at it.
-                if (Directory.Exists(change.Path))
+                // A whole component, said by the source rather than guessed here. Everything after
+                // this reads the path's parent directory, which for a subtree is the wrong project
+                // entirely, so it is taken conservatively before anything else looks at it.
+                //
+                // Review found the guess: this asked whether the path was a directory on disk, which
+                // is a question about the code as it is now. A component the change *removed* is not
+                // there any more, so the answer was "file", the path matched no project, and the run
+                // passed over a subtree that had gone.
+                if (change.IsWholeComponent)
                 {
                     WidenBeneath(widened, touchedTestProjects, change.Path);
 
@@ -711,10 +714,14 @@ internal sealed class ChangeSelection
                     continue;
                 }
 
-                // A shared build file decides what the projects beneath it evaluate to, so it can
-                // stop one being a suite from above rather than from inside its folder. Every other
-                // change speaks for the project whose directory holds it.
-                string? from = IsSharedBuildFile(relative) ? RelativePath.DirectoryOf(relative) : null;
+                // Two kinds of change speak for what is beneath them rather than for the project
+                // whose folder holds them: a shared build file, which decides what those projects
+                // evaluate to, and a whole component, which is the source saying it can name no
+                // more than the subtree. Review found the second missing here.
+                string? from =
+                    change.IsWholeComponent ? relative
+                    : IsSharedBuildFile(relative) ? RelativePath.DirectoryOf(relative)
+                    : null;
 
                 foreach (string project in candidates)
                 {
@@ -861,6 +868,24 @@ internal sealed class ChangeSelection
                 if (IsUnder(Path.GetDirectoryName(testProject), directory))
                 {
                     touchedTestProjects.Add(testProject);
+                }
+            }
+
+            // A file inside the component, compiled or carried by a project outside it. Review
+            // found this the last way a component reaches out that the loops here did not know:
+            // every one of them is keyed on a *project* sitting under the path, and a
+            // `<Compile Include="../vendor/shared/**/*.cs" />` puts no project there at all. What
+            // changed is a file, and the projects that read it are exactly what this index answers.
+            foreach ((string file, List<string> consumers) in _consumersByFile)
+            {
+                if (!IsUnder(Path.GetDirectoryName(file), directory))
+                {
+                    continue;
+                }
+
+                foreach (string consumer in consumers)
+                {
+                    WidenConsumer(consumer, widened, touchedTestProjects);
                 }
             }
 
