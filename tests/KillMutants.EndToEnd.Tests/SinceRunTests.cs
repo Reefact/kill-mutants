@@ -1243,6 +1243,65 @@ public class SinceRunTests
     }
 
     /// <summary>
+    /// A component inside a component is laid out too, rather than left as an empty directory.
+    /// </summary>
+    /// <remarks>
+    /// Review found this, and it is the failure the whole snapshot design exists to prevent. A
+    /// gitlink recorded <em>inside</em> a submodule is invisible to the parent's listing - the
+    /// listing cannot descend, the objects are not there - so enumerating once from the parent found
+    /// the first level and stopped. The level below was neither laid out nor reported absent, so the
+    /// snapshot came back claiming to be complete while a whole subtree of it was an empty
+    /// directory, and the earlier state's graph read that emptiness as an answer: no such project,
+    /// therefore no edge, therefore nothing lost.
+    /// <para>
+    /// The deep library's source file is renamed so the assertion cannot be satisfied by the middle
+    /// component's copy of it.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task A_component_inside_a_component_is_read_as_it_was()
+    {
+        using var outer = FixtureCopy.CreateMultiProject();
+        using var middle = FixtureCopy.Create();
+        using var deep = FixtureCopy.Create();
+
+        // Renamed so that "was the deep one read" is a question the file name can answer.
+        File.Move(
+            Path.Combine(deep.Root, "Sample.Library", "Ages.cs"),
+            Path.Combine(deep.Root, "Sample.Library", "DeepAges.cs"));
+
+        FixtureRepository.InitialiseAt(deep.Root);
+        FixtureRepository.InitialiseAt(middle.Root);
+        FixtureRepository.AddSubmodule(middle.Root, deep.Root, "vendor/Deep");
+
+        FixtureRepository.InitialiseAt(outer.Root);
+        FixtureRepository.AddSubmodule(outer.Root, middle.Root, "libs/Mid");
+        FixtureRepository.InitialiseSubmodulesRecursively(outer.Root);
+
+        Reference(
+            outer,
+            "Domain.Tests",
+            "Domain.Tests.csproj",
+            "../libs/Mid/vendor/Deep/Sample.Library/Sample.Library.csproj");
+
+        FixtureRepository.CommitAll(outer.Root, "the suite reaches into the innermost component");
+
+        string project = Path.Combine(outer.Root, "Domain.Tests", "Domain.Tests.csproj");
+
+        File.WriteAllText(
+            project,
+            File.ReadAllText(project).Replace(
+                """<ItemGroup><ProjectReference Include="../libs/Mid/vendor/Deep/Sample.Library/Sample.Library.csproj" /></ItemGroup>""",
+                string.Empty,
+                StringComparison.Ordinal));
+
+        MutationTestReport report = await RunSinceHeadAsync(outer);
+
+        // Reached in the earlier state through the reference this change removed, two levels down.
+        Assert.Contains("DeepAges.cs", MutatedFiles(report));
+    }
+
+    /// <summary>
     /// Two projects can share a directory, and a partial run has to survive it.
     /// </summary>
     /// <remarks>

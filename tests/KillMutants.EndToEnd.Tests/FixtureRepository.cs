@@ -54,6 +54,18 @@ internal static class FixtureRepository
         CommitAll(root, $"add {path} as a submodule");
     }
 
+    /// <summary>Checks out every submodule, and every submodule inside those.</summary>
+    /// <remarks>
+    /// <c>submodule add</c> clones one level. A repository whose submodule records a submodule of
+    /// its own needs this, and it is the state a developer's checkout is actually in - which is why
+    /// a snapshot that stopped at the first level was reading an empty directory where their build
+    /// reads code.
+    /// </remarks>
+    public static void InitialiseSubmodulesRecursively(string root)
+    {
+        Run(root, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--recursive", "-q");
+    }
+
     /// <summary>Empties a submodule's working tree, the way a fresh clone leaves it.</summary>
     /// <remarks>
     /// The objects stay under <c>.git/modules</c>; what goes is the checkout. That is the state a
