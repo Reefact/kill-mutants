@@ -315,6 +315,7 @@ internal sealed class ChangeSelection
                     touchedTestProjects,
                     SuitesReaching(widened),
                     unattributed,
+                    changes,
                     cancellationToken)
                 .ConfigureAwait(false);
 
@@ -490,13 +491,18 @@ internal sealed class ChangeSelection
         /// reference the suite still has - so the old graph has to be asked - without changing
         /// anything about the rest of what that suite exercises, which is why these do not widen.
         /// </param>
-        /// <param name="unattributed">Changes no project claimed, which may name a former suite.</param>
+        /// <param name="unattributed">
+        /// Changes no project claimed. Only a count is wanted here: a change nothing claimed is a
+        /// reason to look at the earlier state at all, rather than return with nothing read.
+        /// </param>
+        /// <param name="changes">Every change, asked which projects stopped being suites.</param>
         /// <param name="cancellationToken">Cancels the traversal.</param>
         private async Task<IReadOnlyList<string>> WidenForTestsAsync(
             HashSet<string> widened,
             HashSet<string> touchedTestProjects,
             List<string> tracedAtBase,
             List<FileChange> unattributed,
+            IReadOnlyList<FileChange> changes,
             CancellationToken cancellationToken)
         {
             foreach (string testProject in touchedTestProjects)
@@ -509,9 +515,15 @@ internal sealed class ChangeSelection
                 }
             }
 
+            // Reading the earlier state costs an MSBuild evaluation, so it is not done for
+            // nothing - but "nothing" cannot mean "every change was claimed", which is what it meant
+            // until review found two ways a claimed change disables a suite. A project file or a
+            // shared build file is what decides whether a project still is one, and in the ordinary
+            // case such a change also widens or touches something, so this last clause never fires.
             if (touchedTestProjects.Count == 0 &&
                 tracedAtBase.Count == 0 &&
-                unattributed.Count == 0)
+                unattributed.Count == 0 &&
+                !changes.Any(change => DecidesWhatAProjectIs(change.Path)))
             {
                 return [];
             }
@@ -528,7 +540,7 @@ internal sealed class ChangeSelection
             // Files that belong to no test project now may belong to one in the earlier state -
             // the coverage edge vanishing one layer further out again. Asked of the graph, which
             // already knows every project that state held, rather than of the source a second time.
-            IReadOnlyList<string> formerTestProjects = FormerTestProjects(unattributed, graph);
+            IReadOnlyList<string> formerTestProjects = FormerTestProjects(changes, graph);
 
             // Two kinds of root, and review found that treating them alike undid the point of
             // separating them in the first place. A suite the change touched, or one that stopped
@@ -649,12 +661,19 @@ internal sealed class ChangeSelection
         /// change can leave a test project's file exactly where it is and stop it being a test
         /// project - flip its <c>OutputType</c>, declare it test support, drop the package - and the
         /// suite is just as disabled as if it had been deleted.
+        /// <para>
+        /// Asked of every change rather than of the ones nothing else claimed, which review found
+        /// twice. Attribution says what a change <em>selects</em>; this asks what it <em>disabled</em>,
+        /// and one file does both: a project file that stops its suite being a suite can hand the
+        /// project another role in the same edit, and a shared build file is claimed for the suites
+        /// beneath it before it is ever read here.
+        /// </para>
         /// </remarks>
         private IReadOnlyList<string> FormerTestProjects(
-            List<FileChange> unattributed,
+            IReadOnlyList<FileChange> changes,
             BaseProjectGraph graph)
         {
-            if (unattributed.Count == 0)
+            if (changes.Count == 0)
             {
                 return [];
             }
@@ -679,16 +698,24 @@ internal sealed class ChangeSelection
 
             HashSet<string> owning = new(RelativePath.Comparer);
 
-            foreach (FileChange change in unattributed)
+            foreach (FileChange change in changes)
             {
                 if (RelativePathOf(change.Path) is not { } relative)
                 {
                     continue;
                 }
 
+                // A shared build file decides what the projects beneath it evaluate to, so it can
+                // stop one being a suite from above rather than from inside its folder. Every other
+                // change speaks for the project whose directory holds it.
+                string? from = IsSharedBuildFile(relative) ? RelativePath.DirectoryOf(relative) : null;
+
                 foreach (string project in candidates)
                 {
-                    if (RelativePath.IsUnder(relative, RelativePath.DirectoryOf(project)))
+                    string directory = RelativePath.DirectoryOf(project);
+
+                    if (RelativePath.IsUnder(relative, directory) ||
+                        (from is not null && RelativePath.IsUnder(directory, from)))
                     {
                         owning.Add(project);
                     }
@@ -890,6 +917,11 @@ internal sealed class ChangeSelection
 
         private static bool IsCSharp(string path) =>
             path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>True when a change can alter what a project <em>is</em>, not only what it holds.</summary>
+        private static bool DecidesWhatAProjectIs(string path) =>
+            IsSharedBuildFile(path) ||
+            path.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase);
 
         private static string Short(string label) => label.Length > 12 ? label[..12] : label;
     }
