@@ -1141,6 +1141,108 @@ public class SinceRunTests
     }
 
     /// <summary>
+    /// A renamed component is read from wherever its objects actually are.
+    /// </summary>
+    /// <remarks>
+    /// Review found this, and measuring it settled how bad it was. The store a submodule's objects
+    /// live in was assembled from the gitlink's path - the layout <c>git submodule add</c> happens
+    /// to produce - and a rename breaks that: measured, after <c>git mv libs/Old libs/Sample</c> the
+    /// tree records the gitlink at <c>libs/Sample</c> while the objects stay under
+    /// <c>.git/modules/libs/Old</c>. The component was then declared absent although its working
+    /// tree is fully populated, and the run refused to read the earlier state at all. A run started
+    /// inside a <c>git worktree</c> had it worse: there is no <c>.git</c> directory there, so every
+    /// component was absent.
+    /// <para>
+    /// git is asked instead, and the answer compared against the outer repository's own git
+    /// directory - because git walks upwards, and an uninitialised component's empty directory
+    /// answers with the parent's. That comparison is what still reports a genuinely absent one.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task A_renamed_component_is_read_from_where_its_objects_are()
+    {
+        using var outer = FixtureCopy.CreateMultiProject();
+        using var inner = FixtureCopy.Create();
+
+        FixtureRepository.InitialiseAt(inner.Root);
+        FixtureRepository.InitialiseAt(outer.Root);
+        FixtureRepository.AddSubmodule(outer.Root, inner.Root, "libs/Old");
+        FixtureRepository.MoveSubmodule(outer.Root, "libs/Old", "libs/Sample");
+
+        Reference(
+            outer,
+            "Domain.Tests",
+            "Domain.Tests.csproj",
+            "../libs/Sample/Sample.Library/Sample.Library.csproj");
+
+        FixtureRepository.CommitAll(outer.Root, "the suite reaches into the component");
+
+        string project = Path.Combine(outer.Root, "Domain.Tests", "Domain.Tests.csproj");
+
+        File.WriteAllText(
+            project,
+            File.ReadAllText(project).Replace(
+                """<ItemGroup><ProjectReference Include="../libs/Sample/Sample.Library/Sample.Library.csproj" /></ItemGroup>""",
+                string.Empty,
+                StringComparison.Ordinal));
+
+        MutationTestReport report = await RunSinceHeadAsync(outer);
+
+        // Reached in the earlier state through the reference this change removed, which is only
+        // knowable if the component was read at all.
+        Assert.Contains("Ages.cs", MutatedFiles(report));
+    }
+
+    /// <summary>
+    /// A component that genuinely is not here stops the run rather than being read as empty.
+    /// </summary>
+    /// <remarks>
+    /// The other side of the rename above, and it had nothing pinning it. What reports a component
+    /// absent was rewritten to ask git instead of assembling a path, and nothing would have noticed
+    /// if that rewrite had reported nothing absent at all - the refusal would simply have stopped
+    /// happening, and a run would have read an empty directory as an answer.
+    /// <para>
+    /// Absent means the objects are not here: a fresh clone before <c>submodule update --init</c>.
+    /// No amount of local work produces them, so the run says what it could not compare instead of
+    /// claiming it compared it.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task A_component_whose_contents_are_not_here_stops_the_run()
+    {
+        using var outer = FixtureCopy.CreateMultiProject();
+        using var inner = FixtureCopy.Create();
+
+        FixtureRepository.InitialiseAt(inner.Root);
+        FixtureRepository.InitialiseAt(outer.Root);
+        FixtureRepository.AddSubmodule(outer.Root, inner.Root, "libs/Sample");
+
+        Reference(
+            outer,
+            "Domain.Tests",
+            "Domain.Tests.csproj",
+            "../libs/Sample/Sample.Library/Sample.Library.csproj");
+
+        FixtureRepository.CommitAll(outer.Root, "the suite reaches into the component");
+
+        string project = Path.Combine(outer.Root, "Domain.Tests", "Domain.Tests.csproj");
+
+        File.WriteAllText(
+            project,
+            File.ReadAllText(project).Replace(
+                """<ItemGroup><ProjectReference Include="../libs/Sample/Sample.Library/Sample.Library.csproj" /></ItemGroup>""",
+                string.Empty,
+                StringComparison.Ordinal));
+
+        FixtureRepository.DeinitialiseSubmodule(outer.Root, "libs/Sample");
+
+        ChangeSelectionException refusal = await Assert.ThrowsAsync<ChangeSelectionException>(
+            () => RunSinceHeadAsync(outer));
+
+        Assert.Contains("libs/Sample", refusal.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Two projects can share a directory, and a partial run has to survive it.
     /// </summary>
     /// <remarks>
