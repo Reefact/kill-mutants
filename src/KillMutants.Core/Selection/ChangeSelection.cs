@@ -687,9 +687,15 @@ internal sealed class ChangeSelection
             // test project purely because discovery, pointed elsewhere, had never seen it - and
             // if it reached an in-scope target in the earlier state, an unrelated change next
             // door widened that target and could fail the gate on its existing mutants.
+            // Left alone on purpose, and review found this the same false positive as the one in
+            // StoppedBeingCovered, one level up. Being a suite *now* is read from what discovery
+            // found, and discovery never evaluates an excluded project at all - so an excluded suite
+            // is absent from that set for a reason that has nothing to do with the change, and would
+            // always answer "stopped being a suite". The patterns are the instruction here too.
             string[] candidates = [.. graph.ProjectFiles
                 .Where(InScope)
-                .Where(path => !testProjectsNow.Contains(path))];
+                .Where(path => !testProjectsNow.Contains(path))
+                .Where(path => !ExcludedByConfiguration(RelativePath.In(source.Root, path)))];
 
             if (candidates.Length == 0)
             {

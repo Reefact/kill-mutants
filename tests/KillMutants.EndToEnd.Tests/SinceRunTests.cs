@@ -1022,6 +1022,125 @@ public class SinceRunTests
     }
 
     /// <summary>
+    /// A project the change itself declares to be test support has still lost its coverage.
+    /// </summary>
+    /// <remarks>
+    /// The same shape as a changed <c>killmutants.json</c>: an opt-out the change being judged
+    /// introduced cannot be taken at face value, or a pull request takes a project out of the targets
+    /// by writing one line in its own project file and passes. What separates this from the
+    /// legitimate case is where the opt-out comes from - the run's configuration, which a change
+    /// cannot alter without the run refusing to judge it at all, against a project file the diff may
+    /// have just written.
+    /// <para>
+    /// That distinction used to be drawn by subtracting the declared-support projects from what
+    /// discovery left out; it is now structural, because the check asks the exclusion patterns
+    /// directly and a path filter only ever answers about the run's own configuration.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task A_project_this_change_declares_test_support_is_still_reported_as_uncovered()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+
+        string project = Path.Combine(fixture.Root, "Core", "Core.csproj");
+
+        File.WriteAllText(
+            project,
+            File.ReadAllText(project).Replace(
+                "<Nullable>enable</Nullable>",
+                "<Nullable>enable</Nullable>" +
+                Environment.NewLine +
+                "    <KillMutantsTestSupport>true</KillMutantsTestSupport>",
+                StringComparison.Ordinal));
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        Assert.True(report.LostCoverage);
+        Assert.Contains(
+            report.CoverageLost,
+            path => path.EndsWith("Core.csproj", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Analyzer configuration is an input like any other, because a generator can read it.
+    /// </summary>
+    /// <remarks>
+    /// A generator reading <c>AnalyzerConfigOptionsProvider</c> emits different code for a different
+    /// option, so a diff touching only an <c>.editorconfig</c> changes the assembly under test. That
+    /// file sits outside every project directory, so only evaluated membership can attribute it -
+    /// and measured before relying on it, <c>EditorConfigFiles</c> answers from evaluation alone and
+    /// names the repository-root file.
+    /// </remarks>
+    [Fact]
+    public async Task A_changed_editorconfig_widens_the_projects_that_read_it()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        string editorconfig = Path.Combine(fixture.Root, ".editorconfig");
+
+        File.WriteAllText(editorconfig, $"root = true{Environment.NewLine}");
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+
+        File.AppendAllText(
+            editorconfig,
+            $"{Environment.NewLine}[*.cs]{Environment.NewLine}dotnet_diagnostic.CA1000.severity = none{Environment.NewLine}");
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        Assert.Contains("Money.cs", MutatedFiles(report));
+        Assert.Contains("Basket.cs", MutatedFiles(report));
+    }
+
+    /// <summary>
+    /// A suite the run excludes cannot become a former suite, whatever the change touches.
+    /// </summary>
+    /// <remarks>
+    /// Review found this, and it is the same false positive as the excluded-project one above, one
+    /// level up. Being a suite <em>now</em> is read from what discovery found, and discovery never
+    /// sees an excluded project at all - so an excluded suite is always a candidate for "stopped
+    /// being a suite", the earlier state agrees it was one, and it becomes a widening root. What it
+    /// reached and nothing else covers is then reported as coverage this change took away, when the
+    /// user's own <c>exclude</c> took it away before the diff existed.
+    /// <para>
+    /// The trigger is narrow, and worth stating so the test is not read as pinning more than it
+    /// does: a changed <c>.cs</c> file under the excluded suite never gets here, because it is
+    /// attributed as a source file and the run returns before the earlier state is read. It takes a
+    /// shared build file, or a project file - something that decides what a project <em>is</em>.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task An_excluded_suite_is_not_read_as_one_that_stopped_being_a_suite()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+
+        // A shared build file above everything: it decides what every project is, so the run has to
+        // read the earlier state rather than return.
+        File.AppendAllText(
+            Path.Combine(fixture.Root, "Directory.Build.props"),
+            $"{Environment.NewLine}<!-- touched -->{Environment.NewLine}");
+
+        // Domain.Tests is the only suite reaching Domain, and the run is told to leave that suite
+        // alone. Domain is therefore measured by nothing - by the user's instruction, not by this
+        // change - and the pattern deliberately does not cover Domain itself.
+        MutationTestReport report = await MutationTesting.RunAsync(
+            fixture.Root,
+            exclude: ["Domain.Tests/*"],
+            mutators: Families,
+            changes: await ChangesSinceHeadAsync(fixture.Root),
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.False(report.LostCoverage);
+        Assert.DoesNotContain(
+            report.CoverageLost,
+            path => path.EndsWith("Domain.csproj", StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// Two projects can share a directory, and a partial run has to survive it.
     /// </summary>
     /// <remarks>
