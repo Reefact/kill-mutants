@@ -1,4 +1,3 @@
-using System.Formats.Tar;
 using KillMutants.Processes;
 
 using KillMutants.Selection;
@@ -138,28 +137,6 @@ internal sealed class GitRepository
                     cancellationToken)
                 .ConfigureAwait(false));
 
-    /// <summary>Every file tracked at <paramref name="revision"/>, by repository path.</summary>
-    /// <remarks>
-    /// One cheap call that decides whether the base tree needs exporting at all: a change whose files
-    /// all sit in projects that still exist has nothing to ask the base revision that the head graph
-    /// cannot answer.
-    /// </remarks>
-    public async Task<IReadOnlyList<string>> ListFilesAsync(
-        string revision,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(revision);
-
-        string listing = await RunRawAsync(
-                Root,
-                ["ls-tree", "-r", "--name-only", "-z", revision],
-                $"The files at '{revision}' could not be listed.",
-                cancellationToken)
-            .ConfigureAwait(false);
-
-        return [.. Split(listing)];
-    }
-
     /// <summary>The submodule paths a revision records, as repository paths.</summary>
     /// <remarks>
     /// A submodule is a gitlink: one entry of mode <c>160000</c> naming a commit in another
@@ -236,30 +213,42 @@ internal sealed class GitRepository
 
         string destination = Path.Combine(Path.GetTempPath(), $"killmutants-base-{Guid.NewGuid():N}");
 
-        await RunRawAsync(
-                Root,
-                ["worktree", "add", "--quiet", "--detach", destination, revision],
-                $"The code at '{revision}' could not be laid out for reading.",
-                cancellationToken)
-            .ConfigureAwait(false);
-
-        List<string> laidOut = [];
+        List<Submodule> laidOut = [];
         List<string> missing = [];
 
+        // Inside the try that removes it, and review found it outside. Measured what git leaves when
+        // it is killed part way through - the caller cancels, or the budget expires on a large
+        // checkout: a registration carrying `locked = initializing`, which `git worktree prune` does
+        // not clear and which a single `--force` refuses to remove. Those would have accumulated in
+        // the user's own repository, one per attempt, each with a partial checkout beside it.
         try
         {
+            await RunRawAsync(
+                    Root,
+                    ["worktree", "add", "--quiet", "--detach", destination, revision],
+                    $"The code at '{revision}' could not be laid out for reading.",
+                    cancellationToken)
+                .ConfigureAwait(false);
+
             foreach (string path in await ListSubmodulePathsAsync(revision, cancellationToken)
                          .ConfigureAwait(false))
             {
-                if (await LayOutSubmoduleAsync(revision, path, destination, cancellationToken)
-                        .ConfigureAwait(false))
-                {
-                    laidOut.Add(path);
-                }
-                else
+                if (await ModuleDirectoryOfAsync(path, cancellationToken).ConfigureAwait(false)
+                    is not { } moduleDirectory)
                 {
                     missing.Add(path);
+
+                    continue;
                 }
+
+                // Recorded before the add is issued rather than after it returns. git registers a
+                // worktree as it starts, so one killed half way has already left a registration
+                // behind - and review found the record made on success only, which left exactly
+                // that case with nothing to remove it.
+                laidOut.Add(new Submodule(path, moduleDirectory));
+
+                await LayOutSubmoduleAsync(revision, path, moduleDirectory, destination, cancellationToken)
+                    .ConfigureAwait(false);
             }
         }
         catch
@@ -272,58 +261,103 @@ internal sealed class GitRepository
         return new Worktree(this, destination, laidOut, missing);
     }
 
-    /// <summary>
-    /// Lays one submodule out from its own object store, and says whether it could.
-    /// </summary>
+    /// <summary>Where a submodule's own objects live, or null when they are not here.</summary>
     /// <remarks>
-    /// A submodule the user never initialised has no objects here to lay out, and no amount of
-    /// local work will produce them. That is a snapshot that is incomplete rather than a run that
-    /// has failed: the caller reports what it could not compare instead of claiming it did.
+    /// Asked of git rather than assembled from the path, and review found why that matters.
+    /// <c>.git/modules/&lt;path&gt;</c> is the conventional layout and not a rule: measured, after
+    /// <c>git mv libs/Old libs/Core</c> the gitlink moves to the new path while the object store
+    /// stays at <c>.git/modules/libs/Old</c>, so an ordinary rename made this report a submodule
+    /// missing whose working tree is fully populated. A run started inside a <c>git worktree</c> has
+    /// no <c>.git</c> directory at all, and there every gitlink was reported missing.
+    /// <para>
+    /// The comparison against the outer repository is what keeps the answer honest. git walks
+    /// upwards, so asking an uninitialised submodule's empty directory answers with the parent's own
+    /// git directory - measured. Equal means this path is not a repository of its own, which is the
+    /// one case the caller reports as missing rather than fails on: those objects are not here, and
+    /// no amount of local work will produce them.
+    /// </para>
     /// </remarks>
-    private async Task<bool> LayOutSubmoduleAsync(
-        string revision,
-        string path,
-        string destination,
-        CancellationToken cancellationToken)
+    private async Task<string?> ModuleDirectoryOfAsync(string path, CancellationToken cancellationToken)
     {
-        // The conventional layout: `git submodule add` names the module after its path. A module
-        // named otherwise is not found here, and is reported missing rather than guessed at.
-        string moduleDirectory = Path.Combine(Root, ".git", "modules", path.Replace('/', Path.DirectorySeparatorChar));
+        string directory = Path.Combine(Root, path.Replace('/', Path.DirectorySeparatorChar));
 
-        if (!Directory.Exists(moduleDirectory))
+        if (!Directory.Exists(directory))
         {
-            return false;
+            return null;
         }
+
+        string outer = await RunAsync(
+                Root,
+                ["rev-parse", "--absolute-git-dir"],
+                "The repository's own git directory could not be read.",
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        string inner;
 
         try
         {
-            string commit = (await RunRawAsync(
-                    Root,
-                    ["rev-parse", $"{revision}:{path}"],
-                    $"The commit recorded for '{path}' could not be read.",
-                    cancellationToken)
-                .ConfigureAwait(false)).Trim();
-
-            await RunRawAsync(
-                    moduleDirectory,
-                    ["worktree", "add", "--quiet", "--detach", Path.Combine(destination, path), commit],
-                    $"The code of '{path}' could not be laid out for reading.",
+            inner = await RunAsync(
+                    directory,
+                    ["rev-parse", "--absolute-git-dir"],
+                    $"The git directory of '{path}' could not be read.",
                     cancellationToken)
                 .ConfigureAwait(false);
-
-            return true;
         }
         catch (ChangeSelectionException)
         {
-            return false;
+            return null;
         }
+
+        return SamePath(inner, outer) ? null : inner;
     }
+
+    /// <summary>Lays one submodule out from its own object store.</summary>
+    /// <remarks>
+    /// Nothing is caught here any more, and review found what the catch was hiding. It turned three
+    /// different things into the same silent "not present locally": a checkout that outran the
+    /// budget, a failure to run git at all, and git's own diagnostic on a non-zero exit. Only the
+    /// first of those is about the objects being absent, it is already answered by
+    /// <see cref="ModuleDirectoryOfAsync"/>, and the others are exactly the failures a user can act
+    /// on - once they are told, which they were not.
+    /// </remarks>
+    private async Task LayOutSubmoduleAsync(
+        string revision,
+        string path,
+        string moduleDirectory,
+        string destination,
+        CancellationToken cancellationToken)
+    {
+        string commit = await RunAsync(
+                Root,
+                ["rev-parse", $"{revision}:{path}"],
+                $"The commit recorded for '{path}' could not be read.",
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        await RunRawAsync(
+                moduleDirectory,
+                ["worktree", "add", "--quiet", "--detach", Path.Combine(destination, path), commit],
+                $"The code of '{path}' could not be laid out for reading.",
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>Two paths naming the same place, compared the way the filesystem would.</summary>
+    private static bool SamePath(string left, string right) =>
+        string.Equals(
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(left)),
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(right)),
+            OperatingSystem.IsLinux() ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A submodule laid out beneath the snapshot, and the store it was laid out from.</summary>
+    private sealed record Submodule(string Path, string ModuleDirectory);
 
     /// <summary>A worktree, and every worktree opened beneath it, removed together.</summary>
     private sealed class Worktree(
         GitRepository repository,
         string root,
-        IReadOnlyList<string> submodules,
+        IReadOnlyList<Submodule> submodules,
         IReadOnlyList<string> missing) : ICodeSnapshot
     {
         public string Root { get; } = root;
@@ -334,34 +368,39 @@ internal sealed class GitRepository
         /// Submodules first: each is a worktree of a different repository, and removing the parent
         /// would leave their registrations behind, pointing at a directory that no longer exists.
         /// Failures are swallowed on purpose - this runs while the run is ending, possibly because
-        /// of an error, and `git worktree prune` clears whatever is left whenever git next looks.
+        /// of an error, and one worktree that will not go is not worth failing over. What it is no
+        /// longer left to is `git worktree prune`: measured, prune does not clear a registration git
+        /// marked `locked`, which is exactly what it leaves behind when an add is killed part way.
         /// </remarks>
         public void Dispose()
         {
-            foreach (string path in submodules)
+            foreach (Submodule submodule in submodules)
             {
-                string moduleDirectory = Path.Combine(
-                    repository.Root, ".git", "modules", path.Replace('/', Path.DirectorySeparatorChar));
-
-                Remove(moduleDirectory, Path.Combine(Root, path));
+                Remove(submodule.ModuleDirectory, Path.Combine(Root, submodule.Path));
             }
 
             Remove(repository.Root, Root);
             Scratch.DeleteDirectory(Root);
         }
 
+        /// <remarks>
+        /// Twice forced, because once is not enough for the case this exists to clean up. Measured:
+        /// `git worktree remove --force` on a registration git left `locked` refuses outright and
+        /// says so - "use 'remove -f -f' to override or unlock first".
+        /// </remarks>
         private static void Remove(string gitDirectory, string worktree)
         {
             try
             {
                 GitRepository
-                    .RunRawAsync(gitDirectory, ["worktree", "remove", "--force", worktree], "", default)
+                    .RunRawAsync(
+                        gitDirectory, ["worktree", "remove", "--force", "--force", worktree], "", default)
                     .GetAwaiter()
                     .GetResult();
             }
             catch (Exception exception) when (exception is ChangeSelectionException or IOException)
             {
-                // Left for `git worktree prune`.
+                // One left behind is not worth failing a run that is already ending.
             }
         }
     }

@@ -54,6 +54,30 @@ internal static class FixtureRepository
         CommitAll(root, $"add {path} as a submodule");
     }
 
+    /// <summary>Empties a submodule's working tree, the way a fresh clone leaves it.</summary>
+    /// <remarks>
+    /// The objects stay under <c>.git/modules</c>; what goes is the checkout. That is the state a
+    /// repository is in before <c>submodule update --init</c>, and the one case where a component
+    /// genuinely cannot be read as it was.
+    /// </remarks>
+    public static void DeinitialiseSubmodule(string root, string path)
+    {
+        Run(root, "submodule", "deinit", "-f", path);
+    }
+
+    /// <summary>Renames a submodule's path, the way `git mv` does.</summary>
+    /// <remarks>
+    /// The gitlink moves and the object store does not: measured, after
+    /// <c>git mv libs/Old libs/Core</c> the tree records the gitlink at <c>libs/Core</c> while the
+    /// objects stay under <c>.git/modules/libs/Old</c>. That is an ordinary thing to do to a
+    /// repository, and it is what made assembling the store's path from the gitlink's wrong.
+    /// </remarks>
+    public static void MoveSubmodule(string root, string from, string to)
+    {
+        Run(root, "mv", from, to);
+        CommitAll(root, $"move {from} to {to}");
+    }
+
     /// <summary>
     /// Moves the submodule's checkout on, leaving the outer repository's gitlink uncommitted.
     /// </summary>
