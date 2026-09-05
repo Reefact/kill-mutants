@@ -90,6 +90,21 @@ internal static class FixtureRepository
         CommitAll(root, $"move {from} to {to}");
     }
 
+    /// <summary>Removes a component, leaving its gitlink as the only record in the diff.</summary>
+    /// <remarks>
+    /// <c>git rm</c> is deliberately not used, and measuring says why: it rewrites
+    /// <c>.gitmodules</c> too, so the diff carries two records rather than one. That second record
+    /// belongs to no project, lands among the unattributed changes, and opens the earlier state by
+    /// itself - which would make a test about a removed component pass without the removal doing
+    /// any of the work. Dropping the index entry by hand leaves exactly the record under test:
+    /// <c>:160000 000000 &lt;sha&gt; 0000000 D</c>, and nothing else.
+    /// </remarks>
+    public static void RemoveSubmodule(string root, string path)
+    {
+        Run(root, "update-index", "--force-remove", path);
+        Directory.Delete(Path.Combine(root, path), recursive: true);
+    }
+
     /// <summary>
     /// Moves the submodule's checkout on, leaving the outer repository's gitlink uncommitted.
     /// </summary>

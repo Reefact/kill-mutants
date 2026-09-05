@@ -523,12 +523,23 @@ internal sealed class ChangeSelection
 
             // Reading the earlier state costs an MSBuild evaluation, so it is not done for
             // nothing - but "nothing" cannot mean "every change was claimed", which is what it meant
-            // until review found two ways a claimed change disables a suite. A project file or a
+            // until review found three ways a claimed change disables a suite. A project file or a
             // shared build file is what decides whether a project still is one, and in the ordinary
-            // case such a change also widens or touches something, so this last clause never fires.
+            // case such a change also widens or touches something, so those clauses rarely fire.
+            //
+            // The third is a component the change *removed*, and it is the one that fires. Naming a
+            // component is what lets the run take everything beneath it conservatively, and every
+            // rule that does so reads the code as it is now: after a removal there is nothing
+            // beneath the path to read, so a suite that lived there widens nothing and is claimed
+            // by nothing - and naming a component ends the attribution loop before the change can
+            // reach the unattributed list. Measured: deleting a component holding the only suite
+            // covering a project outside it returned an empty success. Current-state attribution
+            // cannot recover a role that left with the component, so the earlier state is what has
+            // to answer.
             if (touchedTestProjects.Count == 0 &&
                 tracedAtBase.Count == 0 &&
                 unattributed.Count == 0 &&
+                !changes.Any(change => change.IsWholeComponent) &&
                 !changes.Any(change => DecidesWhatAProjectIs(change.Path)))
             {
                 return [];

@@ -157,7 +157,7 @@ internal sealed class GitRepository
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(revision);
 
-        return ListSubmodulePathsAsync(Root, revision, cancellationToken);
+        return ListSubmodulePathsAsync([], revision, cancellationToken);
     }
 
     /// <summary>The same listing, of any repository's tree - a submodule's own included.</summary>
@@ -168,14 +168,14 @@ internal sealed class GitRepository
     /// consequence: the levels below were neither laid out nor reported, and the snapshot claimed to
     /// be complete while a whole subtree of it was an empty directory.
     /// </remarks>
-    private static async Task<IReadOnlyList<string>> ListSubmodulePathsAsync(
-        string gitDirectory,
+    private async Task<IReadOnlyList<string>> ListSubmodulePathsAsync(
+        IReadOnlyList<string> level,
         string revision,
         CancellationToken cancellationToken)
     {
         string listing = await RunRawAsync(
-                gitDirectory,
-                ["ls-tree", "-r", "-z", revision],
+                Root,
+                [.. level, "ls-tree", "-r", "-z", revision],
                 $"The tree at '{revision}' could not be listed.",
                 cancellationToken)
             .ConfigureAwait(false);
@@ -247,7 +247,7 @@ internal sealed class GitRepository
                 .ConfigureAwait(false);
 
             await LayOutComponentsAsync(
-                    Root, revision, string.Empty, destination, laidOut, missing, cancellationToken)
+                    [], revision, string.Empty, destination, laidOut, missing, cancellationToken)
                 .ConfigureAwait(false);
         }
         catch
@@ -278,19 +278,26 @@ internal sealed class GitRepository
     /// </remarks>
     private async Task<string?> ModuleDirectoryOfAsync(
         string path,
-        string outerGitDirectory,
+        string name,
+        IReadOnlyList<string> level,
+        string revision,
         CancellationToken cancellationToken)
     {
         string directory = Path.Combine(Root, path.Replace('/', Path.DirectorySeparatorChar));
 
         if (!Directory.Exists(directory))
         {
-            return null;
+            // Not there to be asked, which for a component the change *removed* is the ordinary
+            // case rather than an absent one. Review found the run passing green over a deleted
+            // component for exactly this: asking the working tree where a thing is, when the thing
+            // being read is what the working tree no longer has.
+            return await StoreOfRemovedAsync(level, revision, name, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         string outer = await RunAsync(
-                outerGitDirectory,
-                ["rev-parse", "--absolute-git-dir"],
+                Root,
+                [.. level, "rev-parse", "--absolute-git-dir"],
                 "The repository's own git directory could not be read.",
                 cancellationToken)
             .ConfigureAwait(false);
@@ -314,6 +321,143 @@ internal sealed class GitRepository
         return SamePath(inner, outer) ? null : inner;
     }
 
+    /// <summary>Where git keeps a component's objects, found without asking the working tree.</summary>
+    /// <remarks>
+    /// <para>
+    /// By <em>name</em> rather than by path, because those are not the same thing and only the name
+    /// says where the store is: git keeps it at <c>&lt;git dir&gt;/modules/&lt;name&gt;</c>, and the
+    /// name comes from <c>.gitmodules</c> <em>at the revision being read</em> - the one place that
+    /// still describes the component after a change removed it. Assembling the path from the
+    /// gitlink was wrong for a renamed component and is still wrong; reading the name is not.
+    /// </para>
+    /// <para>
+    /// Answering null here means the objects genuinely are not present - a clone that never
+    /// initialised the component, then deleted it - and the caller reports the component missing
+    /// rather than laying out an empty directory the base graph would read as an answer.
+    /// </para>
+    /// </remarks>
+    private async Task<string?> StoreOfRemovedAsync(
+        IReadOnlyList<string> level,
+        string revision,
+        string name,
+        CancellationToken cancellationToken)
+    {
+        string owner;
+
+        try
+        {
+            owner = await RunAsync(
+                    Root,
+                    [.. level, "rev-parse", "--absolute-git-dir"],
+                    "The repository's own git directory could not be read.",
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (ChangeSelectionException)
+        {
+            return null;
+        }
+
+        string store = Path.Combine(
+            owner,
+            "modules",
+            (await RecordedNameAsync(level, revision, name, cancellationToken).ConfigureAwait(false)
+                ?? name).Replace('/', Path.DirectorySeparatorChar));
+
+        if (!Directory.Exists(store))
+        {
+            return null;
+        }
+
+        try
+        {
+            await RunAsync(
+                    Root,
+                    [.. InStore(store, "rev-parse", "--absolute-git-dir")],
+                    $"The git directory of '{name}' could not be read.",
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (ChangeSelectionException)
+        {
+            return null;
+        }
+
+        return store;
+    }
+
+    /// <summary>The name <c>.gitmodules</c> gives a path, when the two have come apart.</summary>
+    /// <remarks>
+    /// They start equal and stop being so the moment a component is renamed: <c>git mv</c> moves the
+    /// gitlink and leaves the store under the old name, which is the same fact that made assembling
+    /// a store path from the gitlink wrong in the first place. Asking a present component is exact
+    /// and is what happens above; a removed one has nothing left to ask, and its <c>.gitmodules</c>
+    /// entry at the revision being read is the only record of the name. Null when the file, the
+    /// entry or git itself does not answer, and the caller falls back to the path - which is what
+    /// the name is until someone changes one of them.
+    /// </remarks>
+    private async Task<string?> RecordedNameAsync(
+        IReadOnlyList<string> level,
+        string revision,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        string listing;
+
+        try
+        {
+            listing = await RunRawAsync(
+                    Root,
+                    [.. level, "config", "--blob", $"{revision}:.gitmodules",
+                        "--get-regexp", @"^submodule\..*\.path$"],
+                    string.Empty,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (ChangeSelectionException)
+        {
+            return null;
+        }
+
+        const string Key = "submodule.";
+        const string Suffix = ".path";
+
+        foreach (string line in listing.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            int separator = line.IndexOf(' ', StringComparison.Ordinal);
+
+            if (separator < 0 ||
+                !string.Equals(line[(separator + 1)..].Trim(), path, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            string key = line[..separator];
+
+            if (key.StartsWith(Key, StringComparison.Ordinal) &&
+                key.EndsWith(Suffix, StringComparison.Ordinal))
+            {
+                return key[Key.Length..^Suffix.Length];
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>A git command against a component's store, whatever its own checkout is doing.</summary>
+    /// <remarks>
+    /// Measured, and it is what makes a removed component readable at all. A submodule's store
+    /// carries <c>core.worktree</c> pointing back at its checkout, and git chases that before it
+    /// does anything else: run inside the store of a component the change deleted, every command -
+    /// <c>rev-parse</c> and <c>worktree add</c> alike - dies with
+    /// <c>fatal: cannot chdir to '../../../../&lt;path&gt;'</c>. Naming a work tree on the command
+    /// line overrides it. Any existing directory serves, since <c>worktree add</c> writes to the
+    /// destination it is given; the repository's own root is one that certainly exists. Checked
+    /// against a component that is still present too, so this is the single form both take.
+    /// </remarks>
+    private IReadOnlyList<string> InStore(string store, params string[] arguments) =>
+        ["--git-dir", store, "--work-tree", Root, .. arguments];
+
     /// <summary>Lays out every component a tree records, and every component inside those.</summary>
     /// <remarks>
     /// Recursive, and review found why it has to be. A gitlink recorded inside a submodule is
@@ -331,7 +475,7 @@ internal sealed class GitRepository
     /// </para>
     /// </remarks>
     private async Task LayOutComponentsAsync(
-        string gitDirectory,
+        IReadOnlyList<string> level,
         string revision,
         string prefix,
         string destination,
@@ -339,15 +483,15 @@ internal sealed class GitRepository
         List<string> missing,
         CancellationToken cancellationToken)
     {
-        foreach (string path in await ListSubmodulePathsAsync(gitDirectory, revision, cancellationToken)
+        foreach (string path in await ListSubmodulePathsAsync(level, revision, cancellationToken)
                      .ConfigureAwait(false))
         {
             // Named from the root throughout: that is the name the core knows a component by, and
             // the one a listing inside a submodule does not give.
             string full = prefix + path;
 
-            if (await ModuleDirectoryOfAsync(full, gitDirectory, cancellationToken).ConfigureAwait(false)
-                is not { } moduleDirectory)
+            if (await ModuleDirectoryOfAsync(full, path, level, revision, cancellationToken)
+                    .ConfigureAwait(false) is not { } moduleDirectory)
             {
                 missing.Add(full);
 
@@ -361,21 +505,30 @@ internal sealed class GitRepository
             laidOut.Add(new Submodule(full, moduleDirectory));
 
             string commit = await RunAsync(
-                    gitDirectory,
-                    ["rev-parse", $"{revision}:{path}"],
+                    Root,
+                    [.. level, "rev-parse", $"{revision}:{path}"],
                     $"The commit recorded for '{full}' could not be read.",
                     cancellationToken)
                 .ConfigureAwait(false);
 
             await RunRawAsync(
-                    moduleDirectory,
-                    ["worktree", "add", "--quiet", "--detach", Path.Combine(destination, full), commit],
+                    Root,
+                    [.. InStore(
+                        moduleDirectory,
+                        "worktree", "add", "--quiet", "--detach",
+                        Path.Combine(destination, full), commit)],
                     $"The code of '{full}' could not be laid out for reading.",
                     cancellationToken)
                 .ConfigureAwait(false);
 
             await LayOutComponentsAsync(
-                    moduleDirectory, commit, $"{full}/", destination, laidOut, missing, cancellationToken)
+                    InStore(moduleDirectory),
+                    commit,
+                    $"{full}/",
+                    destination,
+                    laidOut,
+                    missing,
+                    cancellationToken)
                 .ConfigureAwait(false);
         }
     }
@@ -413,10 +566,18 @@ internal sealed class GitRepository
         {
             foreach (Submodule submodule in submodules)
             {
-                Remove(submodule.ModuleDirectory, Path.Combine(Root, submodule.Path));
+                // Through the store, for the reason `InStore` carries: the checkout a component's
+                // own config points at may be exactly what the change removed, and git chases it
+                // before it reads the command.
+                Run(
+                    repository.Root,
+                    [.. repository.InStore(
+                        submodule.ModuleDirectory,
+                        "worktree", "remove", "--force", "--force",
+                        Path.Combine(Root, submodule.Path))]);
             }
 
-            Remove(repository.Root, Root);
+            Run(repository.Root, ["worktree", "remove", "--force", "--force", Root]);
             Scratch.DeleteDirectory(Root);
         }
 
@@ -425,13 +586,12 @@ internal sealed class GitRepository
         /// `git worktree remove --force` on a registration git left `locked` refuses outright and
         /// says so - "use 'remove -f -f' to override or unlock first".
         /// </remarks>
-        private static void Remove(string gitDirectory, string worktree)
+        private static void Run(string workingDirectory, IReadOnlyList<string> arguments)
         {
             try
             {
                 GitRepository
-                    .RunRawAsync(
-                        gitDirectory, ["worktree", "remove", "--force", "--force", worktree], "", default)
+                    .RunRawAsync(workingDirectory, arguments, "", default)
                     .GetAwaiter()
                     .GetResult();
             }
