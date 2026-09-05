@@ -796,6 +796,103 @@ public class SinceRunTests
     }
 
     /// <summary>
+    /// The earlier state is read for the framework the suite that reaches it loads.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Review found the current side's defect surviving on the earlier one. Measured once already
+    /// and true here too: evaluated without a <c>TargetFramework</c>, the outer build of a
+    /// multi-targeted project has that property empty and every item conditioned on it is simply
+    /// absent - so a <c>ProjectReference</c> written
+    /// <c>Condition="'$(TargetFramework)' == 'net10.0'"</c> is not in the answer at all.
+    /// </para>
+    /// <para>
+    /// That turns into a false green exactly when the change removes the old edge.
+    /// <c>Domain.Tests -&gt; Domain -&gt; Core</c> at the earlier state becomes
+    /// <c>Domain.Tests -&gt; Domain</c> now; the base traversal evaluated <c>Domain</c>'s outer
+    /// build, never saw <c>Core</c>, and had nothing to report. The suite's own framework is now
+    /// carried through everything it reaches.
+    /// </para>
+    /// <para>
+    /// <c>Basket</c> is rewritten to use nothing from <c>Core</c>, so the reference is an edge in
+    /// the graph and not a compilation dependency: the point is what the earlier state's graph
+    /// contains, and a project that must compile under two frameworks against a reference present
+    /// in one of them would be arguing about <c>#if</c> rather than about the traversal.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task A_reference_only_one_framework_carries_is_read_at_the_earlier_state()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        // Core is covered through Domain and by nothing else, so losing that edge is the only thing
+        // that can put it in the report.
+        Directory.Delete(Path.Combine(fixture.Root, "Core.Tests"), recursive: true);
+
+        File.WriteAllText(
+            Path.Combine(fixture.Root, "Domain", "Basket.cs"),
+            """
+            namespace Domain;
+
+            public static class Basket
+            {
+                public static int Total(int unitPrice, int quantity) => unitPrice * quantity;
+            }
+            """);
+
+        File.WriteAllText(
+            Path.Combine(fixture.Root, "Domain.Tests", "BasketTests.cs"),
+            """
+            using Domain;
+
+            namespace Domain.Tests;
+
+            public class BasketTests
+            {
+                [Fact]
+                public void A_total_is_price_times_quantity() => Assert.Equal(6, Basket.Total(2, 3));
+            }
+            """);
+
+        string domain = Path.Combine(fixture.Root, "Domain", "Domain.csproj");
+
+        File.WriteAllText(
+            domain,
+            File.ReadAllText(domain)
+                .Replace(
+                    "<TargetFramework>net10.0</TargetFramework>",
+                    "<TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>",
+                    StringComparison.Ordinal)
+                .Replace(
+                    """<ProjectReference Include="../Core/Core.csproj" />""",
+                    """
+                    <ProjectReference Include="../Core/Core.csproj"
+                                          Condition="'$(TargetFramework)' == 'net10.0'" />
+                    """,
+                    StringComparison.Ordinal));
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+
+        // The edge goes. Nothing else changes, and no test-side file is in the diff at all.
+        File.WriteAllText(
+            domain,
+            File.ReadAllText(domain).Replace(
+                """
+                <ProjectReference Include="../Core/Core.csproj"
+                                      Condition="'$(TargetFramework)' == 'net10.0'" />
+                """,
+                string.Empty,
+                StringComparison.Ordinal));
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        Assert.True(report.LostCoverage);
+        Assert.Contains(
+            report.CoverageLost,
+            path => path.EndsWith("Core.csproj", StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// A component whose working tree moved without its gitlink is still a change.
     /// </summary>
     /// <remarks>

@@ -33,7 +33,7 @@ internal sealed class BaseProjectGraph : IDisposable
     private readonly ICodeSnapshot _snapshot;
     private readonly string _root;
     private readonly string _label;
-    private readonly Dictionary<string, ProjectFacts?> _facts;
+    private readonly Dictionary<(string Project, string Framework), ProjectFacts?> _facts;
 
     private BaseProjectGraph(
         MsBuildQuery msBuild,
@@ -86,7 +86,7 @@ internal sealed class BaseProjectGraph : IDisposable
     public async Task<bool> IsTestProjectAsync(
         string relativePath,
         CancellationToken cancellationToken = default) =>
-        await FactsOfAsync(relativePath, cancellationToken).ConfigureAwait(false)
+        await FactsOfAsync(relativePath, null, cancellationToken).ConfigureAwait(false)
             is { IsTestProject: true };
 
     /// <summary>
@@ -104,13 +104,27 @@ internal sealed class BaseProjectGraph : IDisposable
         string relativePath,
         CancellationToken cancellationToken = default)
     {
-        ProjectFacts? testProject = await FactsOfAsync(relativePath, cancellationToken)
+        ProjectFacts? testProject = await FactsOfAsync(relativePath, null, cancellationToken)
             .ConfigureAwait(false);
 
         if (testProject is null)
         {
             return [];
         }
+
+        // The framework the suite loads, carried through everything it reaches, and review found it
+        // missing. The same measured behaviour the current side already answers for: evaluated
+        // without a TargetFramework, the outer build of a multi-targeted project has that property
+        // empty and every item conditioned on it is absent - so a `ProjectReference` written
+        // `Condition="'$(TargetFramework)' == 'net10.0'"` simply is not there. Reading the earlier
+        // state that way lost the edge silently: `Tests -> Facade -> Core` then, `Tests -> Facade`
+        // now, and nothing to say Core had ever been reached.
+        //
+        // Empty when the suite is itself multi-targeted, which discovery refuses on the current
+        // side; there is no framework to carry then, and the outer build is what there is.
+        string? framework = string.IsNullOrEmpty(testProject.TargetFramework)
+            ? null
+            : testProject.TargetFramework;
 
         List<string> reached = [];
         HashSet<string> seen = new(RelativePath.Comparer);
@@ -125,7 +139,8 @@ internal sealed class BaseProjectGraph : IDisposable
                 continue;
             }
 
-            ProjectFacts? facts = await FactsOfAsync(path, cancellationToken).ConfigureAwait(false);
+            ProjectFacts? facts = await FactsOfAsync(path, framework, cancellationToken)
+                .ConfigureAwait(false);
 
             if (facts is null || facts.IsTestProject)
             {
@@ -154,11 +169,20 @@ internal sealed class BaseProjectGraph : IDisposable
     /// <summary>Gives the snapshot back.</summary>
     public void Dispose() => _snapshot.Dispose();
 
+    /// <summary>What the snapshot's copy of a project evaluates to, read once per framework.</summary>
+    /// <remarks>
+    /// Cached per framework as well as per project, because the same project answers differently
+    /// under each and the two answers must not overwrite one another. A null framework asks for the
+    /// project's outer build, which is what a suite itself is read on.
+    /// </remarks>
     private async Task<ProjectFacts?> FactsOfAsync(
         string relativePath,
+        string? targetFramework,
         CancellationToken cancellationToken)
     {
-        if (_facts.TryGetValue(relativePath, out ProjectFacts? known))
+        (string, string) key = (relativePath, targetFramework ?? string.Empty);
+
+        if (_facts.TryGetValue(key, out ProjectFacts? known))
         {
             return known;
         }
@@ -187,7 +211,9 @@ internal sealed class BaseProjectGraph : IDisposable
             {
                 facts = await _msBuild
                     .GetProjectFactsAsync(
-                        RelativePath.In(_root, relativePath), cancellationToken: cancellationToken)
+                        RelativePath.In(_root, relativePath),
+                        targetFramework,
+                        cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (ProjectAnalysisException exception)
@@ -205,7 +231,7 @@ internal sealed class BaseProjectGraph : IDisposable
             }
         }
 
-        _facts[relativePath] = facts;
+        _facts[key] = facts;
 
         return facts;
     }
