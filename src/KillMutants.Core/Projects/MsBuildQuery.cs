@@ -221,12 +221,30 @@ internal sealed class MsBuildQuery
     /// every project directory - so membership attributes it where the directory rule cannot.
     /// </para>
     /// <para>
+    /// Then <c>Analyzer</c>, which review found missing and which is the item the two above stand in
+    /// for: a repository-local generator consumed as <c>&lt;Analyzer Include="../tools/Gen.dll" /&gt;</c>
+    /// is a compiler input like any other, and changing it changes the assembly produced. Sitting
+    /// outside every project directory, it was attributed to nothing and a diff carrying only it
+    /// selected nothing at all. It has no <c>AnalyzerConsumers</c> entry either - that relation is
+    /// keyed on a referenced <em>project</em>, and this is a file.
+    /// </para>
+    /// <para>
+    /// It is also the one item here that arrives with company. Measured: the SDK adds its own
+    /// analyzers to it, marked <c>IsImplicitlyDefined</c>, from the install directory - so the flag
+    /// is what separates what a repository consumes from what every project in the world does.
+    /// Measured on the six items above too, none of which carries it, so the filter takes nothing
+    /// away that was there before.
+    /// </para>
+    /// <para>
     /// It is a list of what MSBuild can be asked for cheaply, not a proof of completeness. A project
     /// can read a file at run time that appears in no item at all, and nothing here would see it.
     /// </para>
     /// </remarks>
     private static readonly string[] InputItemNames =
-        ["Compile", "None", "Content", "EmbeddedResource", "AdditionalFiles", "EditorConfigFiles"];
+    [
+        "Compile", "None", "Content", "EmbeddedResource", "AdditionalFiles", "EditorConfigFiles",
+        "Analyzer",
+    ];
 
     /// <summary>
     /// Every file a project compiles or carries, as absolute paths, read from evaluation alone.
@@ -278,6 +296,16 @@ internal sealed class MsBuildQuery
     /// <c>Identity</c> is relative to the project and would have to be resolved against it, which is
     /// exactly wrong for a linked file: its identity is the <c>..</c> path that makes it interesting.
     /// </remarks>
+    /// <summary>True for an item MSBuild supplied itself rather than one the project asked for.</summary>
+    /// <remarks>
+    /// The SDK's own analyzers carry it, and they live in the install directory: without this every
+    /// project in the run would claim to consume them, and the index that answers "who consumes this
+    /// file" would carry a machine's dotnet installation alongside the repository.
+    /// </remarks>
+    private static bool IsImplicitlyDefined(JsonElement item) =>
+        item.TryGetProperty("IsImplicitlyDefined", out JsonElement flag) &&
+        string.Equals(flag.GetString(), "true", StringComparison.OrdinalIgnoreCase);
+
     private static IEnumerable<string> ReadFullPaths(JsonElement root, string itemName)
     {
         if (!root.TryGetProperty("Items", out JsonElement items) ||
@@ -287,6 +315,7 @@ internal sealed class MsBuildQuery
         }
 
         return values.EnumerateArray()
+            .Where(item => !IsImplicitlyDefined(item))
             .Select(item =>
                 item.TryGetProperty("FullPath", out JsonElement path) ? path.GetString() : null)
             .Where(path => !string.IsNullOrEmpty(path))
