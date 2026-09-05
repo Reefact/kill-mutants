@@ -15,6 +15,12 @@ internal sealed class ProjectDiscovery
     private readonly Dictionary<string, IReadOnlyList<string>> _inputs = new(ProjectPaths.Comparer);
     private readonly Dictionary<string, List<string>> _analyzerConsumers = new(ProjectPaths.Comparer);
     private readonly MsBuildQuery _msBuild;
+    /// <summary>The refusal a run with nothing to mutate ends with, wherever it is raised.</summary>
+    internal const string NoTargets =
+        "The test projects reference no other project, so there is nothing to mutate.";
+
+    private readonly bool _deferNoTargets;
+
     private readonly string _configuration;
     private readonly PathFilter _exclusions;
     private readonly IProgress<MutationTestProgress>? _progress;
@@ -27,17 +33,23 @@ internal sealed class ProjectDiscovery
     /// projects that build it. Off for a full run, which has no use for the answer and would pay for
     /// it in the size of every MSBuild reply.
     /// </param>
+    /// <param name="deferNoTargets">
+    /// Answer with no targets instead of refusing when the test projects reach nothing. A partial
+    /// run has to be able to ask why, and only the caller can tell the two answers apart.
+    /// </param>
     public ProjectDiscovery(
         string configuration,
         PathFilter? exclusions = null,
         IProgress<MutationTestProgress>? progress = null,
-        bool readInputFiles = false)
+        bool readInputFiles = false,
+        bool deferNoTargets = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(configuration);
 
         _configuration = configuration;
         _exclusions = exclusions ?? PathFilter.None;
         _progress = progress;
+        _deferNoTargets = deferNoTargets;
         _msBuild = new MsBuildQuery(configuration, readInputFiles);
     }
 
@@ -187,10 +199,15 @@ internal sealed class ProjectDiscovery
             }
         }
 
-        if (testsByProject.Count == 0)
+        // Refused for a full run, where it can only be a misconfiguration, and left to the caller
+        // for a partial one - review found the difference. A change that removes the last project
+        // reference in a small repository empties the targets, and refusing here ends the run
+        // before the earlier state can say that a production project has just lost the only suite
+        // that covered it. Which of the two it is cannot be decided from the current state alone,
+        // and that is the one thing this method has.
+        if (testsByProject.Count == 0 && !_deferNoTargets)
         {
-            throw new ProjectAnalysisException(
-                "The test projects reference no other project, so there is nothing to mutate.");
+            throw new ProjectAnalysisException(NoTargets);
         }
 
         RejectProjectsReachedFromSeveralFrameworks(frameworksByProject);
