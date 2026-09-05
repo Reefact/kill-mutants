@@ -89,7 +89,11 @@ internal sealed class MutationTestSession
         // run was pointed at, which only this call knows.
         PathFilter exclusions = PathFilter.Excluding(searchDirectory, _exclude);
         var discovery = new ProjectDiscovery(
-            _configuration, exclusions, _progress, readInputFiles: _changes is not null);
+            _configuration,
+            exclusions,
+            _progress,
+            readInputFiles: _changes is not null,
+            deferNoTargets: _changes is not null);
 
         IReadOnlyList<MutationTestTarget> targets = await discovery
             .DiscoverAsync(searchDirectory, cancellationToken)
@@ -109,11 +113,26 @@ internal sealed class MutationTestSession
 
         RunScope scope = selection?.Scope ?? RunScope.WholeCodebase;
 
-        if (selection is { SelectsNothing: true })
+        // Discovery answered with no targets rather than refusing, because a partial run has to be
+        // able to ask why - and this is where the answer is. Review found the run ending before the
+        // question was ever put: with one Tests -> Core pair, removing that reference empties the
+        // targets, and the refusal fired before the earlier state could say that Core had just lost
+        // the only suite covering it. What tells the two apart is whether the comparison found
+        // coverage gone. Nothing found means the repository has nothing to mutate, which is the
+        // misconfiguration the refusal was written for, and it is raised here instead.
+        if (selection is not null && targets.Count == 0 && selection.CoverageLost.Count == 0)
+        {
+            throw new ProjectAnalysisException(ProjectDiscovery.NoTargets);
+        }
+
+        if (selection is { SelectsNothing: true } || (selection is not null && targets.Count == 0))
         {
             // Nothing in the change can produce a mutant. Building the test projects and reading
             // every compilation to establish that would take a minute to reach the same empty
             // report, and a documentation-only pull request is the commonest partial run there is.
+            //
+            // With no targets at all there is also nothing to build, and what the report carries is
+            // the coverage the change took away - which is a verdict, not an empty run.
             return new MutationTestReport(
                 [], stopwatch.Elapsed, RunEnvironment.Describe(_workerCount, null, [], 0), scope,
                 selection.CoverageLost);

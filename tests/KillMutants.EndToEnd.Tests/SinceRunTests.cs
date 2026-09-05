@@ -1,5 +1,6 @@
 using KillMutants.Git;
 using KillMutants.Mutations;
+using KillMutants.Projects;
 using KillMutants.Reporting;
 using KillMutants.Selection;
 
@@ -793,6 +794,95 @@ public class SinceRunTests
         MutationTestReport report = await RunSinceHeadAsync(outer);
 
         Assert.Contains("Ages.cs", MutatedFiles(report));
+    }
+
+    /// <summary>
+    /// A change that empties the targets reports the coverage rather than refusing the run.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Review found this, and it is the one place the coverage-loss verdict could not be reached at
+    /// all. Discovery runs before the change is resolved, and it refused when the test projects
+    /// reached nothing: in a repository with a single <c>Tests -&gt; Library</c> pair, removing that
+    /// reference is exactly the change the verdict exists for, and the run ended as "nothing to
+    /// mutate" before the earlier state was ever asked. The same change is reported correctly only
+    /// when some unrelated target happens to keep discovery non-empty, which is a report that
+    /// depends on the size of the repository rather than on the change.
+    /// </para>
+    /// <para>
+    /// The refusal is not dropped, it is moved: what tells a misconfigured repository from a change
+    /// that removed the last coverage is whether the comparison found any, and only the selection
+    /// knows that. A full run keeps refusing where it always did, which the companion test pins.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task A_change_that_empties_the_targets_reports_the_coverage_it_took_away()
+    {
+        using var fixture = FixtureCopy.Create();
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+
+        EmptyTheOnlyPair(fixture);
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        Assert.True(report.LostCoverage);
+        Assert.Contains(
+            report.CoverageLost,
+            path => path.EndsWith("Sample.Library.csproj", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// A full run over a repository whose suites reach nothing still refuses.
+    /// </summary>
+    /// <remarks>
+    /// The companion to the test above, and the reason the refusal moved rather than went. Without
+    /// a change to compare against there is no second answer available: suites that reach nothing
+    /// can only be a misconfiguration, and saying so is more useful than an empty report.
+    /// </remarks>
+    [Fact]
+    public async Task A_full_run_whose_suites_reach_nothing_is_still_refused()
+    {
+        using var fixture = FixtureCopy.Create();
+
+        EmptyTheOnlyPair(fixture);
+
+        ProjectAnalysisException refusal =
+            await Assert.ThrowsAsync<ProjectAnalysisException>(
+                () => MutationTesting.RunAsync(
+                    fixture.Root,
+                    mutators: Families,
+                    cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("nothing to mutate", refusal.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Removes the one reference the fixture has, and rewrites the suite so it still compiles.
+    /// </summary>
+    private static void EmptyTheOnlyPair(FixtureCopy fixture)
+    {
+        string suite = Path.Combine(
+            fixture.Root, "Sample.Library.Tests", "Sample.Library.Tests.csproj");
+
+        File.WriteAllText(
+            suite,
+            File.ReadAllText(suite).Replace(
+                """<ProjectReference Include="../Sample.Library/Sample.Library.csproj" />""",
+                string.Empty,
+                StringComparison.Ordinal));
+
+        File.WriteAllText(
+            Path.Combine(fixture.Root, "Sample.Library.Tests", "AgesTests.cs"),
+            """
+            namespace Sample.Library.Tests;
+
+            public class AgesTests
+            {
+                [Fact]
+                public void Nothing_is_asserted_about_ages_any_more() => Assert.True(true);
+            }
+            """);
     }
 
     /// <summary>
