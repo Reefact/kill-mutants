@@ -907,6 +907,85 @@ public class SinceRunTests
     }
 
     /// <summary>
+    /// A generator the selected framework does not consume no longer widens the project.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Review found the asymmetry that causes it. A project is recorded twice - once by the sweep,
+    /// once for the framework its suites load - and recording replaces what the project
+    /// <em>consumes</em> while only ever adding what it <em>generates from</em>. So an analyzer
+    /// reference the outer evaluation sees and the selected framework does not stays on the
+    /// generator's consumer list, and a later change to that generator widens a project whose
+    /// compilation never sees it. What fails then is not the change: it is whatever survivor was
+    /// already sitting in that project, on a partial run that had no business measuring it.
+    /// </para>
+    /// <para>
+    /// The condition is <c>'$(TargetFramework)' == ''</c> rather than a framework name, and that is
+    /// the sharp form rather than a contrived one. The outer evaluation of a multi-targeted project
+    /// has that property empty - measured, and the reason the fixture exists - so the reference is
+    /// present there and absent from <em>every</em> real compilation. Any widening it produces is
+    /// therefore unambiguously wrong, where naming one framework of two would leave the other
+    /// genuinely consuming the generator and the assertion arguing about which build was meant.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task A_generator_the_selected_framework_does_not_consume_does_not_widen()
+    {
+        using var fixture = FixtureCopy.CreateMultiTargetedProject();
+
+        Directory.CreateDirectory(Path.Combine(fixture.Root, "Sample.Generator"));
+
+        File.WriteAllText(
+            Path.Combine(fixture.Root, "Sample.Generator", "Sample.Generator.csproj"),
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>netstandard2.0</TargetFramework>
+                <Nullable>enable</Nullable>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        File.WriteAllText(
+            Path.Combine(fixture.Root, "Sample.Generator", "Emitter.cs"),
+            """
+            namespace Sample.Generator;
+
+            public static class Emitter
+            {
+                public static string Banner() => "generated";
+            }
+            """);
+
+        string project = Path.Combine(fixture.Root, "Sample.Library", "Sample.Library.csproj");
+
+        File.WriteAllText(
+            project,
+            File.ReadAllText(project).Replace(
+                "</Project>",
+                """
+                  <ItemGroup>
+                    <ProjectReference Include="../Sample.Generator/Sample.Generator.csproj"
+                                      OutputItemType="Analyzer"
+                                      ReferenceOutputAssembly="false"
+                                      Condition="'$(TargetFramework)' == ''" />
+                  </ItemGroup>
+                </Project>
+                """,
+                StringComparison.Ordinal));
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+
+        File.AppendAllText(
+            Path.Combine(fixture.Root, "Sample.Generator", "Emitter.cs"),
+            $"{Environment.NewLine}// the generator moves on{Environment.NewLine}");
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        Assert.DoesNotContain("Ages.cs", MutatedFiles(report));
+    }
+
+    /// <summary>
     /// A suite that stops being one is read as a former suite even when it becomes something else.
     /// </summary>
     /// <remarks>
@@ -1407,6 +1486,120 @@ public class SinceRunTests
         MutationTestReport report = await RunSinceHeadAsync(outer);
 
         Assert.Contains("Shared.cs", MutatedFiles(report));
+    }
+
+    /// <summary>
+    /// A component the change removes reports the coverage that went with it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Review found this, and it is the deletion half of reading a component as one opaque path.
+    /// Naming the component is what lets the run take everything beneath it conservatively - but
+    /// every rule that does so reads the code <em>as it is now</em>, and after a removal there is
+    /// nothing beneath the path to read. A suite that lived in the component widens nothing, is
+    /// claimed by nothing, and the change never reaches the unattributed list because naming a
+    /// component ends the loop early. All four clauses of the guard on the earlier state then hold,
+    /// the prior snapshot is never opened, and a change that deleted an entire suite returns an
+    /// empty success.
+    /// </para>
+    /// <para>
+    /// The removal is made with <c>update-index</c> rather than <c>git rm</c> on purpose, and the
+    /// remark on <see cref="FixtureRepository.RemoveSubmodule"/> carries the measurement:
+    /// <c>git rm</c> rewrites <c>.gitmodules</c>, that second record is unattributed, and it opens
+    /// the earlier state on its own. The test would then pass with the hole still open.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task A_component_the_change_removes_reports_the_coverage_it_took_away()
+    {
+        using var outer = FixtureCopy.CreateMultiProject();
+        using var component = FixtureCopy.Create();
+
+        // The component carries the suite and nothing of its own - no build files of its own
+        // either, so the suite builds under the outer root's, as a project moved out of it would.
+        foreach (string directory in Directory.GetDirectories(component.Root))
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+
+        foreach (string file in Directory.GetFiles(component.Root))
+        {
+            File.Delete(file);
+        }
+
+        // A production project of its own rather than one of the fixture's, and the first attempt
+        // measured why. Emptying the outer tree of suites to leave Core uncovered made discovery
+        // refuse the run outright - no xUnit project anywhere - so the test failed without ever
+        // reaching the question it asks. The outer tree keeps its own suites, and this is the one
+        // project only the component answers for.
+        Directory.CreateDirectory(Path.Combine(outer.Root, "Ledger"));
+
+        File.WriteAllText(
+            Path.Combine(outer.Root, "Ledger", "Ledger.csproj"),
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <Nullable>enable</Nullable>
+                <ImplicitUsings>enable</ImplicitUsings>
+              </PropertyGroup>
+            </Project>
+            """);
+
+        File.WriteAllText(
+            Path.Combine(outer.Root, "Ledger", "Entry.cs"),
+            """
+            namespace Ledger;
+
+            public static class Entry
+            {
+                public static int Balance(int credits, int debits) => credits - debits;
+            }
+            """);
+
+        Directory.CreateDirectory(Path.Combine(component.Root, "Ledger.Tests"));
+
+        File.WriteAllText(
+            Path.Combine(component.Root, "Ledger.Tests", "Ledger.Tests.csproj"),
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <OutputType>Exe</OutputType>
+                <Nullable>enable</Nullable>
+                <ImplicitUsings>enable</ImplicitUsings>
+                <IsPackable>false</IsPackable>
+              </PropertyGroup>
+              <ItemGroup><Using Include="Xunit" /></ItemGroup>
+              <ItemGroup><PackageReference Include="xunit.v3.mtp-v2" Version="4.0.0" /></ItemGroup>
+              <ItemGroup><ProjectReference Include="../../../Ledger/Ledger.csproj" /></ItemGroup>
+            </Project>
+            """);
+
+        File.WriteAllText(
+            Path.Combine(component.Root, "Ledger.Tests", "EntryTests.cs"),
+            """
+            namespace Ledger.Tests;
+
+            public class EntryTests
+            {
+                [Fact]
+                public void A_balance_is_credits_less_debits() => Assert.Equal(2, Entry.Balance(5, 3));
+            }
+            """);
+
+        FixtureRepository.InitialiseAt(component.Root);
+        FixtureRepository.InitialiseAt(outer.Root);
+        FixtureRepository.AddSubmodule(outer.Root, component.Root, "libs/Suite");
+
+        FixtureRepository.RemoveSubmodule(outer.Root, "libs/Suite");
+
+        MutationTestReport report = await RunSinceHeadAsync(outer);
+
+        Assert.True(report.LostCoverage);
+        Assert.Contains(
+            report.CoverageLost,
+            path => path.EndsWith("Ledger.csproj", StringComparison.Ordinal));
     }
 
     /// <summary>

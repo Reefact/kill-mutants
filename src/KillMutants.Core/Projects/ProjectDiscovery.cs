@@ -356,6 +356,23 @@ internal sealed class ProjectDiscovery
     {
         _inputs[facts.ProjectPath] = facts.InputFiles;
 
+        // Taken back before it is given, and review found the asymmetry: the line above *replaces*
+        // what a project consumes, while the loop below only ever added what it generates from. A
+        // project is recorded twice - once by the sweep, once for the framework its suites load -
+        // and an analyzer reference the outer evaluation sees while the selected framework does not
+        // (`Condition="'$(TargetFramework)' != 'net10.0'"`) was added by the first pass and never
+        // withdrawn. A later change to that generator then widened a project whose compilation does
+        // not consume it, and an unrelated survivor already sitting there fails the partial gate -
+        // the one failure mode this selection is built to avoid.
+        foreach ((string generator, List<string> consumers) in _analyzerConsumers)
+        {
+            if (!facts.AnalyzerProjects.Contains(generator, ProjectPaths.Comparer))
+            {
+                consumers.RemoveAll(
+                    consumer => ProjectPaths.Comparer.Equals(consumer, facts.ProjectPath));
+            }
+        }
+
         foreach (string generator in facts.AnalyzerProjects)
         {
             if (!_analyzerConsumers.TryGetValue(generator, out List<string>? consumers))
