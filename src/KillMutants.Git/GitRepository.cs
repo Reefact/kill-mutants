@@ -119,7 +119,70 @@ internal sealed class GitRepository
 
         changes.AddRange(Split(untracked).Select(path => new FileChange(Absolute(path), ChangeKind.Added)));
 
+        HashSet<string> named = new(
+            changes.Where(change => change.IsWholeComponent).Select(change => change.Path),
+            StringComparer.Ordinal);
+
+        await AddDirtyComponentsAsync(baseRevision, named, changes, cancellationToken)
+            .ConfigureAwait(false);
+
         return changes;
+    }
+
+    /// <summary>Every component whose working tree has moved without its gitlink saying so.</summary>
+    /// <remarks>
+    /// <para>
+    /// Review found the hole, and measuring is the only way to believe it: add a file inside an
+    /// initialised component without committing it, and from the outer repository
+    /// <c>git diff --raw HEAD</c> comes back empty <em>and</em>
+    /// <c>git ls-files --others --exclude-standard</c> comes back empty. Neither descends into
+    /// another repository. The build does - the component's own SDK glob compiles that file - so a
+    /// partial run returned an empty success over source nothing had ever tested.
+    /// </para>
+    /// <para>
+    /// Only the components the revision records at the top level are asked, and that is enough
+    /// rather than a shortcut. <c>git status</c> reports a component whose own tree is dirty, which
+    /// is how the outer repository knows: measured, an untracked file inside <c>libs/Suite</c> shows
+    /// there as <c>M libs/Suite</c> and nowhere else. The same holds one level down, so a component
+    /// dirty deep inside a nested one makes every component above it dirty too, and the outermost is
+    /// reported. That over-selects - the whole component rather than the part of it that moved - and
+    /// over-selecting is the direction this tool is allowed to be wrong in.
+    /// </para>
+    /// <para>
+    /// What it reports is the component as one opaque path, exactly as a moved gitlink is. The files
+    /// inside could be listed and deliberately are not: widening beneath the component already
+    /// reaches every project in it, and every role held from outside it, which is the work that
+    /// listing them would have to redo.
+    /// </para>
+    /// </remarks>
+    private async Task AddDirtyComponentsAsync(
+        string revision,
+        HashSet<string> named,
+        List<FileChange> changes,
+        CancellationToken cancellationToken)
+    {
+        foreach (string path in await ListSubmodulePathsAsync([], revision, cancellationToken)
+                     .ConfigureAwait(false))
+        {
+            string directory = Path.Combine(Root, path.Replace('/', Path.DirectorySeparatorChar));
+
+            if (!Directory.Exists(directory))
+            {
+                continue;
+            }
+
+            string status = await RunRawAsync(
+                    directory,
+                    ["status", "--porcelain", "-z"],
+                    $"The state of '{path}' could not be read.",
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            if (!string.IsNullOrWhiteSpace(status) && named.Add(Absolute(path)))
+            {
+                changes.Add(new FileChange(Absolute(path), ChangeKind.Modified, IsWholeComponent: true));
+            }
+        }
     }
 
     /// <summary>True when the tree about to be built is not exactly what <c>HEAD</c> points at.</summary>
