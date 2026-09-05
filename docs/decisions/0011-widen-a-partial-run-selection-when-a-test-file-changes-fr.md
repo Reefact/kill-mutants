@@ -157,18 +157,52 @@ dû être rouge.
   aucun code de production dans le diff — est sélectionné plutôt que laissé passer en silence.
 * L'élargissement court le long d'une relation que le changement ne peut pas effacer sans que l'outil
   s'en aperçoive, et il est résolu aux deux révisions plutôt que supposé depuis une seule.
-* Un test *ajouté* par un changement conserve la sélection précise, puisque le cas imprécis ne peut pas
-  s'y produire.
+* Un test *ajouté* par un changement n'élargit rien, puisque le cas imprécis ne peut pas s'y produire :
+  un test qui n'existait pas à la révision de base ne peut pas avoir retiré une arête de couverture.
 
 ### Négatives
 
 * Les exécutions sont plus lentes, parfois beaucoup : toucher un seul fichier de test peut réexécuter
-  tous les mutants des projets de production que ce projet de test exerce.
+  tous les mutants des projets de production que ce projet de test exerce. Mesuré à la construction de
+  `--since`, sur ce dépôt contre `main` : 33 fichiers modifiés, 364 mutants sélectionnés,
+  7,0 minutes — contre 384 mutants en 6,8 minutes pour une exécution complète du même projet.
+  L'exécution partielle a inspecté 95 % de la population pour le même temps, parce que le changement
+  touchait des fichiers de `KillMutants.Core.Tests`. Rien n'a mal fonctionné ; la règle a fait ce
+  qu'elle dit.
+* La moitié *précise* de la règle n'est pas implémentée pour un fichier de test ajouté, qui ne
+  sélectionne donc rien plutôt que les mutants que ses nouveaux tests couvrent. « Couvert par un test
+  de ce fichier » exige une correspondance entre une méthode de test et le fichier source où elle est
+  écrite : la découverte de xUnit répond par des noms seuls, et la compilation qui la résoudrait est
+  celle du projet de test, que cet outil ne construit jamais. La restriction ne peut cacher aucun
+  constat — voir la conséquence positive ci-dessus — si bien que ce qui est perdu est informatif et
+  non protecteur : après un commit qui n'ajoute que des tests, l'exécution rapporte qu'il n'y avait
+  rien à juger.
 * L'élargissement est prudent et non précis, et le reste tant que la couverture d'une exécution
   précédente n'est pas consultable.
 
 ### Risques
 
+* Un fichier de build partagé est attribué aux projets situés sous lui, ce qui manque celui qu'un
+  projet importe explicitement depuis un répertoire voisin plutôt que depuis un parent.
+  `MSBuildAllProjects` aurait été la réponse exacte et revient vide sur un projet SDK — mesuré — donc
+  il n'existe pas de moyen économique de demander quels fichiers de build un projet lit vraiment.
+* Un fichier C# ajouté dans un projet de test n'élargit toujours rien, et seul un test peut être
+  supposé ajouter de la couverture plutôt que la changer. Un fichier portant une mise en place
+  partagée, ou un initialiseur de module, n'est pas un test et rien de peu coûteux ne l'en distingue.
+  Toute autre entrée ajoutée — une fixture, une liste de cas, un fichier de réglages — élargit
+  désormais, car l'argument « un test neuf ne peut pas retirer une arête préexistante » n'a jamais
+  porté sur elles.
+* Une modification de `killmutants.json` fait refuser l'exécution partielle plutôt que d'être
+  sélectionnée. L'`exclude` qui s'y trouve agit dans la découverte, avant qu'aucune sélection
+  n'existe : un changement qui en ajoute un retire un projet des cibles, et aucun élargissement
+  ultérieur ne peut le rattraper. Comparer les réglages des deux révisions serait la réponse précise ;
+  refuser de juger une modification de la configuration de l'exécution elle-même est la réponse
+  honnête.
+* Un fichier qu'un changement **supprime** et qu'un projet de test atteignait depuis l'extérieur de
+  son propre répertoire n'est attribué à rien. L'appartenance se lit dans l'évaluation de HEAD, où un
+  fichier supprimé n'apparaît plus, et la règle du répertoire qui couvre les suppressions ordinaires
+  ne l'atteint pas davantage. Les deux règles sont nécessaires et aucune ne couvre l'angle mort de
+  l'autre ici.
 * La garantie s'arrête au bord d'un projet de test. Le support de test rangé dans une bibliothèque
   ordinaire est une cible mutable et non un projet de test : la modifier peut faire cesser `T`
   d'atteindre `M` sans que ni le projet de test ni celui de `M` n'apparaisse dans le diff, et

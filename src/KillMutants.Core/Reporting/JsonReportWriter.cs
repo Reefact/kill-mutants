@@ -36,11 +36,21 @@ public static class JsonReportWriter
     private static object Describe(MutationTestReport report) => new
     {
         tool = "KillMutants",
-        // Null rather than NaN when nothing could be tested: JSON has no NaN, and a consumer that
-        // sees null knows the score is undefined instead of reading a zero that was never measured.
-        score = report.Score.IsUndefined ? null : (double?)Math.Round(report.Score.Value, 4),
-        scoreDisplay = report.Score.ToString(),
+
+        // Null in two different situations, both of which mean "there is no number here": nothing
+        // could be tested, or this was a partial run, which has no score by design. A consumer can
+        // tell them apart from `scope`, and neither can be mistaken for a zero that was measured.
+        // Emitting the ratio for a partial run would put a percentage over a population defined by
+        // the diff into a field named like the one over a codebase - the exact seam DEC0010 refuses.
+        score = report.Scope.IsPartial || report.Score.IsUndefined
+            ? null
+            : (double?)Math.Round(report.Score.Value, 4),
+        scoreDisplay = report.Scope.IsPartial ? null : report.Score.ToString(),
         durationSeconds = Math.Round(report.Duration.TotalSeconds, 2),
+
+        // Which population was inspected. Without it, a partial report is indistinguishable from a
+        // full run that happened to have that many mutants, and its selection cannot be reproduced.
+        scope = Describe(report.Scope),
 
         // Two reports without this are not comparable, and nobody notices.
         environment = report.Environment is null ? null : Describe(report.Environment),
@@ -59,10 +69,36 @@ public static class JsonReportWriter
             undetected = report.Undetected,
             untestable = report.Untestable,
         },
+        // The binary answer a partial run gives in place of a percentage, published so a CI job can
+        // read it without re-deriving it from the counts. Both are meaningful on a full run too.
+        hasUndetected = report.HasUndetected,
+        inconclusive = report.IsInconclusive,
+
+        // Projects the change stopped covering. They carry no mutants - nothing reaches them - so a
+        // consumer reading only the counts would see a clean run over a component that lost its
+        // tests entirely.
+        coverageLost = report.CoverageLost,
+
         // Published so a CI job can act on them rather than only a person reading a terminal.
         warnings = report.Warnings.Select(warning => warning.Text).ToArray(),
-        byMutator = report.ByMutator.Select(Describe).ToArray(),
+        byMutator = report.ByMutator.Select(family => Describe(family, report.Scope)).ToArray(),
         mutants = report.Results.Select(Describe).ToArray(),
+    };
+
+    private static object Describe(RunScope scope) => new
+    {
+        mode = scope.IsPartial ? "partial" : "full",
+
+        // Whole, and as whatever supplied them resolved them - not as the user wrote them. A name
+        // like 'main' means something different next week, and a report that records it has recorded
+        // nothing anyone can go back to. Kept at full length here, where nothing has to fit on a
+        // line, so the two states stay usable for reproducing the selection.
+        comparedFrom = scope.ComparedFrom,
+        comparedTo = scope.ComparedTo,
+
+        // A run measures what it builds, which is not always exactly the state it names.
+        comparedToIsExact = scope.ComparedToIsExact,
+        changedFiles = scope.ChangedFiles,
     };
 
     private static object Describe(RunEnvironment environment) => new
@@ -84,14 +120,19 @@ public static class JsonReportWriter
         timeoutMarginSeconds = environment.TimeoutBudgets.Select(b => b.Margin.TotalSeconds).Distinct(),
     };
 
-    private static object Describe(MutatorSummary family) => new
+    private static object Describe(MutatorSummary family, RunScope scope) => new
     {
         mutator = family.Mutator.ToString(),
         mutants = family.Total,
         detected = family.Detected,
         undetected = family.Undetected,
         untestable = family.Untestable,
-        score = family.Score.IsUndefined ? null : (double?)Math.Round(family.Score.Value, 4),
+
+        // Null on a partial run for the same reason the run's own score is: a per-family ratio over
+        // a population defined by the diff is the whole objection in miniature. The counts stay.
+        score = scope.IsPartial || family.Score.IsUndefined
+            ? null
+            : (double?)Math.Round(family.Score.Value, 4),
     };
 
     private static object Describe(MutantResult result) => new

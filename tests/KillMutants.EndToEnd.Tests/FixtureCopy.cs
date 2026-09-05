@@ -332,6 +332,33 @@ internal sealed class FixtureCopy : IDisposable
             """);
     }
 
+    /// <summary>
+    /// Gives the copied generator fixture's generator an assembly name of its own.
+    /// </summary>
+    /// <remarks>
+    /// The same precaution <see cref="AddAGeneratorThatFailsWithoutBreakingTheBuild"/> takes, and for
+    /// the same defect. Generators are loaded into
+    /// <see cref="System.Runtime.Loader.AssemblyLoadContext"/>.Default, which caches by assembly
+    /// identity rather than by path and never unloads: the second test in a process to use this
+    /// fixture gets the first one's generator, compiled from a directory that no longer exists.
+    /// Measured when it happened - the baseline failed with CS0103 on the type the generator
+    /// contributes, and the run reported eight generators for a fixture holding two. The defect is
+    /// RB-020; a distinct identity is how a test stays out of its way.
+    /// </remarks>
+    public void RenameTheGeneratorAssembly(string name)
+    {
+        string project = Path.Combine(Root, "Sample.Generator", "Sample.Generator.csproj");
+
+        File.WriteAllText(
+            project,
+            File.ReadAllText(project).Replace(
+                "<IsPackable>false</IsPackable>",
+                "<IsPackable>false</IsPackable>" +
+                Environment.NewLine +
+                $"    <AssemblyName>{name}</AssemblyName>",
+                StringComparison.Ordinal));
+    }
+
     /// <summary>Adds a method no test calls, holding a literal nothing else in the fixture holds.</summary>
     /// <remarks>
     /// Uncovered on purpose, and identifiable on purpose: a test that wants to know what the run

@@ -6,6 +6,9 @@ public enum MutationTestPhase
     /// <summary>Looking for test projects and the projects they exercise.</summary>
     Discovering,
 
+    /// <summary>Reading the earlier state's project graph, for a run measuring a change.</summary>
+    SelectingChanges,
+
     /// <summary>Building the test projects, so their output exists before anything is injected.</summary>
     Building,
 

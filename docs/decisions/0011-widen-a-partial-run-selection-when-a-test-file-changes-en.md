@@ -141,18 +141,47 @@ precise and wrong when the failure mode is a green run that should have been red
   diff — is selected rather than silently passed.
 * The widening runs along a relation the change cannot erase without the tool noticing, and it is
   resolved at both revisions rather than assumed from one.
-* A test *added* by a change still gets the precise selection, because the imprecise case cannot arise
-  there.
+* A test *added* by a change widens nothing, because the imprecise case cannot arise there: a test
+  that did not exist at the base revision cannot have removed a coverage edge.
 
 ### Negative
 
 * Runs are slower, occasionally much slower: touching one test file can re-run every mutant in the
-  production projects that test project exercises.
+  production projects that test project exercises. Measured when `--since` was built, on this
+  repository against `main`: 33 files changed, 364 mutants selected, 7.0 minutes — against 384 mutants
+  in 6.8 minutes for a full run of the same project. The partial run inspected 95 % of the population
+  and took the same time, because the change touched files in `KillMutants.Core.Tests`. Nothing went
+  wrong; the rule did what it says.
+* The *precise* half of the rule is not implemented for an added test file, which therefore selects
+  nothing rather than the mutants its new tests cover. "Covered by a test in that file" needs a map
+  from a test method to the source file it is written in: xUnit's discovery answers with names alone,
+  and the compilation that would resolve one is the test project's, which this tool never builds. The
+  narrowing cannot hide a finding — see the positive consequence above — so what is lost is
+  informative rather than protective: after a commit that only adds tests, the run reports that there
+  was nothing to judge.
 * The widening is conservative rather than precise, and stays that way until a previous run's coverage
   is available to consult.
 
 ### Risks
 
+* A shared build file is attributed to the projects beneath it, which misses one imported explicitly
+  from beside a project rather than from above it. MSBuild's `MSBuildAllProjects` would have been the
+  exact answer and comes back empty on an SDK project - measured - so there is no cheap way to ask
+  which build files a project actually reads.
+* An added C# file in a test project still widens nothing, and only a test can be assumed to add
+  coverage rather than change it. A file holding shared setup, or a module initializer, is not a test
+  and nothing cheap tells it from one. Every other added input - a fixture, a case list, a settings
+  file - now widens, because the "a new test cannot remove an old edge" argument was never about
+  those.
+* A change to `killmutants.json` refuses the partial run outright rather than being selected for.
+  `exclude` there takes effect in discovery, before any selection exists, so a change adding one
+  removes a project from the targets and no widening afterwards can reach it. Comparing the two
+  revisions' settings would be the precise answer; declining to judge a change to the run's own
+  configuration is the honest one.
+* A file that a change both **deletes** and that a test project reached from outside its own
+  directory is attributed to nothing. Membership is read from HEAD's evaluation, where a deleted file
+  no longer appears, and the directory rule that covers ordinary deletions does not reach it either.
+  Both rules are needed and neither covers the other's blind spot here.
 * The guarantee stops at the edge of a test project. Test support in a plain class library is a mutable
   target rather than a test project, so changing it can stop `T` reaching `M` while neither the test
   project nor `M`'s project appears in the diff, and the run passes without having asked about `M`.

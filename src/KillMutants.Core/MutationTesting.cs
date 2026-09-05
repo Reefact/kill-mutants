@@ -45,6 +45,13 @@ public static class MutationTesting
     /// How many of the mutants reported killed to test a second time, on their own, before the run
     /// ends. Zero, the default, skips the check; each sampled mutant costs one more test run.
     /// </param>
+    /// <param name="changes">
+    /// Where to learn what changed and what the code was before it, or null to mutate the whole
+    /// codebase. Such a run reports findings and a binary verdict rather than a mutation score: see
+    /// DEC0010, and <see cref="Reporting.MutationTestReport.Scope"/>. The caller supplies one; this
+    /// assembly provides none, and nothing here depends on where an implementation comes from or on
+    /// what it reads to answer.
+    /// </param>
     /// <param name="progress">Told where the run has got to, so a caller can show it.</param>
     /// <param name="cancellationToken">Cancels the run.</param>
     /// <exception cref="ArgumentException">A named mutator family does not exist.</exception>
@@ -55,6 +62,11 @@ public static class MutationTesting
     /// Coverage could not be measured, so no run was attempted rather than one measured from a build
     /// that could not be trusted. <paramref name="measureCoverage"/> turns the measurement off.
     /// </exception>
+    /// <exception cref="Selection.ChangeSelectionException">
+    /// <paramref name="changes"/> was given and the change, or the project graph of the code before
+    /// it, could not be read. The run stops rather than falling back to what the current state alone
+    /// can say.
+    /// </exception>
     public static Task<MutationTestReport> RunAsync(
         string searchDirectory,
         string configuration = "Release",
@@ -64,13 +76,14 @@ public static class MutationTesting
         IEnumerable<Mutations.MutatorName>? mutators = null,
         IEnumerable<Mutations.MutatorName>? withoutMutators = null,
         int verifyKills = 0,
+        Selection.IChangeSource? changes = null,
         IProgress<Reporting.MutationTestProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         var session = new MutationTestSession(
             new XUnitTestRunner(), configuration, timeoutPolicy: null, workerCount, measureCoverage,
             exclude, Mutations.Mutators.MutatorCatalog.Of(mutators, withoutMutators), verifyKills,
-            progress);
+            changes, progress);
 
         return session.RunAsync(searchDirectory, cancellationToken);
     }

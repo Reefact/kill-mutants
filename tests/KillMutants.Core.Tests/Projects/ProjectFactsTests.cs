@@ -160,5 +160,7 @@ public class ProjectFactsTests
             XunitTestProject: xunitTestProject,
             DeclaredTestSupport: declaredTestSupport,
             PackageReferences: [package],
-            ProjectReferences: []);
+            ProjectReferences: [],
+            AnalyzerProjects: [],
+            InputFiles: []);
 }

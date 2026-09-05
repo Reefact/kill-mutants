@@ -13,6 +13,8 @@ namespace KillMutants.Cli;
 /// <param name="VerifyKills">How many kills to test again, or null when it was not given.</param>
 /// <param name="JsonReportPath">Where to write the JSON report, or null when it was not given.</param>
 /// <param name="Threshold">The score the run must reach, or null when it was not given.</param>
+/// <param name="ThresholdCleared">True when <c>--break-at none</c> was given.</param>
+/// <param name="Since">The revision to measure a change from, or null for the whole codebase.</param>
 /// <remarks>
 /// Every setting is nullable, and that is the point: <c>--configuration Release</c> and saying
 /// nothing must be told apart, because a project's <c>killmutants.json</c> sits between them.
@@ -29,7 +31,9 @@ internal sealed record CommandLineOptions(
     IReadOnlyList<MutatorName>? WithoutMutators,
     int? VerifyKills,
     string? JsonReportPath,
-    double? Threshold)
+    double? Threshold,
+    bool ThresholdCleared,
+    string? Since)
 {
     /// <summary>
     /// Parses the command line. The defaults are chosen so that <c>dotnet killmutants</c> with no
@@ -53,6 +57,11 @@ internal sealed record CommandLineOptions(
         int? verifyKills = null;
         string? jsonReportPath = null;
         double? threshold = null;
+        // Distinct from a null threshold, exactly as an empty family list is distinct from an absent
+        // one: a project that keeps breakAt in killmutants.json needs a way to say "not this run",
+        // and --since refuses a threshold from either source.
+        bool thresholdCleared = false;
+        string? since = null;
 
         for (int index = 0; index < args.Count; index++)
         {
@@ -136,6 +145,19 @@ internal sealed record CommandLineOptions(
 
                     break;
 
+                case "--since":
+                    index++;
+
+                    if (index >= args.Count || string.IsNullOrWhiteSpace(args[index]))
+                    {
+                        throw new ArgumentException(
+                            $"'{argument}' needs a git revision - a branch, a tag or a commit.");
+                    }
+
+                    since = args[index];
+
+                    break;
+
                 case "--break-at":
                     index++;
 
@@ -143,6 +165,22 @@ internal sealed record CommandLineOptions(
                     {
                         throw new ArgumentException($"'{argument}' needs a percentage.");
                     }
+
+                    if (string.Equals(args[index], EmptyList, StringComparison.OrdinalIgnoreCase))
+                    {
+                        thresholdCleared = true;
+                        threshold = null;
+
+                        break;
+                    }
+
+                    // Cleared by a later value, or the option stops being last-one-wins: review
+                    // found that '--break-at none --break-at 80' kept the marker and resolved to no
+                    // threshold at all, so a job that had asked for a gate twice would have had
+                    // none - and would have been allowed to combine it with --since besides. A
+                    // quality gate that disarms itself silently is the one failure this must not
+                    // have.
+                    thresholdCleared = false;
 
                     // IsFinite first, and not as an afterthought: TryParse accepts "NaN", and every
                     // comparison with NaN is false - including the range check here and the one the
@@ -202,7 +240,9 @@ internal sealed record CommandLineOptions(
             withoutMutators,
             verifyKills,
             jsonReportPath,
-            threshold);
+            threshold,
+            thresholdCleared,
+            since);
     }
 
     /// <summary>Parses a comma-separated list of mutator family names.</summary>

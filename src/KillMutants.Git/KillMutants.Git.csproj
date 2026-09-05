@@ -1,15 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
-  </ItemGroup>
-
-  <ItemGroup>
+    <ProjectReference Include="../KillMutants.Core/KillMutants.Core.csproj" />
     <ProjectReference Include="../KillMutants.Platform/KillMutants.Platform.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- A project may name its own tests. Naming a production sibling is what this no longer does. -->
     <InternalsVisibleTo Include="KillMutants.Core.Tests" />
     <InternalsVisibleTo Include="KillMutants.EndToEnd.Tests" />
   </ItemGroup>

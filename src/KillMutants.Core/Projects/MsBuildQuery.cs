@@ -16,12 +16,21 @@ internal sealed class MsBuildQuery
     private static readonly TimeSpan Budget = TimeSpan.FromMinutes(5);
 
     private readonly string _configuration;
+    private readonly bool _readInputFiles;
 
-    public MsBuildQuery(string configuration)
+    /// <param name="configuration">The build configuration to evaluate against.</param>
+    /// <param name="readInputFiles">
+    /// Also read what each project consumes. Off by default, because the answer is long - every
+    /// source file, resource and content item, with MSBuild's metadata on each - and only a partial
+    /// run has a use for it. Asked here rather than in a query of its own so that no run pays an
+    /// extra process per project for it.
+    /// </param>
+    public MsBuildQuery(string configuration, bool readInputFiles = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(configuration);
 
         _configuration = configuration;
+        _readInputFiles = readInputFiles;
     }
 
     /// <summary>
@@ -64,6 +73,11 @@ internal sealed class MsBuildQuery
             "-getItem:ProjectReference",
         ]);
 
+        if (_readInputFiles)
+        {
+            arguments.AddRange(InputItemNames.Select(item => $"-getItem:{item}"));
+        }
+
         string output = await RunRawAsync(projectPath, arguments, cancellationToken).ConfigureAwait(false);
 
         using JsonDocument json = ParseJson(projectPath, output);
@@ -92,7 +106,13 @@ internal sealed class MsBuildQuery
                 root,
                 "ProjectReference",
                 identity => Path.GetFullPath(Path.Combine(directory, identity)),
-                RunsAtRunTime));
+                RunsAtRunTime),
+            AnalyzerProjects: ReadItems(
+                root,
+                "ProjectReference",
+                identity => Path.GetFullPath(Path.Combine(directory, identity)),
+                reference => !RunsAtRunTime(reference)),
+            InputFiles: [.. InputItemNames.SelectMany(item => ReadFullPaths(root, item))]);
     }
 
     /// <summary>Reads an MSBuild boolean, which is written in whatever case the author felt like.</summary>
@@ -184,6 +204,123 @@ internal sealed class MsBuildQuery
 
     private static string Metadata(JsonElement item, string name) =>
         item.TryGetProperty(name, out JsonElement value) ? value.GetString() ?? string.Empty : string.Empty;
+
+    /// <summary>
+    /// The item types whose files can change what a project builds or how it behaves.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Sources first, then everything a project carries alongside them. Review added
+    /// <c>EmbeddedResource</c> and <c>AdditionalFiles</c> to the three this started with: a test
+    /// project can consume a case list as an embedded resource, and a generator reads its inputs as
+    /// additional files, and either can change what an existing test does without a line of C#
+    /// moving. Then <c>EditorConfigFiles</c>, because a generator can read
+    /// <c>AnalyzerConfigOptionsProvider</c> and change what it emits from an option written there.
+    /// Measured before adding it, since evaluation-time availability is never a given here: it
+    /// answers with no build and no restore, and names the repository-root file that sits outside
+    /// every project directory - so membership attributes it where the directory rule cannot.
+    /// </para>
+    /// <para>
+    /// Then <c>Analyzer</c>, which review found missing and which is the item the two above stand in
+    /// for: a repository-local generator consumed as <c>&lt;Analyzer Include="../tools/Gen.dll" /&gt;</c>
+    /// is a compiler input like any other, and changing it changes the assembly produced. Sitting
+    /// outside every project directory, it was attributed to nothing and a diff carrying only it
+    /// selected nothing at all. It has no <c>AnalyzerConsumers</c> entry either - that relation is
+    /// keyed on a referenced <em>project</em>, and this is a file.
+    /// </para>
+    /// <para>
+    /// It is also the one item here that arrives with company. Measured: the SDK adds its own
+    /// analyzers to it, marked <c>IsImplicitlyDefined</c>, from the install directory - so the flag
+    /// is what separates what a repository consumes from what every project in the world does.
+    /// Measured on the six items above too, none of which carries it, so the filter takes nothing
+    /// away that was there before.
+    /// </para>
+    /// <para>
+    /// It is a list of what MSBuild can be asked for cheaply, not a proof of completeness. A project
+    /// can read a file at run time that appears in no item at all, and nothing here would see it.
+    /// </para>
+    /// </remarks>
+    private static readonly string[] InputItemNames =
+    [
+        "Compile", "None", "Content", "EmbeddedResource", "AdditionalFiles", "EditorConfigFiles",
+        "Analyzer",
+    ];
+
+    /// <summary>
+    /// Every file a project compiles or carries, as absolute paths, read from evaluation alone.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The authoritative answer to "does this project own this file", which the directory it sits in
+    /// only approximates. A project can compile a file from anywhere - a <c>Compile</c> item with a
+    /// <c>Link</c>, a glob reaching out of the project folder - and review found the consequence: a
+    /// test project including <c>../SharedTests/Assertions.cs</c> made a change to that file look
+    /// like production code, so deleting an assertion from it produced an empty, passing partial run.
+    /// </para>
+    /// <para>
+    /// <c>None</c> and <c>Content</c> come along because a test project's inputs are not only its
+    /// source: a fixture file, a JSON case list and an <c>appsettings</c> are all things a change to
+    /// which can stop a test reaching a mutant.
+    /// </para>
+    /// <para>
+    /// Evaluation only, so no build and no restore is needed - the same property the project graph
+    /// query relies on. It is asked once per test project and only by a partial run, so a full run
+    /// pays nothing for it.
+    /// </para>
+    /// </remarks>
+    public async Task<IReadOnlyList<string>> GetInputFilesAsync(
+        string projectPath,
+        string? targetFramework = null,
+        CancellationToken cancellationToken = default)
+    {
+        List<string> arguments = ["msbuild", projectPath, $"-p:Configuration={_configuration}", "-nologo"];
+
+        if (!string.IsNullOrEmpty(targetFramework))
+        {
+            arguments.Add($"-p:TargetFramework={targetFramework}");
+        }
+
+        arguments.AddRange(InputItemNames.Select(item => $"-getItem:{item}"));
+
+        string output = await RunRawAsync(projectPath, arguments, cancellationToken).ConfigureAwait(false);
+
+        using JsonDocument json = ParseJson(projectPath, output);
+
+        return [.. InputItemNames.SelectMany(item => ReadFullPaths(json.RootElement, item))];
+    }
+
+    /// <summary>
+    /// Reads an item's <c>FullPath</c> metadata, which MSBuild has already resolved for us.
+    /// </summary>
+    /// <remarks>
+    /// <c>Identity</c> is relative to the project and would have to be resolved against it, which is
+    /// exactly wrong for a linked file: its identity is the <c>..</c> path that makes it interesting.
+    /// </remarks>
+    /// <summary>True for an item MSBuild supplied itself rather than one the project asked for.</summary>
+    /// <remarks>
+    /// The SDK's own analyzers carry it, and they live in the install directory: without this every
+    /// project in the run would claim to consume them, and the index that answers "who consumes this
+    /// file" would carry a machine's dotnet installation alongside the repository.
+    /// </remarks>
+    private static bool IsImplicitlyDefined(JsonElement item) =>
+        item.TryGetProperty("IsImplicitlyDefined", out JsonElement flag) &&
+        string.Equals(flag.GetString(), "true", StringComparison.OrdinalIgnoreCase);
+
+    private static IEnumerable<string> ReadFullPaths(JsonElement root, string itemName)
+    {
+        if (!root.TryGetProperty("Items", out JsonElement items) ||
+            !items.TryGetProperty(itemName, out JsonElement values))
+        {
+            return [];
+        }
+
+        return values.EnumerateArray()
+            .Where(item => !IsImplicitlyDefined(item))
+            .Select(item =>
+                item.TryGetProperty("FullPath", out JsonElement path) ? path.GetString() : null)
+            .Where(path => !string.IsNullOrEmpty(path))
+            .Select(path => Path.GetFullPath(path!));
+    }
 
     /// <summary>Reads MSBuild properties from a project without building it.</summary>
     public async Task<IReadOnlyDictionary<string, string>> GetPropertiesAsync(

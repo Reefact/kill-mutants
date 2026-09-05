@@ -11,23 +11,111 @@ internal sealed class ProjectDiscovery
 {
     private static readonly TimeSpan BuildBudget = TimeSpan.FromMinutes(10);
 
+    private readonly Dictionary<string, List<string>> _leftOut = new(ProjectPaths.Comparer);
+    private readonly Dictionary<string, IReadOnlyList<string>> _inputs = new(ProjectPaths.Comparer);
+    private readonly Dictionary<string, List<string>> _analyzerConsumers = new(ProjectPaths.Comparer);
     private readonly MsBuildQuery _msBuild;
+    /// <summary>The refusal a run with nothing to mutate ends with, wherever it is raised.</summary>
+    internal const string NoTargets =
+        "The test projects reference no other project, so there is nothing to mutate.";
+
+    private readonly bool _deferNoTargets;
+
     private readonly string _configuration;
     private readonly PathFilter _exclusions;
     private readonly IProgress<MutationTestProgress>? _progress;
 
+    /// <param name="configuration">The build configuration to analyse and run.</param>
+    /// <param name="exclusions">Paths to leave alone.</param>
+    /// <param name="progress">Told where discovery has got to.</param>
+    /// <param name="readInputFiles">
+    /// Also read what each project consumes, for a run that has to attribute a changed file to the
+    /// projects that build it. Off for a full run, which has no use for the answer and would pay for
+    /// it in the size of every MSBuild reply.
+    /// </param>
+    /// <param name="deferNoTargets">
+    /// Answer with no targets instead of refusing when the test projects reach nothing. A partial
+    /// run has to be able to ask why, and only the caller can tell the two answers apart.
+    /// </param>
     public ProjectDiscovery(
         string configuration,
         PathFilter? exclusions = null,
-        IProgress<MutationTestProgress>? progress = null)
+        IProgress<MutationTestProgress>? progress = null,
+        bool readInputFiles = false,
+        bool deferNoTargets = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(configuration);
 
         _configuration = configuration;
         _exclusions = exclusions ?? PathFilter.None;
         _progress = progress;
-        _msBuild = new MsBuildQuery(configuration);
+        _deferNoTargets = deferNoTargets;
+        _msBuild = new MsBuildQuery(configuration, readInputFiles);
     }
+
+    /// <summary>
+    /// Every test project the last discovery recognised, whether or not it exercises anything.
+    /// </summary>
+    /// <remarks>
+    /// A test project that reaches no mutable project appears in no <see cref="MutationTestTarget"/>,
+    /// because there is nothing to pair it with. That is right for a run and wrong for a partial one:
+    /// a change can be what emptied it - remove a test project's last project reference and it
+    /// exercises nothing now - and the selection has to recognise its files as test-side in order
+    /// to ask the earlier state what it used to cover. Reading the test projects back off the targets
+    /// missed exactly that case, and an end-to-end test found it.
+    /// </remarks>
+    public IReadOnlyList<TestProject> TestProjects { get; private set; } = [];
+
+    /// <summary>
+    /// Projects a test project reaches that this run deliberately does not mutate.
+    /// </summary>
+    /// <remarks>
+    /// Excluded by the user, or declaring themselves test support. Each is kept with the suites that
+    /// reach it, and that is what the property is for: a changed file in a project nothing mutates
+    /// still travels to those suites, so the production code they exercise is widened.
+    /// <para>
+    /// It used to answer a second question - whether a project had stopped being covered or had
+    /// simply been left alone - and no longer does. That one is put to the run's exclusion patterns
+    /// directly, because what a traversal still reaches is not the same thing as what the user asked
+    /// to be left alone: a change removing the last reference to an excluded project empties this
+    /// list of it while the instruction stands.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> ProjectsLeftOut =>
+        _leftOut.ToDictionary(
+            entry => entry.Key, entry => (IReadOnlyList<string>)entry.Value, ProjectPaths.Comparer);
+
+    /// <summary>Everything the last discovery learned, for a caller that needs more than targets.</summary>
+    public DiscoveredProjects Everything(IReadOnlyList<MutationTestTarget> targets) =>
+        new(
+            targets,
+            new HashSet<string>(
+                TestProjects.Select(test => test.ProjectPath), ProjectPaths.Comparer),
+            ProjectsLeftOut,
+            InputsByProject,
+            AnalyzerConsumers);
+
+    /// <summary>
+    /// What each project discovery read consumes, by project path, empty unless it was asked.
+    /// </summary>
+    /// <remarks>
+    /// Every project, not only the targets: a partial run has to attribute a changed file to
+    /// whatever builds it, and that includes a test project and a declared support library as much
+    /// as a project under test.
+    /// </remarks>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> InputsByProject => _inputs;
+
+    /// <summary>Which projects consume each generator project, by the generator's path.</summary>
+    /// <remarks>
+    /// A project referenced as an analyzer is invisible to everything else here on purpose: it does
+    /// not run at run time, so it is neither a target nor something a target links. But it decides
+    /// what its consumers compile, so a change to its source changes the assembly under test without
+    /// putting a line of that assembly's own code in the diff - review found a partial run passing
+    /// clean over exactly that. This is the relation that lets the change reach them.
+    /// </remarks>
+    public IReadOnlyDictionary<string, IReadOnlyList<string>> AnalyzerConsumers =>
+        _analyzerConsumers.ToDictionary(
+            entry => entry.Key, entry => (IReadOnlyList<string>)entry.Value, ProjectPaths.Comparer);
 
     /// <summary>
     /// Discovers everything to mutate under <paramref name="searchDirectory"/>.
@@ -55,6 +143,12 @@ internal sealed class ProjectDiscovery
 
         RejectMultiTargetedTestProjects(testProjects);
 
+        TestProjects =
+        [
+            .. testProjects.Select(test =>
+                new TestProject(test.ProjectPath, test.AssemblyPath, test.OutputDirectory)),
+        ];
+
         return await PairProjectsWithTheirTestsAsync(projects, testProjects, cancellationToken)
             .ConfigureAwait(false);
     }
@@ -79,7 +173,7 @@ internal sealed class ProjectDiscovery
         // only the first is what let two test suites on different frameworks share one target.
         Dictionary<string, SortedSet<string>> frameworksByProject = new(ProjectPaths.Comparer);
 
-        // Filled only when a test project actually reaches an excluded project, so a repository
+        // Filled only when a test project actually reaches an excluded project, so a codebase
         // that excludes directories nothing references pays nothing for it.
         Dictionary<string, ProjectFacts?> beyondExclusions = new(ProjectPaths.Comparer);
 
@@ -105,10 +199,15 @@ internal sealed class ProjectDiscovery
             }
         }
 
-        if (testsByProject.Count == 0)
+        // Refused for a full run, where it can only be a misconfiguration, and left to the caller
+        // for a partial one - review found the difference. A change that removes the last project
+        // reference in a small repository empties the targets, and refusing here ends the run
+        // before the earlier state can say that a production project has just lost the only suite
+        // that covered it. Which of the two it is cannot be decided from the current state alone,
+        // and that is the one thing this method has.
+        if (testsByProject.Count == 0 && !_deferNoTargets)
         {
-            throw new ProjectAnalysisException(
-                "The test projects reference no other project, so there is nothing to mutate.");
+            throw new ProjectAnalysisException(NoTargets);
         }
 
         RejectProjectsReachedFromSeveralFrameworks(frameworksByProject);
@@ -124,6 +223,14 @@ internal sealed class ProjectDiscovery
                 .GetProjectFactsAsync(
                     mutablePath, frameworksByProject[mutablePath].Single(), cancellationToken)
                 .ConfigureAwait(false);
+
+            // And recorded, replacing what the framework-less evaluation said this project consumes.
+            // Measured: an item conditioned on '$(TargetFramework)' is absent from the outer build of
+            // a multi-targeted project, where that property is empty - asked for AdditionalFiles, the
+            // outer evaluation answers with the unconditioned file alone. A partial run has to
+            // attribute a changed file from the same evaluation the mutated compilation comes from,
+            // which is this one.
+            Record(facts);
 
             targets.Add(new MutationTestTarget(
                 new ProjectUnderTest(
@@ -188,6 +295,20 @@ internal sealed class ProjectDiscovery
             {
                 reachable.Add(path);
             }
+            else
+            {
+                // Reached, and left alone on purpose. Recorded with the suite that reached it, so a
+                // partial run can tell this apart from a project whose last test reference a change
+                // has just removed - and can widen through it, since a change to a support library
+                // is a change to what its suites can see.
+                if (!_leftOut.TryGetValue(path, out List<string>? reachedBy))
+                {
+                    _leftOut[path] = reachedBy = [];
+                }
+
+                reachedBy.Add(testProject.ProjectPath);
+
+            }
 
             foreach (string reference in facts.ProjectReferences)
             {
@@ -203,8 +324,16 @@ internal sealed class ProjectDiscovery
     /// path is not an excluded project of this run.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// No framework is named: only the references and the "is this a test project" answer are
     /// needed, and neither depends on which framework the project is evaluated for.
+    /// </para>
+    /// <para>
+    /// Its inputs are recorded like any other project's. Review found them missing here: a project
+    /// reached but left out still consumes files, and one it links in from outside its own folder is
+    /// attributed by nothing else. A change to such a file then marked no suite as touched and
+    /// widened nothing, which is the silent pass the widening exists to prevent.
+    /// </para>
     /// </remarks>
     private async Task<ProjectFacts?> FactsOfExcludedAsync(
         string path,
@@ -221,9 +350,61 @@ internal sealed class ProjectDiscovery
                 .ConfigureAwait(false)
             : null;
 
+        if (facts is not null)
+        {
+            Record(facts);
+        }
+
         cache[path] = facts;
 
         return facts;
+    }
+
+    /// <summary>
+    /// Indexes what a project consumes: its own inputs, and the generators it consumes.
+    /// </summary>
+    /// <remarks>
+    /// One method rather than two copies, because review found the second copy missing twice - first
+    /// the inputs of a lazily evaluated project, then its generators. A project reached but left out
+    /// consumes files and generators exactly like any other, and a change to one of them has to
+    /// reach the suites that see it through the facade.
+    /// </remarks>
+    private void Record(ProjectFacts facts)
+    {
+        _inputs[facts.ProjectPath] = facts.InputFiles;
+
+        // Taken back before it is given, and review found the asymmetry: the line above *replaces*
+        // what a project consumes, while the loop below only ever added what it generates from. A
+        // project is recorded twice - once by the sweep, once for the framework its suites load -
+        // and an analyzer reference the outer evaluation sees while the selected framework does not
+        // (`Condition="'$(TargetFramework)' != 'net10.0'"`) was added by the first pass and never
+        // withdrawn. A later change to that generator then widened a project whose compilation does
+        // not consume it, and an unrelated survivor already sitting there fails the partial gate -
+        // the one failure mode this selection is built to avoid.
+        foreach ((string generator, List<string> consumers) in _analyzerConsumers)
+        {
+            if (!facts.AnalyzerProjects.Contains(generator, ProjectPaths.Comparer))
+            {
+                consumers.RemoveAll(
+                    consumer => ProjectPaths.Comparer.Equals(consumer, facts.ProjectPath));
+            }
+        }
+
+        foreach (string generator in facts.AnalyzerProjects)
+        {
+            if (!_analyzerConsumers.TryGetValue(generator, out List<string>? consumers))
+            {
+                _analyzerConsumers[generator] = consumers = [];
+            }
+
+            // Guarded because a project can be recorded twice: once from the sweep, once for the
+            // framework its suites load. Widening is idempotent, so a duplicate changes no outcome,
+            // but this list is answered to callers and a repeated consumer is not an answer.
+            if (!consumers.Contains(facts.ProjectPath, ProjectPaths.Comparer))
+            {
+                consumers.Add(facts.ProjectPath);
+            }
+        }
     }
 
     private async Task<IReadOnlyList<ProjectFacts>> ReadProjectsAsync(
@@ -264,8 +445,12 @@ internal sealed class ProjectDiscovery
                 MutationTestPhase.Discovering, projects.Count, paths.Length,
                 Path.GetFileNameWithoutExtension(path)));
 
-            projects.Add(await _msBuild.GetProjectFactsAsync(path, cancellationToken: cancellationToken)
-                .ConfigureAwait(false));
+            ProjectFacts facts = await _msBuild
+                .GetProjectFactsAsync(path, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            Record(facts);
+            projects.Add(facts);
         }
 
         return projects;

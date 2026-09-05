@@ -7,6 +7,7 @@ using KillMutants.Mutations;
 using KillMutants.Mutations.Mutators;
 using KillMutants.Projects;
 using KillMutants.Reporting;
+using KillMutants.Selection;
 using KillMutants.Testing;
 using Microsoft.CodeAnalysis.CSharp;
 
@@ -26,6 +27,7 @@ internal sealed class MutationTestSession
     private readonly IReadOnlyList<string> _exclude;
     private readonly MutatorCatalog _catalog;
     private readonly int _verifyKills;
+    private readonly IChangeSource? _changes;
     private readonly IProgress<MutationTestProgress>? _progress;
 
     public MutationTestSession(
@@ -37,6 +39,7 @@ internal sealed class MutationTestSession
         IEnumerable<string>? exclude = null,
         MutatorCatalog? catalog = null,
         int verifyKills = 0,
+        IChangeSource? changes = null,
         IProgress<MutationTestProgress>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(testRunner);
@@ -61,6 +64,7 @@ internal sealed class MutationTestSession
         _exclude = [.. exclude ?? []];
         _catalog = catalog ?? MutatorCatalog.Default;
         _verifyKills = verifyKills;
+        _changes = changes;
         _progress = progress;
     }
 
@@ -84,11 +88,55 @@ internal sealed class MutationTestSession
         // Built here rather than in the constructor: the patterns are relative to the directory the
         // run was pointed at, which only this call knows.
         PathFilter exclusions = PathFilter.Excluding(searchDirectory, _exclude);
-        var discovery = new ProjectDiscovery(_configuration, exclusions, _progress);
+        var discovery = new ProjectDiscovery(
+            _configuration,
+            exclusions,
+            _progress,
+            readInputFiles: _changes is not null,
+            deferNoTargets: _changes is not null);
 
         IReadOnlyList<MutationTestTarget> targets = await discovery
             .DiscoverAsync(searchDirectory, cancellationToken)
             .ConfigureAwait(false);
+
+        // Resolved after discovery, because the selection is expressed in terms of what discovery
+        // found - which projects are test projects, and which mutable projects each of them
+        // exercises - and before anything is built, because a change that selects nothing must not
+        // cost a build.
+        ChangeSelection? selection = _changes is null
+            ? null
+            : await ChangeSelection
+                .ResolveAsync(
+                    _changes, searchDirectory, _configuration, discovery.Everything(targets),
+                    exclusions, _progress, cancellationToken)
+                .ConfigureAwait(false);
+
+        RunScope scope = selection?.Scope ?? RunScope.WholeCodebase;
+
+        // Discovery answered with no targets rather than refusing, because a partial run has to be
+        // able to ask why - and this is where the answer is. Review found the run ending before the
+        // question was ever put: with one Tests -> Core pair, removing that reference empties the
+        // targets, and the refusal fired before the earlier state could say that Core had just lost
+        // the only suite covering it. What tells the two apart is whether the comparison found
+        // coverage gone. Nothing found means the repository has nothing to mutate, which is the
+        // misconfiguration the refusal was written for, and it is raised here instead.
+        if (selection is not null && targets.Count == 0 && selection.CoverageLost.Count == 0)
+        {
+            throw new ProjectAnalysisException(ProjectDiscovery.NoTargets);
+        }
+
+        if (selection is { SelectsNothing: true } || (selection is not null && targets.Count == 0))
+        {
+            // Nothing in the change can produce a mutant. Building the test projects and reading
+            // every compilation to establish that would take a minute to reach the same empty
+            // report, and a documentation-only pull request is the commonest partial run there is.
+            //
+            // With no targets at all there is also nothing to build, and what the report carries is
+            // the coverage the change took away - which is a verdict, not an empty run.
+            return new MutationTestReport(
+                [], stopwatch.Elapsed, RunEnvironment.Describe(_workerCount, null, [], 0), scope,
+                selection.CoverageLost);
+        }
 
         // The real build comes first and nothing may run MSBuild after injection, so every
         // compilation is read in between. Reading one relies on the build having already produced
@@ -122,7 +170,7 @@ internal sealed class MutationTestSession
         foreach ((MutationTestTarget target, ProjectCompilation compilation) in targets.Zip(compilations))
         {
             results.AddRange(await TestTargetAsync(
-                    target, compilation, generator, budgets, verified, cancellationToken)
+                    target, compilation, generator, selection, budgets, verified, cancellationToken)
                 .ConfigureAwait(false));
         }
 
@@ -130,18 +178,22 @@ internal sealed class MutationTestSession
             results,
             stopwatch.Elapsed,
             RunEnvironment.Describe(
-                _workerCount, TestFrameworkOf(targets), budgets, verified.Sum()));
+                _workerCount, TestFrameworkOf(targets), budgets, verified.Sum()),
+            scope,
+            selection?.CoverageLost);
     }
 
     private async Task<IReadOnlyList<MutantResult>> TestTargetAsync(
         MutationTestTarget target,
         ProjectCompilation compilation,
         MutantGenerator generator,
+        ChangeSelection? selection,
         List<TimeBudget> budgets,
         List<int> verified,
         CancellationToken cancellationToken)
     {
-        IReadOnlyList<Mutant> mutants = generator.Generate(compilation.Compilation);
+        IReadOnlyList<Mutant> mutants = generator.Generate(
+            compilation.Compilation, selection?.For(target.ProjectUnderTest));
 
         if (mutants.Count == 0)
         {
@@ -340,7 +392,7 @@ internal sealed class MutationTestSession
         }
 
         // Spread across the run rather than taken from the front, so a sample says something about
-        // the whole of it. Deterministic, so two runs of one commit sample the same mutants.
+        // the whole of it. Deterministic, so two runs of the same code sample the same mutants.
         int[] killed = [.. Enumerable
             .Range(0, results.Length)
             .Where(index => results[index].Status == MutantStatus.Killed)];

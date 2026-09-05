@@ -71,11 +71,20 @@ Concrètement, une exécution se déroule ainsi :
 
 ## 4. Correspondance entre les concepts et le code
 
-Les préoccupations ci-dessous sont maintenues distinctes en tant que namespaces et types. Elles ne
-sont délibérément **pas** maintenues distinctes en tant qu'assemblys : pour le milestone 1, cela
-ferait treize projets pour quelques centaines de lignes, c'est-à-dire exactement la structure
-prématurée que ce projet s'est fixé d'éviter. Découper plus tard coûte peu ; les frontières de
-namespace sont déjà placées là où passeraient les frontières d'assembly.
+Les préoccupations ci-dessous sont maintenues distinctes en tant que namespaces et types. La plupart
+partagent un même assembly : pour le milestone 1, treize projets pour quelques centaines de lignes
+auraient été exactement la structure prématurée que ce projet s'est fixé d'éviter, et les frontières
+de namespace sont placées là où passeraient les frontières d'assembly.
+
+Trois assemblys existent néanmoins, et ce découpage-là porte quelque chose plutôt que d'être
+cosmétique. `KillMutants.Core` déclare `IChangeSource` et `ICodeSnapshot` — ce qu'une exécution
+partielle attend de ce qui sait ce qui a changé — et n'implémente ni l'un ni l'autre ; il ne nomme
+aucune implémentation nulle part, donc il ne peut en atteindre aucune, même par accident.
+`KillMutants.Git` les implémente et référence le core. `KillMutants.Platform` porte ce dont les deux
+ont besoin du système d'exploitation — exécuter un processus sous un budget de temps, supprimer un
+répertoire temporaire sans jamais faire échouer une exécution pour autant — afin qu'aucun n'ait à
+nommer l'autre pour le partager. Le CLI est le seul endroit qui sache que git est ce qui répond
+aujourd'hui, et c'est là qu'appartient la composition. Voir DEC0011 pour ce à quoi sert ce contrat.
 
 | Préoccupation | Namespace | Remarques |
 |---|---|---|
@@ -235,7 +244,13 @@ exécuté sur le code source de KillMutants lui-même, ce qui a fait apparaître
 secondes. M11 rend sa sortie exploitable : ce que chaque famille de mutateurs a coûté et attrapé, les
 `--mutators` et `--without` qui agissent dessus, et `[ExcludeFromCodeCoverage]` respecté. M12 permet à
 un projet de garder ces choix dans `killmutants.json` plutôt que dans une commande shell : le
-catalogue derrière un score est ainsi versionné avec le code qu'il a noté.
+catalogue derrière un score est ainsi versionné avec le code qu'il a noté. M13 le rend utilisable sur
+une pull request plutôt que la nuit : `--since` ne juge que ce qu'un changement a touché et — parce
+qu'une population définie par un diff n'a pas de pourcentage qui vaille d'être imprimé — rapporte des
+constats et un verdict binaire plutôt qu'un score. Le DEC0010 argumente cela ; le DEC0011 arrête la
+sélection, qui est la partie intéressante : le code de production modifié avec précision, les *tests*
+modifiés avec prudence, et le graphe de projets lu aux deux révisions, pour que retirer une référence
+de projet dans le changement jugé n'efface pas la réponse en même temps que la question.
 
 **Ce que mesure l'exécution sur lui-même.** 384 mutants sur `KillMutants.Core`, 6,8 minutes sur
 quatre cœurs : 106 tués, 111 survivants, un tué par timeout, 166 non couverts, aucun en échec de

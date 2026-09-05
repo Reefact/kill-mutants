@@ -35,6 +35,12 @@ public sealed record RunWarning(string Text)
     {
         List<RunWarning> warnings = [];
 
+        // A partial run prints no score, so no warning on one may name it. Review found two that
+        // still did - an assumption "carrying the score", a verdict to settle "before the score is
+        // believed" - which told the reader of a report that deliberately has no number to trust or
+        // distrust one. What such a run has instead is a verdict, and that is what they now say.
+        string number = report.Scope.IsPartial ? "verdict" : "score";
+
         if (report.Detected > 0 &&
             report.TimedOut >= report.Detected * TimeoutShareOfDetections &&
             report.TimedOut > 0)
@@ -44,7 +50,7 @@ public sealed record RunWarning(string Text)
                 $"({Count(report.TimedOut)} of {Count(report.Detected)}) were counted so because " +
                 "they timed out, not because a test failed. A timeout is read as a detection on the " +
                 "assumption that the mutation changed behaviour enough to hang the suite; at this " +
-                "proportion, that assumption is carrying the score. Each was re-run on its own " +
+                $"proportion, that assumption is carrying the {number}. Each was re-run on its own " +
                 "before being believed, so contention is not the cause - the time budget is."));
         }
 
@@ -71,14 +77,17 @@ public sealed record RunWarning(string Text)
                 string.Join(", ", disputed.Select(result => result.Mutant.Key)) +
                 ". A verdict that does not reproduce was never a measurement, and this tool cannot " +
                 "tell which of the two runs was right. Every one of these is worth settling by " +
-                "hand before the score is believed."));
+                $"hand before the {number} is believed."));
         }
 
         if (report.Untestable > 0 && report.Total > 0)
         {
+            string what = $"the {number}";
+
             warnings.Add(new RunWarning(
                 $"{Count(report.Untestable)} of {Count(report.Total)} mutants could not be built " +
-                "and are outside the score entirely. The score describes the rest."));
+                $"and are outside {what} entirely. {char.ToUpperInvariant(what[0])}{what[1..]} " +
+                "describes the rest."));
         }
 
         return warnings;
