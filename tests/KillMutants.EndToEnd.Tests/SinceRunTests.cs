@@ -796,6 +796,53 @@ public class SinceRunTests
     }
 
     /// <summary>
+    /// A component whose working tree moved without its gitlink is still a change.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Review found this, and it is the sharpest of the component cases because nothing is committed
+    /// anywhere. Measured from the outer repository with a file added inside an initialised
+    /// component and never committed: <c>git diff --no-renames --raw HEAD</c> is empty, and so is
+    /// <c>git ls-files --others --exclude-standard</c>. Neither command descends into another
+    /// repository, so the source reported no change at all - while the component's own SDK glob
+    /// compiles that file into the assembly this run mutates. An empty, passing run over brand new
+    /// code that no test has ever seen.
+    /// </para>
+    /// <para>
+    /// The file is left untracked rather than committed on purpose: committing it inside the
+    /// component and bumping the gitlink is the case the test above already covers, and it is the
+    /// one git does report.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task A_component_dirty_without_a_bump_is_still_a_change()
+    {
+        using var outer = FixtureCopy.CreateMultiProject();
+        using var inner = FixtureCopy.Create();
+
+        FixtureRepository.InitialiseAt(inner.Root);
+        FixtureRepository.InitialiseAt(outer.Root);
+        FixtureRepository.AddSubmodule(outer.Root, inner.Root, "libs/Sample");
+
+        // Never committed, in the component or outside it: the outer repository's gitlink still
+        // names the commit it named before, and every listing it can run comes back empty.
+        File.WriteAllText(
+            Path.Combine(outer.Root, "libs", "Sample", "Sample.Library", "Rates.cs"),
+            """
+            namespace Sample.Library;
+
+            public static class Rates
+            {
+                public static int Apply(int amount, int rate) => amount * rate;
+            }
+            """);
+
+        MutationTestReport report = await RunSinceHeadAsync(outer);
+
+        Assert.Contains("Ages.cs", MutatedFiles(report));
+    }
+
+    /// <summary>
     /// A component reported as one opaque path carries the roles its projects hold from outside it.
     /// </summary>
     /// <remarks>
