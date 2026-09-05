@@ -74,13 +74,31 @@ internal sealed class ChangeSelection
         RunScope scope,
         HashSet<string> widened,
         MutantSelection changedFiles,
-        IReadOnlyList<string> coverageLost)
+        IReadOnlyList<string> coverageLost,
+        bool earlierStateHadSomethingToMutate)
     {
         Scope = scope;
         _widened = widened;
         _changedFiles = changedFiles;
         CoverageLost = coverageLost;
+        EarlierStateHadSomethingToMutate = earlierStateHadSomethingToMutate;
     }
+
+    /// <summary>True when the earlier state's suites reached a production project at all.</summary>
+    /// <remarks>
+    /// <para>
+    /// Asked for one question only, and review found it after the answer it exists for was got
+    /// wrong. A partial run with no current targets is either a repository that never had any -
+    /// a misconfiguration, and the refusal is right - or a change that removed the last one. The
+    /// coverage-loss report cannot tell them apart, because a project the change also <em>deleted</em>
+    /// is deliberately absent from it: nothing was left uncovered, the code went with the tests.
+    /// </para>
+    /// <para>
+    /// False when the earlier state was never read, which costs nothing here: the run has no targets
+    /// and no change that could have taken them away, so the refusal is what the situation deserves.
+    /// </para>
+    /// </remarks>
+    public bool EarlierStateHadSomethingToMutate { get; }
 
     /// <summary>What the report says about the population this run inspected.</summary>
     public RunScope Scope { get; }
@@ -229,6 +247,9 @@ internal sealed class ChangeSelection
         PathFilter exclusions,
         IProgress<MutationTestProgress>? progress)
     {
+        /// <summary>Whether the earlier state's suites reached any production project at all.</summary>
+        private bool _earlierStateReachedProduction;
+
         /// <summary>Every project discovery read, by the directory it sits in.</summary>
         /// <remarks>
         /// A list per directory, not one project: two projects in one folder is unusual and legal,
@@ -326,7 +347,11 @@ internal sealed class ChangeSelection
                 .ConfigureAwait(false);
 
             return new ChangeSelection(
-                scope, widened, MutantSelection.Of(changedFiles), coverageLost);
+                scope,
+                widened,
+                MutantSelection.Of(changedFiles),
+                coverageLost,
+                _earlierStateReachedProduction);
         }
 
         /// <summary>
@@ -590,6 +615,11 @@ internal sealed class ChangeSelection
                              .ProductionProjectsReachedFromAsync(testProject, cancellationToken)
                              .ConfigureAwait(false))
                 {
+                    // Recorded before anything is decided about this project, and deliberately for
+                    // every one reached rather than only those that survive the questions below.
+                    // What it answers is whether that state had production code under test at all.
+                    _earlierStateReachedProduction = true;
+
                     if (CurrentTargetAt(reached) is { } target)
                     {
                         if (widens)

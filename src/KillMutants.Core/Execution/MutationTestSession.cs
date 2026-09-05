@@ -117,10 +117,19 @@ internal sealed class MutationTestSession
         // able to ask why - and this is where the answer is. Review found the run ending before the
         // question was ever put: with one Tests -> Core pair, removing that reference empties the
         // targets, and the refusal fired before the earlier state could say that Core had just lost
-        // the only suite covering it. What tells the two apart is whether the comparison found
-        // coverage gone. Nothing found means the repository has nothing to mutate, which is the
-        // misconfiguration the refusal was written for, and it is raised here instead.
-        if (selection is not null && targets.Count == 0 && selection.CoverageLost.Count == 0)
+        // the only suite covering it.
+        //
+        // Lost coverage is not the whole of the answer, and review found that too - in this guard,
+        // one round later. A change can remove the reference *and* delete the project: the earlier
+        // state still shows the suite reaching it, but a project that no longer exists is
+        // deliberately absent from the coverage-loss report, so nothing is lost and nothing is left
+        // to mutate. That is an ordinary partial run over a deletion. What separates it from the
+        // misconfiguration is whether that state had production code under test at all, which is
+        // the one thing the earlier traversal can say and the current state cannot.
+        if (selection is not null &&
+            targets.Count == 0 &&
+            selection.CoverageLost.Count == 0 &&
+            !selection.EarlierStateHadSomethingToMutate)
         {
             throw new ProjectAnalysisException(ProjectDiscovery.NoTargets);
         }

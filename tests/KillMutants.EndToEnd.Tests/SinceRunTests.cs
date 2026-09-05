@@ -833,6 +833,35 @@ public class SinceRunTests
     }
 
     /// <summary>
+    /// Deleting the last production project is a change, not a misconfiguration.
+    /// </summary>
+    /// <remarks>
+    /// Review found this in the fix above, which is the shape worth recording: moving a refusal is
+    /// how you find out what the refusal was really answering. Zero targets and no coverage lost was
+    /// read as "this repository has nothing to mutate", and it is not the only way to get there. A
+    /// change can remove the reference <em>and</em> delete the project it pointed at: the earlier
+    /// state still shows the suite reaching it, but a project that no longer exists is deliberately
+    /// left out of the coverage-loss report, so nothing is lost and nothing is left to mutate. That
+    /// is an ordinary partial run over a deletion, and refusing it told the user their repository
+    /// was misconfigured when their change was simply large.
+    /// </remarks>
+    [Fact]
+    public async Task Deleting_the_last_production_project_is_not_a_misconfiguration()
+    {
+        using var fixture = FixtureCopy.Create();
+
+        FixtureRepository.InitialiseAt(fixture.Root);
+
+        EmptyTheOnlyPair(fixture);
+        Directory.Delete(Path.Combine(fixture.Root, "Sample.Library"), recursive: true);
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        Assert.False(report.LostCoverage);
+        Assert.Empty(MutatedFiles(report));
+    }
+
+    /// <summary>
     /// A full run over a repository whose suites reach nothing still refuses.
     /// </summary>
     /// <remarks>
