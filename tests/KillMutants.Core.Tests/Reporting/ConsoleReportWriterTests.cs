@@ -158,6 +158,37 @@ public class ConsoleReportWriterTests
     }
 
     /// <summary>
+    /// The caveat is printed before the findings it makes provisional, not after them.
+    /// </summary>
+    /// <remarks>
+    /// Review found this, and what it found is the shape of the gap: the two tests above assert that
+    /// the text is present, which says nothing about where. It sat in the scope section, which this
+    /// writer emits last, so it arrived after the findings a reader had already read - and told them
+    /// "the mutants below" about mutants printed above it. Asserting an order is the only way to pin
+    /// a defect that is entirely about order.
+    /// </remarks>
+    [Fact]
+    public void The_incomplete_comparison_caveat_precedes_the_findings()
+    {
+        Mutant mutant = MutantsFor("class C { bool M(int a) => a >= 18; }")[0];
+        var writer = new StringWriter();
+
+        ConsoleReportWriter.Write(
+            writer,
+            new MutationTestReport(
+                [new MutantResult(mutant, MutantStatus.Survived)],
+                scope: Partial,
+                unreadComponents: ["libs/Sample"]));
+
+        string output = writer.ToString();
+        int caveat = output.IndexOf("Comparison incomplete", StringComparison.Ordinal);
+        int findings = output.IndexOf("Survived", StringComparison.Ordinal);
+
+        Assert.True(caveat >= 0 && findings >= 0, $"both expected in:{Environment.NewLine}{output}");
+        Assert.True(caveat < findings, $"caveat at {caveat}, findings at {findings}");
+    }
+
+    /// <summary>
     /// The subtlest of the three: a change with no mutants also reads as a settled pass.
     /// </summary>
     [Fact]

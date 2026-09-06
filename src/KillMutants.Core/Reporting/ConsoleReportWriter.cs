@@ -15,6 +15,8 @@ public static class ConsoleReportWriter
         writer.WriteLine("KillMutants");
         writer.WriteLine();
 
+        WriteComparisonCaveat(writer, report);
+
         // The findings come before the totals because they are the point of the run: a survivor
         // names code the tests do not really check, and an uncovered mutant names code they do not
         // reach at all. The numbers only summarise them.
@@ -48,6 +50,35 @@ public static class ConsoleReportWriter
     /// documentation, because the reader who would draw a trend from two partial runs is exactly the
     /// reader who never opened the documentation. See DEC0010.
     /// </remarks>
+    /// <summary>Says the comparison was incomplete, before anything it makes provisional.</summary>
+    /// <remarks>
+    /// At the top of the report because that is what "before" means here, and review found the first
+    /// attempt asserting it while doing the opposite: the text sat in the scope section, which this
+    /// writer emits last, so a caveat about how to read the findings arrived after the reader had
+    /// already read them - and it said "the mutants below" about mutants printed above it. The
+    /// wording was checked and the call order was not.
+    /// </remarks>
+    private static void WriteComparisonCaveat(TextWriter writer, MutationTestReport report)
+    {
+        if (!report.ComparisonIsIncomplete)
+        {
+            return;
+        }
+
+        foreach (string line in Wrap(
+                     "Comparison incomplete: the earlier state was reconstructed without " +
+                     string.Join(", ", report.UnreadComponents) +
+                     ", whose contents are not in this clone. The mutants below were really run and " +
+                     "their results hold; what the comparison decided - which code was selected, and " +
+                     "any coverage reported lost - does not.",
+                     width: 88))
+        {
+            writer.WriteLine(line);
+        }
+
+        writer.WriteLine();
+    }
+
     private static void WriteScopeAndScore(TextWriter writer, MutationTestReport report)
     {
         if (!report.Scope.IsPartial)
@@ -68,22 +99,6 @@ public static class ConsoleReportWriter
                      width: 88))
         {
             writer.WriteLine(line);
-        }
-
-        // Before the findings rather than after them, because it changes how they are read: what
-        // follows was measured against a state this run could not fully reconstruct.
-        if (report.ComparisonIsIncomplete)
-        {
-            foreach (string line in Wrap(
-                         "Comparison incomplete: the earlier state was reconstructed without " +
-                         string.Join(", ", report.UnreadComponents) +
-                         ", whose contents are not in this clone. The mutants below were really " +
-                         "run and their results hold; what the comparison decided - which code was " +
-                         "selected, and any coverage reported lost - does not.",
-                         width: 88))
-            {
-                writer.WriteLine(line);
-            }
         }
 
         if (report.LostCoverage)
