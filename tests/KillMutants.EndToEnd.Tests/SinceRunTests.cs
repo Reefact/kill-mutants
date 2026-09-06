@@ -1568,21 +1568,27 @@ public class SinceRunTests
     }
 
     /// <summary>
-    /// A component that genuinely is not here stops the run rather than being read as empty.
+    /// A component that genuinely is not here is reported rather than read as empty.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The other side of the rename above, and it had nothing pinning it. What reports a component
     /// absent was rewritten to ask git instead of assembling a path, and nothing would have noticed
-    /// if that rewrite had reported nothing absent at all - the refusal would simply have stopped
-    /// happening, and a run would have read an empty directory as an answer.
+    /// if that rewrite had reported nothing absent at all - the run would simply have read an empty
+    /// directory as an answer: no such project, therefore no edge, therefore nothing lost.
+    /// </para>
     /// <para>
     /// Absent means the objects are not here: a fresh clone before <c>submodule update --init</c>.
     /// No amount of local work produces them, so the run says what it could not compare instead of
-    /// claiming it compared it.
+    /// claiming it compared it. It used to say so by refusing outright, and this case is why that
+    /// refusal went: the same repository in the same state ended in an exception or in a full
+    /// report depending on whether the traversal happened to walk into the missing component,
+    /// which the diff decides and the user does not. The abstention already covers it - anything
+    /// missing withholds the verdict - so what the refusal added was losing the report as well.
     /// </para>
     /// </remarks>
     [Fact]
-    public async Task A_component_whose_contents_are_not_here_stops_the_run()
+    public async Task A_component_whose_contents_are_not_here_is_named_rather_than_read_as_empty()
     {
         using var outer = FixtureCopy.CreateMultiProject();
         using var inner = FixtureCopy.Create();
@@ -1610,10 +1616,10 @@ public class SinceRunTests
 
         FixtureRepository.DeinitialiseSubmodule(outer.Root, "libs/Sample");
 
-        ChangeSelectionException refusal = await Assert.ThrowsAsync<ChangeSelectionException>(
-            () => RunSinceHeadAsync(outer));
+        MutationTestReport report = await RunSinceHeadAsync(outer);
 
-        Assert.Contains("libs/Sample", refusal.Message, StringComparison.Ordinal);
+        Assert.True(report.ComparisonIsIncomplete);
+        Assert.Contains("libs/Sample", report.UnreadComponents);
     }
 
     /// <summary>
