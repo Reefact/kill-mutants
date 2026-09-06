@@ -2,9 +2,10 @@
 
 ## Statut
 
-| Date | Statut | Note | Compte rendu associé |
+| Date | Statut | Note | Compte rendu lié |
 |---|---|---|---|
-| 2026-09-06 | Proposé | Premier jet | |
+| 2026-09-06 | Proposé | Première rédaction | |
+| 2026-09-06 | Accepté | | |
 
 ## Contexte
 
