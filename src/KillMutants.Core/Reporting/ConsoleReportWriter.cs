@@ -97,7 +97,20 @@ public static class ConsoleReportWriter
             }
         }
 
-        if (report.Total == 0)
+        // First branch of the same chain rather than a paragraph beside it, and review found why it
+        // has to be: the warning above was printed and then execution fell through to a verdict, so
+        // a run whose mutants all died said "Comparison incomplete" and, four lines later, "Verdict:
+        // no undetected mutant in the selected scope". Every branch below reads as a settled answer
+        // - "nothing produces a mutant" included - and exactly one line may be printed here.
+        if (report.ComparisonIsIncomplete)
+        {
+            writer.WriteLine(report.Total == 0
+                ? "No verdict: nothing in the change produced a mutant, and what selected it was " +
+                  "compared against a state this run could not fully read."
+                : $"No verdict: {Format(report.Undetected)} of {Format(report.Total)} mutant(s) " +
+                  "undetected, against a comparison this run could not complete.");
+        }
+        else if (report.Total == 0)
         {
             writer.WriteLine("Nothing in the change produces a mutant.");
         }

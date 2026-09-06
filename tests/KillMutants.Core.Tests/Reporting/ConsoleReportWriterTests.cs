@@ -16,6 +16,14 @@ public class ConsoleReportWriterTests
         new MutantGenerator(MutatorCatalog.Default)
             .Generate(TestCompilation.From(source, "/src/Ages.cs"));
 
+    /// <summary>
+    /// A partial run, because only one compares against an earlier state and so only one can find
+    /// that state incomplete. The first version of these tests left the scope at its default, and
+    /// rendered nothing at all: everything about a comparison is written under that gate, which is
+    /// where it belongs.
+    /// </summary>
+    private static readonly RunScope Partial = new("0123456789abcdef", "fedcba9876543210", true, 3);
+
     private static string Render(params MutantResult[] results)
     {
         var writer = new StringWriter();
@@ -118,6 +126,54 @@ public class ConsoleReportWriterTests
             new MutationTestReport([new MutantResult(mutant, MutantStatus.Killed)], TimeSpan.FromSeconds(12.34)));
 
         Assert.Contains("Elapsed: 12.3 s", writer.ToString(), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// An incomplete comparison replaces the verdict rather than being printed beside it.
+    /// </summary>
+    /// <remarks>
+    /// Review found this in the abstention itself. The warning was added ahead of the verdict and
+    /// the verdict was left alone, so a run whose mutants all died printed "Comparison incomplete"
+    /// and then "Verdict: no undetected mutant in the selected scope" - which is exactly the green
+    /// the abstention exists to withhold, in the one place a person actually reads.
+    /// </remarks>
+    [Fact]
+    public void An_incomplete_comparison_prints_no_verdict()
+    {
+        Mutant mutant = MutantsFor("class C { bool M(int a) => a >= 18; }")[0];
+        var writer = new StringWriter();
+
+        ConsoleReportWriter.Write(
+            writer,
+            new MutationTestReport(
+                [new MutantResult(mutant, MutantStatus.Killed)],
+                scope: Partial,
+                unreadComponents: ["libs/Sample"]));
+
+        string output = writer.ToString();
+
+        Assert.Contains("Comparison incomplete", output, StringComparison.Ordinal);
+        Assert.Contains("No verdict", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("Verdict:", output, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The subtlest of the three: a change with no mutants also reads as a settled pass.
+    /// </summary>
+    [Fact]
+    public void An_incomplete_comparison_over_a_change_with_no_mutants_prints_no_verdict()
+    {
+        var writer = new StringWriter();
+
+        ConsoleReportWriter.Write(
+            writer,
+            new MutationTestReport([], scope: Partial, unreadComponents: ["libs/Sample"]));
+
+        string output = writer.ToString();
+
+        Assert.Contains("No verdict", output, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "Nothing in the change produces a mutant.", output, StringComparison.Ordinal);
     }
 
     [Fact]
