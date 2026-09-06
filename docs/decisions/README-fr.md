@@ -122,3 +122,4 @@ celle qui empêche un agent de merger une pull request.
 | [DEC0009](0009-exit-codes-are-a-public-contract-fr.md) | Les codes de sortie sont un contrat public | Accepté |
 | [DEC0010](0010-a-partial-run-reports-findings-not-a-score-fr.md) | Une exécution partielle rapporte des constats, pas un score | Accepté |
 | [DEC0011](0011-widen-a-partial-run-selection-when-a-test-file-changes-fr.md) | Élargir la sélection d'une exécution partielle quand un fichier de test change | Accepté |
+| [DEC0012](0012-a-partial-run-abstains-when-the-earlier-state-is-incomplete-fr.md) | Une exécution partielle retient son verdict sur un état antérieur incomplet | Proposé |
