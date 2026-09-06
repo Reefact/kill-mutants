@@ -77,8 +77,9 @@ public static class ConsoleReportWriter
             foreach (string line in Wrap(
                          "Comparison incomplete: the earlier state was reconstructed without " +
                          string.Join(", ", report.UnreadComponents) +
-                         ", whose contents are not in this clone. What follows stands; what it was " +
-                         "compared against does not.",
+                         ", whose contents are not in this clone. The mutants below were really " +
+                         "run and their results hold; what the comparison decided - which code was " +
+                         "selected, and any coverage reported lost - does not.",
                          width: 88))
             {
                 writer.WriteLine(line);

@@ -182,9 +182,10 @@ internal static class Program
                 "The earlier state was reconstructed without " +
                 string.Join(", ", report.UnreadComponents) +
                 ", whose contents are not in this clone, so this run could not establish what that " +
-                "state's tests covered. Run `git submodule update --init --recursive` and try " +
-                "again, or run without --since to measure the whole codebase. The findings below " +
-                "stand; the comparison behind them does not.");
+                "state's tests covered. The mutants it ran hold; what the comparison decided - the " +
+                "selection, and any coverage reported lost - does not. Run " +
+                "`git submodule update --init --recursive` and try again, or run without --since " +
+                "to measure the whole codebase.");
 
             return ExitCode.GateNotPassed;
         }

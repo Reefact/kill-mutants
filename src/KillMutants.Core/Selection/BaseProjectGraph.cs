@@ -189,22 +189,18 @@ internal sealed class BaseProjectGraph : IDisposable
 
         ProjectFacts? facts = null;
 
-        // A project inside a component the snapshot could not lay out is not "there was no such
-        // project": it is a question this comparison cannot answer. Reading the absence as an
-        // answer would drop the edge that ran through it and go green over coverage never checked.
-        // Everything else is what that state held - a snapshot restores code, it does not filter it -
-        // so an absence anywhere else is a real absence.
-        if (!ProjectFiles.Contains(relativePath) &&
-            _snapshot.Missing.Any(part => RelativePath.IsUnder(relativePath, part)))
-        {
-            throw new ChangeSelectionException(
-                $"'{relativePath}' belongs to a component this run could not read as it was at " +
-                $"{Short(_label)}, so KillMutants cannot tell which projects that state's tests " +
-                "exercised. A component whose contents live elsewhere has to be present " +
-                "locally for a partial run to compare against it. Run without --since to measure " +
-                "the whole codebase instead.");
-        }
-
+        // A project inside a component the snapshot could not lay out used to stop the run here, and
+        // the reason it did is now served better elsewhere. What it protected against is reading an
+        // absence as an answer: no such project, therefore no edge, therefore nothing lost. That is
+        // still true, and since a partial run whose snapshot reported anything missing now withholds
+        // its verdict outright, it can no longer end in a green either way.
+        //
+        // What the refusal cost was the whole report, and it cost it unevenly: the same repository
+        // in the same state ended in an exception or in a full report depending on whether the
+        // traversal happened to walk into the missing component - which the diff decides, not the
+        // user. The price of dropping it is that a coverage-loss entry may be an artifact of the
+        // edge that could not be read, so the report says which of its parts the incompleteness
+        // reaches rather than claiming they all stand.
         if (ProjectFiles.Contains(relativePath))
         {
             try
