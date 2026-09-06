@@ -172,8 +172,25 @@ internal static class Program
     /// </remarks>
     private static int PartialVerdict(MutationTestReport report)
     {
-        // First, because it is the one the counts cannot show: a project with no tests reaching it
-        // has no mutants either, so every other number in the report is silent about it.
+        // Before everything else, because it is the only one that makes the others provisional. A
+        // comparison built without part of the earlier state can lose an edge with no trace, so the
+        // coverage it reports lost may be an artifact of what it could not read, and the coverage it
+        // does not report may be real. Saying that first is saying what the run actually knows.
+        if (report.ComparisonIsIncomplete)
+        {
+            Console.Error.WriteLine(
+                "The earlier state was reconstructed without " +
+                string.Join(", ", report.UnreadComponents) +
+                ", whose contents are not in this clone, so this run could not establish what that " +
+                "state's tests covered. Run `git submodule update --init --recursive` and try " +
+                "again, or run without --since to measure the whole codebase. The findings below " +
+                "stand; the comparison behind them does not.");
+
+            return ExitCode.GateNotPassed;
+        }
+
+        // Then the one the counts cannot show: a project with no tests reaching it has no mutants
+        // either, so every other number in the report is silent about it.
         if (report.LostCoverage)
         {
             Console.Error.WriteLine(

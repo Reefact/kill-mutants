@@ -79,6 +79,12 @@ public static class JsonReportWriter
         // tests entirely.
         coverageLost = report.CoverageLost,
 
+        // Components the earlier state was rebuilt without. Published beside the verdict rather
+        // than among the warnings because it is not advice: a consumer that reads hasUndetected
+        // without reading this can act on a comparison the run itself does not stand behind.
+        comparisonIsIncomplete = report.ComparisonIsIncomplete,
+        unreadComponents = report.UnreadComponents,
+
         // Published so a CI job can act on them rather than only a person reading a terminal.
         warnings = report.Warnings.Select(warning => warning.Text).ToArray(),
         byMutator = report.ByMutator.Select(family => Describe(family, report.Scope)).ToArray(),
