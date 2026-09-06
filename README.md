@@ -59,6 +59,7 @@ The few choices that are expensive to reverse. Each is recorded in [docs/decisio
 | DEC0009 — Exit codes are a public contract | [en](docs/decisions/0009-exit-codes-are-a-public-contract-en.md) | [fr](docs/decisions/0009-exit-codes-are-a-public-contract-fr.md) |
 | DEC0010 — A partial run reports findings, not a score | [en](docs/decisions/0010-a-partial-run-reports-findings-not-a-score-en.md) | [fr](docs/decisions/0010-a-partial-run-reports-findings-not-a-score-fr.md) |
 | DEC0011 — Widen a partial run's selection when a test file changes | [en](docs/decisions/0011-widen-a-partial-run-selection-when-a-test-file-changes-en.md) | [fr](docs/decisions/0011-widen-a-partial-run-selection-when-a-test-file-changes-fr.md) |
+| DEC0012 — A partial run withholds its verdict over an incomplete earlier state | [en](docs/decisions/0012-a-partial-run-abstains-when-the-earlier-state-is-incomplete-en.md) | [fr](docs/decisions/0012-a-partial-run-abstains-when-the-earlier-state-is-incomplete-fr.md) |
 
 ## Installing
 
@@ -131,6 +132,16 @@ excluded, or one that declares itself test support, is not this: those are delib
 [DEC0010](docs/decisions/0010-a-partial-run-reports-findings-not-a-score-en.md) argues what such a
 run may print and [DEC0011](docs/decisions/0011-widen-a-partial-run-selection-when-a-test-file-changes-en.md)
 the selection rule; both record what the implementation deliberately does not do.
+
+**A partial run withholds its verdict entirely when it could not read the earlier state in full.** A
+component whose objects are not in your clone — a submodule before `git submodule update --init` —
+cannot be reconstructed, and what it would have contributed cannot be recovered from what remains: a
+project outside it can import a build file from inside it, and MSBuild skips that import silently, so
+the references it would have added are gone with nothing left to detect them by. The run still
+happens and still lists the mutants it ran; it prints `No verdict` rather than a passing one, names
+the components, and exits non-zero. Fetch them and run again, or run without `--since`.
+[DEC0012](docs/decisions/0012-a-partial-run-abstains-when-the-earlier-state-is-incomplete-en.md)
+records why abstaining beats refusing the run or passing with a warning attached.
 
 A change to `killmutants.json` is refused: that file decides what a run measures, and a partial run
 cannot judge a change to its own configuration. Run without `--since` for that one.
