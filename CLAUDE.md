@@ -57,8 +57,9 @@ something else passes every check, and only a reader catches it.
 ## What you never do
 
 - Merge a pull request, or push to `main`.
-- Accept, reject, deprecate or supersede a decision record, or add a status row to one. You draft
-  and propose; the maintainer accepts.
+- Accept, reject, deprecate or supersede a decision record: that call is the maintainer's, and you
+  draft and propose. A status row records the call, so you never add one **on your own authority** -
+  writing one the maintainer has asked for is not that.
 - Rewrite an accepted decision record. A decision that evolves becomes a *new* record, and the old
   one's status gains a row.
 - Renumber a `DECnnnn` or an `RB-nnn`. Both are cited from source comments and from the
