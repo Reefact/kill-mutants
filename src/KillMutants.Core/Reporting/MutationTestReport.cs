@@ -14,12 +14,17 @@ public sealed class MutationTestReport
     /// Projects the change stopped covering entirely, which have no mutants here because nothing
     /// reaches them any more.
     /// </param>
+    /// <param name="unreadComponents">
+    /// Components the earlier state was reconstructed without, which make the comparison behind
+    /// every other figure here provisional.
+    /// </param>
     public MutationTestReport(
         IReadOnlyList<MutantResult> results,
         TimeSpan duration = default,
         RunEnvironment? environment = null,
         RunScope? scope = null,
-        IReadOnlyList<string>? coverageLost = null)
+        IReadOnlyList<string>? coverageLost = null,
+        IReadOnlyList<string>? unreadComponents = null)
     {
         ArgumentNullException.ThrowIfNull(results);
 
@@ -28,6 +33,7 @@ public sealed class MutationTestReport
         Environment = environment;
         Scope = scope ?? RunScope.WholeCodebase;
         CoverageLost = coverageLost ?? [];
+        UnreadComponents = unreadComponents ?? [];
         Killed = Count(MutantStatus.Killed);
         Survived = Count(MutantStatus.Survived);
         TimedOut = Count(MutantStatus.Timeout);
@@ -155,6 +161,30 @@ public sealed class MutationTestReport
 
     /// <summary>True when the change left a project with no tests reaching it at all.</summary>
     public bool LostCoverage => CoverageLost.Count > 0;
+
+    /// <summary>The components the comparison could not read, empty when it was complete.</summary>
+    public IReadOnlyList<string> UnreadComponents { get; }
+
+    /// <summary>True when the earlier state was reconstructed without part of the code.</summary>
+    /// <remarks>
+    /// <para>
+    /// A third reason to withhold a pass, beside lost coverage and an inconclusive selection, and
+    /// the same rule underneath all three: a run that established nothing must not report success.
+    /// Here what was not established is the comparison itself.
+    /// </para>
+    /// <para>
+    /// It cannot be narrowed to "the missing component mattered", and the measurement says why: an
+    /// import from a component that is not there is skipped by MSBuild in silence - the evaluation
+    /// succeeds and simply answers with fewer references - so a project outside the missing path
+    /// loses edges without any trace to detect. Absence of evidence is exactly what is on offer.
+    /// </para>
+    /// <para>
+    /// The run still happens and the report still says everything it found: refusing outright would
+    /// throw away a report worth reading, and passing with a footnote would be a green a gate acts
+    /// on. Abstaining costs only the green.
+    /// </para>
+    /// </remarks>
+    public bool ComparisonIsIncomplete => UnreadComponents.Count > 0;
 
     /// <summary>What each mutator family cost and bought, most mutants first.</summary>
     public IReadOnlyList<MutatorSummary> ByMutator { get; }

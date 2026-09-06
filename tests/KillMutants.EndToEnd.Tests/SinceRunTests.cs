@@ -1617,6 +1617,51 @@ public class SinceRunTests
     }
 
     /// <summary>
+    /// A comparison built without part of the earlier state does not pass, whatever it found.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The component here is referenced by nothing, which is the whole point: the guard that already
+    /// existed fires when a project <em>inside</em> a missing component is asked for, and no project
+    /// inside this one ever is. What it cannot see is the reason this exists. Measured: a project
+    /// outside a missing component can import a build file from inside it, and MSBuild skips an
+    /// import whose <c>Exists()</c> is false in silence - <c>-getItem:ProjectReference</c> answers
+    /// with the reference when the component is there and with <c>[]</c> when it is not, success and
+    /// no warning either way. The edges that file would have added are gone from the earlier graph
+    /// with nothing left to detect them by, and the project is not under the missing path, so no
+    /// guard keyed on containment can reach it.
+    /// </para>
+    /// <para>
+    /// So there is no narrowing available: what a missing component cost cannot be established from
+    /// what remains. The run still happens and still reports - refusing outright would throw away a
+    /// report worth reading - and the verdict abstains, because a green with a footnote is a green a
+    /// gate acts on.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task A_comparison_missing_part_of_the_earlier_state_does_not_pass()
+    {
+        using var outer = FixtureCopy.CreateMultiProject();
+        using var inner = FixtureCopy.Create();
+
+        FixtureRepository.InitialiseAt(inner.Root);
+        FixtureRepository.InitialiseAt(outer.Root);
+        FixtureRepository.AddSubmodule(outer.Root, inner.Root, "libs/Sample");
+
+        // The objects go, the way a fresh clone leaves them before `submodule update --init`.
+        FixtureRepository.DeinitialiseSubmodule(outer.Root, "libs/Sample");
+
+        // Test-side, so the earlier state is read at all - without that there is no comparison to
+        // be incomplete, and the test would pass for a reason that has nothing to do with this.
+        Touch(outer, "Domain.Tests", "BasketTests.cs");
+
+        MutationTestReport report = await RunSinceHeadAsync(outer);
+
+        Assert.True(report.ComparisonIsIncomplete);
+        Assert.Contains("libs/Sample", report.UnreadComponents);
+    }
+
+    /// <summary>
     /// A component inside a component is laid out too, rather than left as an empty directory.
     /// </summary>
     /// <remarks>

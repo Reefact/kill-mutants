@@ -75,14 +75,43 @@ internal sealed class ChangeSelection
         HashSet<string> widened,
         MutantSelection changedFiles,
         IReadOnlyList<string> coverageLost,
-        bool earlierStateHadSomethingToMutate)
+        bool earlierStateHadSomethingToMutate,
+        IReadOnlyList<string> unreadComponents)
     {
         Scope = scope;
         _widened = widened;
         _changedFiles = changedFiles;
         CoverageLost = coverageLost;
         EarlierStateHadSomethingToMutate = earlierStateHadSomethingToMutate;
+        UnreadComponents = unreadComponents;
     }
+
+    /// <summary>
+    /// The components the comparison could not read, empty when the earlier state was complete.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Carried out of the snapshot rather than left in it, because the snapshot is disposed with the
+    /// selection and the verdict is decided afterwards. What it names is a component whose objects
+    /// are not here at all - a clone before <c>submodule update --init</c> - so the earlier state was
+    /// reconstructed without it.
+    /// </para>
+    /// <para>
+    /// Review found what that costs, and the measurement is the whole argument. A project outside a
+    /// missing component can import a build file from inside it, and MSBuild skips an import whose
+    /// <c>Exists()</c> is false <em>silently</em>: measured, <c>-getItem:ProjectReference</c> answers
+    /// with the reference when the component is there and with <c>[]</c> when it is not - success,
+    /// no warning, exit 0. The references that file would have added are simply gone from the
+    /// earlier graph, and nothing anywhere says so. The project is not under the missing path, so
+    /// no guard keyed on containment can see it either.
+    /// </para>
+    /// <para>
+    /// There is therefore no way to establish that a missing component did not matter, which is why
+    /// the verdict abstains rather than the run refusing or the report footnoting: refusing throws
+    /// away a report that is still worth reading, and a green with a footnote is still a green.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> UnreadComponents { get; }
 
     /// <summary>True when the earlier state's suites reached a production project at all.</summary>
     /// <remarks>
@@ -250,6 +279,9 @@ internal sealed class ChangeSelection
         /// <summary>Whether the earlier state's suites reached any production project at all.</summary>
         private bool _earlierStateReachedProduction;
 
+        /// <summary>What the snapshot said it could not lay out, kept past its disposal.</summary>
+        private IReadOnlyList<string> _unreadComponents = [];
+
         /// <summary>Every project discovery read, by the directory it sits in.</summary>
         /// <remarks>
         /// A list per directory, not one project: two projects in one folder is unusual and legal,
@@ -351,7 +383,8 @@ internal sealed class ChangeSelection
                 widened,
                 MutantSelection.Of(changedFiles),
                 coverageLost,
-                _earlierStateReachedProduction);
+                _earlierStateReachedProduction,
+                _unreadComponents);
         }
 
         /// <summary>
@@ -576,6 +609,10 @@ internal sealed class ChangeSelection
             ICodeSnapshot before = await source
                 .OpenCodeBeforeAsync(cancellationToken)
                 .ConfigureAwait(false);
+
+            // Read here rather than at the end: the snapshot is disposed with this scope, and what
+            // it could not lay out has to outlive it to reach the verdict.
+            _unreadComponents = before.Missing;
 
             using BaseProjectGraph graph = BaseProjectGraph.Open(before, comparedFrom, configuration);
 

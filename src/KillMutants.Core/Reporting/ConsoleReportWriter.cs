@@ -70,6 +70,21 @@ public static class ConsoleReportWriter
             writer.WriteLine(line);
         }
 
+        // Before the findings rather than after them, because it changes how they are read: what
+        // follows was measured against a state this run could not fully reconstruct.
+        if (report.ComparisonIsIncomplete)
+        {
+            foreach (string line in Wrap(
+                         "Comparison incomplete: the earlier state was reconstructed without " +
+                         string.Join(", ", report.UnreadComponents) +
+                         ", whose contents are not in this clone. What follows stands; what it was " +
+                         "compared against does not.",
+                         width: 88))
+            {
+                writer.WriteLine(line);
+            }
+        }
+
         if (report.LostCoverage)
         {
             foreach (string line in Wrap(
