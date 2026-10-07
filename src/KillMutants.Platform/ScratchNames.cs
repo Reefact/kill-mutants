@@ -7,15 +7,15 @@ namespace KillMutants;
 /// <summary>Draws the name a run's directory takes, from the kill-mutants theme.</summary>
 /// <remarks>
 /// <para>
-/// The theme is Reefact/slugger's <c>themes/kill-mutants.json</c>, copied into this assembly at its
-/// version 0.2.0 and embedded. The library compiles in only its own three themes, and reading one
-/// from the user's home directory would name this tool's directories after whatever happened to be
-/// installed there. A copy drifts from its source; the <c>meta</c> block in the file says which
-/// version this is.
+/// The theme is <c>Resources/kill-mutants.json</c>, embedded in this assembly, and this repository
+/// is where it is defined: it began in Reefact/slugger, which no longer carries it. The library
+/// compiles in only its own three themes, and reading one from the user's home directory would name
+/// this tool's directories after whatever happened to be installed there. Changing the vocabulary
+/// means editing that file here, and its <c>meta</c> block is where its version is kept.
 /// </para>
 /// <para>
 /// Loaded once, lazily. Validating the theme costs most of a second, and a run draws two names at
-/// most. The full rules are kept rather than waived: an embedded copy edited below the library's
+/// most. The full rules are kept rather than waived: an embedded theme edited below the library's
 /// floors is then refused at the first draw, rather than quietly shrinking the vocabulary every
 /// collision check relies on.
 /// </para>

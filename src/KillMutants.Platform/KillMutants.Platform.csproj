@@ -26,8 +26,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Reefact/slugger themes/kill-mutants.json, copied at its version 0.2.0 (see its meta block).
-         The logical name is what ScratchNames opens; keep the two together. -->
+    <!-- The kill-mutants theme. It is defined here and nowhere else: it began in Reefact/slugger's
+         themes/ directory, which no longer carries it, so this file is the reference and a change to
+         the vocabulary is a change to this repository. The logical name is what ScratchNames
+         opens; keep the two together. -->
     <EmbeddedResource Include="Resources/kill-mutants.json" LogicalName="KillMutants.Themes.kill-mutants.json" />
   </ItemGroup>
 
