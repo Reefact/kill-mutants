@@ -2,7 +2,8 @@
 
   <!--
     What the tool needs from the operating system, and nothing else: run an external process under a
-    time budget, and delete a temporary directory without ever failing the run over it.
+    time budget, name and create the directory a run works in, and delete it without ever failing
+    the run over it.
 
     It exists so that no assembly has to name another to share them. The core declares IChangeSource
     and must not know who implements it - and an InternalsVisibleTo naming an implementation is such
@@ -12,5 +13,28 @@
     Public, deliberately. These are shared by assemblies rather than within one, which is what a
     public type is for; the alternative was to keep them internal and pay for it with that reference.
   -->
+
+  <!--
+    The one dependency beyond Roslyn, and it sits here for the reason above: the core creates the
+    sandboxes' root and KillMutants.Git creates the base revision's worktree, and this is the one
+    assembly both reference. The theme it draws from is embedded beside it rather than read from the
+    user's own slugger themes: a tool that named its directories after whatever it found in a home
+    directory would be naming them after someone else's vocabulary.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Slugger" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Reefact/slugger themes/kill-mutants.json, copied at its version 0.2.0 (see its meta block).
+         The logical name is what ScratchNames opens; keep the two together. -->
+    <EmbeddedResource Include="Resources/kill-mutants.json" LogicalName="KillMutants.Themes.kill-mutants.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- For the overload that takes the parent and the draw, which is how the search is tested
+         without a theme and without the real temporary directory. -->
+    <InternalsVisibleTo Include="KillMutants.Core.Tests" />
+  </ItemGroup>
 
 </Project>

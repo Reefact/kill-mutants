@@ -1,0 +1,1733 @@
+{
+  "meta": {
+    "title": "Kill Mutants",
+    "description": "One-word vocabulary for post-nuclear techno-mutants: irradiated predators, grafted horrors, cyborg beasts and reactor-born aberrations.",
+    "version": "0.2.0",
+    "author": "Reefact",
+    "createdAt": "2026-09-25",
+    "publishedAt": "2026-09-26"
+  },
+  "adjectives": {
+    "common": [
+      "aberrant",
+      "acidic",
+      "aggressive",
+      "altered",
+      "armored",
+      "asymmetric",
+      "barbed",
+      "battered",
+      "blighted",
+      "blistered",
+      "bloated",
+      "brutal",
+      "calcified",
+      "cancerous",
+      "carapaced",
+      "charred",
+      "clawed",
+      "contagious",
+      "contaminated",
+      "corroded",
+      "corrupted",
+      "cracked",
+      "cruel",
+      "deformed",
+      "deranged",
+      "diseased",
+      "distorted",
+      "dreadful",
+      "feral",
+      "fissured",
+      "fractured",
+      "frenzied",
+      "ghastly",
+      "grotesque",
+      "hardened",
+      "hostile",
+      "infected",
+      "jagged",
+      "lethal",
+      "malformed",
+      "mangled",
+      "menacing",
+      "misshapen",
+      "monstrous",
+      "mutagenic",
+      "mutated",
+      "noxious",
+      "parasitic",
+      "predatory",
+      "rabid",
+      "ragged",
+      "ravenous",
+      "razored",
+      "restless",
+      "ruined",
+      "ruthless",
+      "savage",
+      "scarred",
+      "scorched",
+      "spiked",
+      "spined",
+      "toxic",
+      "twisted",
+      "unstable",
+      "venomous",
+      "vicious",
+      "volatile",
+      "warped",
+      "withered",
+      "armoured",
+      "bestial",
+      "bristled",
+      "bruised",
+      "chitinous",
+      "crooked",
+      "dangerous",
+      "decayed",
+      "defective",
+      "demonic",
+      "derelict",
+      "disfigured",
+      "fanged",
+      "festering",
+      "fierce",
+      "gnarled",
+      "grim",
+      "hideous",
+      "hollow",
+      "hungry",
+      "jittery",
+      "maddened",
+      "necrotic",
+      "poisonous",
+      "rancid",
+      "rotted",
+      "scabbed",
+      "shredded",
+      "sickly",
+      "sinister",
+      "slimy",
+      "stunted",
+      "tainted",
+      "terrible",
+      "thorny",
+      "tormented",
+      "vile",
+      "wretched",
+      "zombified",
+      "ferocious",
+      "malignant",
+      "pestilent",
+      "putrid",
+      "septic",
+      "vibrant",
+      "freakish",
+      "unnatural",
+      "unholy"
+    ],
+    "organic": [
+      "adrenal",
+      "bony",
+      "fleshy",
+      "grafted",
+      "hematic",
+      "larval",
+      "muscular",
+      "neural",
+      "osseous",
+      "sinewy",
+      "spongy",
+      "tissular",
+      "vascular",
+      "visceral",
+      "sporous",
+      "mycelial",
+      "fibrous",
+      "gelatinous",
+      "cartilaginous",
+      "keratinous",
+      "embryonic",
+      "parasitic",
+      "symbiotic",
+      "regenerative"
+    ],
+    "mechanical": [
+      "augmented",
+      "cybernetic",
+      "synthetic",
+      "bionic",
+      "chromed",
+      "wired",
+      "servoed",
+      "pneumatic",
+      "hydraulic",
+      "robotic",
+      "metallic",
+      "mechanized",
+      "motorized",
+      "digitized",
+      "armored",
+      "conductive",
+      "capacitive",
+      "magnetic",
+      "electronic",
+      "modular",
+      "overclocked",
+      "glitchy",
+      "hardwired",
+      "sensored",
+      "actuated"
+    ],
+    "radiant": [
+      "irradiated",
+      "radioactive",
+      "isotopic",
+      "uranic",
+      "plutonic",
+      "gamma",
+      "neutronic",
+      "fissile",
+      "reactive",
+      "nuclear",
+      "radiogenic",
+      "luminescent",
+      "phosphoric",
+      "actinic",
+      "ionized",
+      "critical",
+      "fallout",
+      "atomic",
+      "radiant",
+      "glowing"
+    ],
+    "airborne": [
+      "winged",
+      "aerial",
+      "avian",
+      "gliding",
+      "soaring",
+      "buoyant",
+      "feathered",
+      "membranous",
+      "levitating",
+      "hovering"
+    ]
+  },
+  "participles": {
+    "common": [
+      "advancing",
+      "charging",
+      "circling",
+      "creeping",
+      "crawling",
+      "emerging",
+      "hunting",
+      "limping",
+      "lurking",
+      "lurching",
+      "pacing",
+      "prowling",
+      "pursuing",
+      "recoiling",
+      "roaming",
+      "scavenging",
+      "scrambling",
+      "shuddering",
+      "skittering",
+      "stalking",
+      "staggering",
+      "tracking",
+      "twitching",
+      "wandering",
+      "writhing",
+      "rampaging",
+      "lunging",
+      "searching",
+      "turning",
+      "bracing",
+      "thrashing",
+      "quivering",
+      "jerking",
+      "trembling",
+      "rushing",
+      "sniffing",
+      "clawing",
+      "scratching",
+      "snapping",
+      "gnashing"
+    ],
+    "organic": [
+      "bleeding",
+      "breathing",
+      "convulsing",
+      "healing",
+      "molting",
+      "mutating",
+      "oozing",
+      "regenerating",
+      "seeping",
+      "shedding",
+      "spasming",
+      "swelling",
+      "pulsing",
+      "sloughing",
+      "growing",
+      "festering",
+      "dripping",
+      "weeping",
+      "rotting",
+      "decaying"
+    ],
+    "mechanical": [
+      "arcing",
+      "buzzing",
+      "clicking",
+      "clanking",
+      "glitching",
+      "grinding",
+      "humming",
+      "overheating",
+      "rebooting",
+      "rattling",
+      "scanning",
+      "sparking",
+      "stuttering",
+      "venting",
+      "whirring",
+      "misfiring",
+      "recharging",
+      "oscillating",
+      "calibrating",
+      "cycling"
+    ],
+    "vocal": [
+      "growling",
+      "hissing",
+      "howling",
+      "roaring",
+      "screeching",
+      "shrieking",
+      "snarling",
+      "chittering",
+      "wailing",
+      "grunting",
+      "rasping",
+      "yelping",
+      "barking",
+      "croaking",
+      "gurgling"
+    ],
+    "thermal": [
+      "burning",
+      "smoking",
+      "smoldering",
+      "steaming",
+      "sizzling",
+      "flaring",
+      "glowing",
+      "radiating",
+      "boiling",
+      "cooling"
+    ],
+    "luminous": [
+      "glowing",
+      "flickering",
+      "flashing",
+      "phosphorescing",
+      "radiating",
+      "strobing",
+      "shimmering",
+      "flaring",
+      "glimmering",
+      "gleaming"
+    ],
+    "airborne": [
+      "hovering",
+      "swooping",
+      "gliding",
+      "diving",
+      "banking",
+      "ascending",
+      "descending",
+      "soaring",
+      "fluttering",
+      "circling"
+    ]
+  },
+  "nouns": [
+    {
+      "value": "mutant",
+      "categories": [
+        "organic",
+        "vocal"
+      ],
+      "except": [
+        "mutated",
+        "mutating"
+      ]
+    },
+    {
+      "value": "aberration",
+      "categories": [
+        "organic",
+        "vocal"
+      ],
+      "except": [
+        "aberrant"
+      ]
+    },
+    {
+      "value": "brute",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "crawler",
+      "categories": [
+        "organic",
+        "vocal"
+      ],
+      "except": [
+        "crawling"
+      ]
+    },
+    {
+      "value": "stalker",
+      "categories": [
+        "organic",
+        "vocal"
+      ],
+      "except": [
+        "stalking"
+      ]
+    },
+    {
+      "value": "prowler",
+      "categories": [
+        "organic",
+        "vocal"
+      ],
+      "except": [
+        "prowling"
+      ]
+    },
+    {
+      "value": "ravager",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "mauler",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "slasher",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "ripper",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "gnawer",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "biter",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "screamer",
+      "categories": [
+        "organic",
+        "vocal"
+      ],
+      "except": [
+        "screeching",
+        "shrieking"
+      ]
+    },
+    {
+      "value": "howler",
+      "categories": [
+        "organic",
+        "vocal"
+      ],
+      "except": [
+        "howling"
+      ]
+    },
+    {
+      "value": "lurker",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "skitterer",
+      "categories": [
+        "organic",
+        "vocal"
+      ],
+      "except": [
+        "skittering"
+      ]
+    },
+    {
+      "value": "leaper",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "charger",
+      "categories": [
+        "organic",
+        "vocal"
+      ],
+      "except": [
+        "charging"
+      ]
+    },
+    {
+      "value": "trampler",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "spitter",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "stinger",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "burrower",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "scavenger",
+      "categories": [
+        "organic",
+        "vocal"
+      ],
+      "except": [
+        "scavenging"
+      ]
+    },
+    {
+      "value": "marauder",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "fiend",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "beast",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "predator",
+      "categories": [
+        "organic",
+        "vocal"
+      ],
+      "except": [
+        "predatory"
+      ]
+    },
+    {
+      "value": "horror",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "monster",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "wretch",
+      "categories": [
+        "organic",
+        "vocal"
+      ],
+      "except": [
+        "wretched"
+      ]
+    },
+    {
+      "value": "ghoul",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "husk",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "spawn",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "chimera",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "hybrid",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "graftling",
+      "categories": [
+        "organic",
+        "vocal"
+      ],
+      "except": [
+        "grafted"
+      ]
+    },
+    {
+      "value": "fleshling",
+      "categories": [
+        "organic",
+        "vocal"
+      ],
+      "except": [
+        "fleshy"
+      ]
+    },
+    {
+      "value": "boneclaw",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "fangbeast",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "spineback",
+      "categories": [
+        "organic",
+        "vocal"
+      ],
+      "except": [
+        "spined"
+      ]
+    },
+    {
+      "value": "blisterbeast",
+      "categories": [
+        "organic",
+        "vocal"
+      ],
+      "except": [
+        "blistered"
+      ]
+    },
+    {
+      "value": "plaguehound",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "venomstalker",
+      "categories": [
+        "organic",
+        "vocal"
+      ],
+      "except": [
+        "stalking",
+        "venomous"
+      ]
+    },
+    {
+      "value": "acidspitter",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "bilespitter",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "scarling",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "sinewbeast",
+      "categories": [
+        "organic",
+        "vocal"
+      ],
+      "except": [
+        "sinewy"
+      ]
+    },
+    {
+      "value": "marrowfiend",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "chitinbeast",
+      "categories": [
+        "organic",
+        "vocal"
+      ],
+      "except": [
+        "chitinous"
+      ]
+    },
+    {
+      "value": "carapacer",
+      "categories": [
+        "organic",
+        "vocal"
+      ],
+      "except": [
+        "carapaced"
+      ]
+    },
+    {
+      "value": "tissuebrute",
+      "categories": [
+        "organic",
+        "vocal"
+      ],
+      "except": [
+        "tissular"
+      ]
+    },
+    {
+      "value": "nervehound",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "rotter",
+      "categories": [
+        "organic",
+        "vocal"
+      ],
+      "except": [
+        "rotted"
+      ]
+    },
+    {
+      "value": "bloater",
+      "categories": [
+        "organic",
+        "vocal"
+      ],
+      "except": [
+        "bloated"
+      ]
+    },
+    {
+      "value": "shambler",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "mawbeast",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "clawling",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "gorehound",
+      "categories": [
+        "organic",
+        "vocal"
+      ]
+    },
+    {
+      "value": "radspawn",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "irradiated",
+        "radioactive"
+      ]
+    },
+    {
+      "value": "radbeast",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "irradiated",
+        "radioactive"
+      ]
+    },
+    {
+      "value": "radling",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "irradiated",
+        "radioactive"
+      ]
+    },
+    {
+      "value": "fallout",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "fallout"
+      ]
+    },
+    {
+      "value": "ashborn",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "charred"
+      ]
+    },
+    {
+      "value": "ashcrawler",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "charred",
+        "crawling"
+      ]
+    },
+    {
+      "value": "slagbeast",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "cobaltbeast",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "uranfiend",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "gammastalker",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "stalking",
+        "gamma"
+      ]
+    },
+    {
+      "value": "fissionbrute",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "fusionbrute",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "wastehound",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "toxicbeast",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "toxic"
+      ]
+    },
+    {
+      "value": "sludgebeast",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "bunkerbeast",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "dustfiend",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "smoghunter",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "soothound",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "stormbrute",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "reactorling",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "reactive"
+      ]
+    },
+    {
+      "value": "isotopebeast",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "isotopic"
+      ]
+    },
+    {
+      "value": "atomspawn",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "nukehound",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "glowbeast",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "hotling",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "radmauler",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "irradiated",
+        "radioactive"
+      ]
+    },
+    {
+      "value": "ashmaw",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "charred"
+      ]
+    },
+    {
+      "value": "wastecrawler",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "crawling"
+      ]
+    },
+    {
+      "value": "falloutfiend",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "fallout"
+      ]
+    },
+    {
+      "value": "cyborg",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "cybernetic"
+      ]
+    },
+    {
+      "value": "technomorph",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "biomachine",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "biomech",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "mechspawn",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "wireborn",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "hardwired",
+        "wired"
+      ]
+    },
+    {
+      "value": "chromebeast",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "chromed"
+      ]
+    },
+    {
+      "value": "chromehound",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "chromed"
+      ]
+    },
+    {
+      "value": "servostalker",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "servoed",
+        "stalking"
+      ]
+    },
+    {
+      "value": "servohound",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "servoed"
+      ]
+    },
+    {
+      "value": "circuitbeast",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "circuitfiend",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "cablecrawler",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "crawling"
+      ]
+    },
+    {
+      "value": "optichunter",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "sensorhound",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "sensored"
+      ]
+    },
+    {
+      "value": "neuralbrute",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "neuralstalker",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "stalking"
+      ]
+    },
+    {
+      "value": "scrapfiend",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "scraphound",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "scrapcrawler",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "crawling"
+      ]
+    },
+    {
+      "value": "steelbeast",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "metallic"
+      ]
+    },
+    {
+      "value": "steelhound",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "metallic"
+      ]
+    },
+    {
+      "value": "titanbrute",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "carbonhunter",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "exobrute",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "implantbeast",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "augmented"
+      ]
+    },
+    {
+      "value": "glitchbeast",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "glitching",
+        "glitchy"
+      ]
+    },
+    {
+      "value": "staticfiend",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "arcing"
+      ]
+    },
+    {
+      "value": "archound",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ],
+      "except": [
+        "arcing"
+      ]
+    },
+    {
+      "value": "nanobeast",
+      "categories": [
+        "mechanical",
+        "vocal",
+        "thermal",
+        "luminous"
+      ]
+    },
+    {
+      "value": "razorwing",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "airborne",
+        "luminous"
+      ],
+      "except": [
+        "razored",
+        "winged"
+      ]
+    },
+    {
+      "value": "ashwing",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "airborne",
+        "luminous"
+      ],
+      "except": [
+        "charred",
+        "winged"
+      ]
+    },
+    {
+      "value": "radwing",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "airborne",
+        "luminous"
+      ],
+      "except": [
+        "irradiated",
+        "radioactive",
+        "winged"
+      ]
+    },
+    {
+      "value": "sporewing",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "airborne",
+        "luminous"
+      ],
+      "except": [
+        "winged"
+      ]
+    },
+    {
+      "value": "vaultbat",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "airborne",
+        "luminous"
+      ]
+    },
+    {
+      "value": "reactorbat",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "airborne",
+        "luminous"
+      ],
+      "except": [
+        "reactive"
+      ]
+    },
+    {
+      "value": "skybeast",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "airborne",
+        "luminous"
+      ]
+    },
+    {
+      "value": "gliderbeast",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "airborne",
+        "luminous"
+      ]
+    },
+    {
+      "value": "wingfiend",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "airborne",
+        "luminous"
+      ],
+      "except": [
+        "winged"
+      ]
+    },
+    {
+      "value": "stormwing",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "airborne",
+        "luminous"
+      ],
+      "except": [
+        "winged"
+      ]
+    },
+    {
+      "value": "plaguewing",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "airborne",
+        "luminous"
+      ],
+      "except": [
+        "winged"
+      ]
+    },
+    {
+      "value": "screechbat",
+      "categories": [
+        "organic",
+        "radiant",
+        "vocal",
+        "airborne",
+        "luminous"
+      ]
+    }
+  ],
+  "defaults": {
+    "segmentMode": "both",
+    "maxSegmentWords": 1
+  },
+  "maxLength": {
+    "twoWords": 63,
+    "threeWords": 63
+  },
+  "allowSmall": false,
+  "incompatible": {
+    "glowing": [
+      "glowing"
+    ],
+    "radioactive": [
+      "radiating"
+    ],
+    "irradiated": [
+      "radiating"
+    ],
+    "glitchy": [
+      "glitching"
+    ],
+    "overclocked": [
+      "overheating"
+    ],
+    "winged": [
+      "hovering"
+    ],
+    "hovering": [
+      "hovering"
+    ],
+    "decayed": [
+      "healing",
+      "growing",
+      "regenerating"
+    ],
+    "rotted": [
+      "healing",
+      "growing",
+      "regenerating"
+    ],
+    "necrotic": [
+      "healing",
+      "growing",
+      "regenerating"
+    ],
+    "withered": [
+      "healing",
+      "growing",
+      "regenerating"
+    ],
+    "festering": [
+      "healing",
+      "growing",
+      "regenerating"
+    ],
+    "regenerative": [
+      "decaying",
+      "rotting",
+      "festering"
+    ],
+    "septic": [
+      "healing",
+      "growing",
+      "regenerating"
+    ],
+    "blighted": [
+      "healing",
+      "growing",
+      "regenerating"
+    ],
+    "vibrant": [
+      "decaying",
+      "rotting",
+      "festering"
+    ]
+  }
+}

@@ -11,6 +11,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Slugger. Names the directories a run works in, from the kill-mutants theme embedded in
+         KillMutants.Platform - see Scratch.CreateDirectory for why a name rather than a GUID.
+         A prerelease, and it stays one for a while: Slugger cannot ship stable while its own
+         FirstClassErrors is a prerelease (NU5104), and the same rule then binds this tool's first
+         stable version to theirs. The tool is 0.1.0-alpha, so nothing refuses it today. -->
+    <PackageVersion Include="Slugger" Version="1.0.0-preview.1" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Tests. "xUnit 4" ships as the xunit.v3 package family at version 4.0.0;
          xunit.v3.mtp-v2 is the Microsoft Testing Platform 2 flavour. -->
     <PackageVersion Include="xunit.v3.mtp-v2" Version="4.0.0" />

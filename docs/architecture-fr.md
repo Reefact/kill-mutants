@@ -81,10 +81,12 @@ cosmétique. `KillMutants.Core` déclare `IChangeSource` et `ICodeSnapshot` — 
 partielle attend de ce qui sait ce qui a changé — et n'implémente ni l'un ni l'autre ; il ne nomme
 aucune implémentation nulle part, donc il ne peut en atteindre aucune, même par accident.
 `KillMutants.Git` les implémente et référence le core. `KillMutants.Platform` porte ce dont les deux
-ont besoin du système d'exploitation — exécuter un processus sous un budget de temps, supprimer un
-répertoire temporaire sans jamais faire échouer une exécution pour autant — afin qu'aucun n'ait à
-nommer l'autre pour le partager. Le CLI est le seul endroit qui sache que git est ce qui répond
-aujourd'hui, et c'est là qu'appartient la composition. Voir DEC0011 pour ce à quoi sert ce contrat.
+ont besoin du système d'exploitation — exécuter un processus sous un budget de temps, nommer et
+créer le répertoire où travaille une exécution, le supprimer sans jamais faire échouer une exécution
+pour autant — afin qu'aucun n'ait à nommer l'autre pour le partager. C'est aussi là que vit la seule
+dépendance en dehors de Roslyn : Slugger, qui tire ces noms du thème kill-mutants embarqué à côté.
+Le CLI est le seul endroit qui sache que git est ce qui répond aujourd'hui, et c'est là qu'appartient
+la composition. Voir DEC0011 pour ce à quoi sert ce contrat.
 
 | Préoccupation | Namespace | Remarques |
 |---|---|---|

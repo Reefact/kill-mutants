@@ -70,10 +70,12 @@ Three assemblies do exist, and the split is load-bearing rather than cosmetic. `
 declares `IChangeSource` and `ICodeSnapshot` — what a partial run needs from whatever knows what
 changed — and implements neither; it names no implementation anywhere, so it cannot reach one even
 by accident. `KillMutants.Git` implements them and references the core. `KillMutants.Platform` holds
-what both need from the operating system — running a process under a time budget, deleting a
-temporary directory without ever failing a run over it — so that neither has to name the other to
-share it. The CLI is the only place that knows git is what answers today, which is where composition
-belongs. See DEC0011 for what the contract is for.
+what both need from the operating system — running a process under a time budget, naming and
+creating the directory a run works in, deleting it without ever failing a run over it — so that
+neither has to name the other to share it. It is also where the one dependency beyond Roslyn lives:
+Slugger, which draws those names from the kill-mutants theme embedded beside it. The CLI is the
+only place that knows git is what answers today, which is where composition belongs. See DEC0011 for
+what the contract is for.
 
 | Concern | Namespace | Notes |
 |---|---|---|
