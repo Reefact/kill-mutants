@@ -290,7 +290,9 @@ internal sealed class GitRepository
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(revision);
 
-        string destination = Path.Combine(Path.GetTempPath(), $"killmutants-base-{Guid.NewGuid():N}");
+        // Created empty before git is asked: `worktree add` accepts an empty directory and refuses
+        // a non-empty one, measured on git 2.43, and the removal below takes it away with the rest.
+        string destination = Scratch.CreateDirectory();
 
         List<Submodule> laidOut = [];
         List<string> missing = [];

@@ -210,7 +210,7 @@ internal sealed class MutationTestSession
             return [];
         }
 
-        string sandboxRoot = Path.Combine(Path.GetTempPath(), $"killmutants-{Guid.NewGuid():N}");
+        string sandboxRoot = Scratch.CreateDirectory();
         int workerCount = Math.Min(_workerCount, mutants.Count);
         List<TestSandbox> sandboxes = [];
 
