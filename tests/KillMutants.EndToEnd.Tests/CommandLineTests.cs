@@ -346,8 +346,10 @@ public class CommandLineTests
 
     /// <summary>
     /// The log is the report's mutants, one per line, as they landed (DEC0014). On a complete run it
-    /// holds exactly what the report holds, which is what makes it safe to read when the report is
-    /// not there.
+    /// has a line for every mutant the report lists, with the same key and status, which is what
+    /// makes it safe to read when the report is not there. Not everything the report says: a
+    /// disagreement <c>--verify-kills</c> finds annotates a verdict already logged, and stays in the
+    /// report alone.
     /// </summary>
     [Fact]
     public async Task Every_verdict_lands_in_the_log_beside_the_report()
