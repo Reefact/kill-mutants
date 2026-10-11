@@ -305,7 +305,10 @@ or the defaults would silently outrank a file that never mentioned them.
 **Two output streams, on purpose.** Progress goes to standard error and the report to standard
 output, so `killmutants > report.txt` captures the report without the progress line threaded through
 it. On a terminal the progress line is rewritten in place; when the stream is redirected each phase
-is announced once instead, because thousands of carriage returns in a CI log help nobody.
+is announced once instead, because thousands of carriage returns in a CI log help nobody. A phase
+that counts is also written again with its count, at most once a minute, because an announcement
+alone left a cancelled job's log unable to say whether testing had stopped at 800 of 816 mutants or
+at the first: an hour costs sixty lines, and a phase that makes no progress adds none.
 
 **Why sandboxes rather than a shared, warmed-up test host.** Reusing one host across mutants is the
 most tempting optimisation available and the one we refuse: it is the source of Stryker's
