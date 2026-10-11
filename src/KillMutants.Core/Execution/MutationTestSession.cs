@@ -118,7 +118,17 @@ internal sealed class MutationTestSession
             // cancellation it raises. Stopping ends the processes the run was waiting on, and one
             // that ends that way can surface as anything its caller makes of a dead process - a red
             // baseline, an unreadable coverage file. None of it is a finding about the code.
-            return Report(run, stopwatch.Elapsed, new EarlyStop(run.Verdicts.Selected));
+            //
+            // Stopped means a verdict is missing, and nothing less. A stop that lands while kills
+            // are being re-verified can find every selected mutant already judged: re-verifying
+            // adds a disagreement, never a verdict, so the population the score and the gate are
+            // about is whole, and calling it incomplete would withhold both for nothing. What the
+            // stop did cut short is the sample, and the report already says how many kills it
+            // re-verified.
+            return Report(
+                run,
+                stopwatch.Elapsed,
+                run.Verdicts.HasReachedEverySelected ? null : new EarlyStop(run.Verdicts.Selected));
         }
     }
 

@@ -37,6 +37,20 @@ internal sealed class VerdictLedger(IProgress<MutantResult>? observer)
         }
     }
 
+    /// <summary>
+    /// True once the run has selected its mutants and every one of them has a final verdict.
+    /// </summary>
+    public bool HasReachedEverySelected
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _hasSelected && _reached.Count == _selected.Count;
+            }
+        }
+    }
+
     /// <summary>Records every mutant the run will try to judge, in the order it generated them.</summary>
     public void Select(IEnumerable<Mutant> mutants)
     {

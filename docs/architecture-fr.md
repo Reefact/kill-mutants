@@ -330,24 +330,27 @@ l'emporteraient silencieusement sur un fichier qu'elles n'ont jamais mentionné.
 sortie standard : `killmutants > rapport.txt` capture donc le rapport sans y mêler la ligne de
 progression. Sur un terminal cette ligne est réécrite sur place ; quand le flux est redirigé, chaque
 phase est annoncée une fois, parce que des milliers de retours chariot dans un journal de CI
-n'aident personne. Une phase qui compte est aussi réécrite avec son compte, au plus une fois par
-minute, parce qu'une annonce seule laissait le journal d'un job annulé incapable de dire si le test
-s'était arrêté à 800 mutants sur 816 ou au premier : une heure coûte soixante lignes, et une phase
-qui n'avance pas n'en ajoute aucune.
+n'aident personne. Une phase assortie d'un compteur est également réaffichée avec sa progression, au
+plus une fois par minute, parce qu'une simple annonce laissait le journal d'un job annulé incapable de
+dire si les tests s'étaient arrêtés après 800 mutants sur 816 ou dès le premier : une heure coûte
+soixante lignes, et une phase qui n'avance plus n'en ajoute aucune.
 
-**Une exécution qui n'arrive pas au bout.** Une exécution garde ses verdicts en mémoire et écrit ses
-rapports quand elle se termine : une exécution interrompue par le délai d'une CI ou par un Ctrl-C ne
-laissait donc rien du tout. La session distingue désormais un *arrêt* d'une *annulation* : les deux
-mettent fin à ce qui est en cours, mais une exécution annulée est abandonnée, tandis qu'une exécution
-arrêtée renvoie un rapport des verdicts qu'elle avait atteints, marqué comme arrêté, sans score et
-sans barrière passée (DEC0013). La ligne de commande demande un arrêt quand l'échéance de
-`--stop-after` arrive ou au premier SIGINT ou SIGTERM. Un verdict devient définitif à un seul endroit,
-`VerdictLedger` — immédiatement pour la plupart des statuts, et pour un timeout seulement une fois
-confirmé seul —, et un verdict atteint pendant que l'exécution s'arrête est écarté, parce qu'un hôte
-de test tué par l'arrêt se lit comme un plantage et qu'un plantage compte comme un mutant tué. Chaque
-verdict définitif est aussi transmis à un observateur dès qu'il arrive, et la ligne de commande
-l'ajoute à un journal JSON Lines à côté du rapport (DEC0014) : même une exécution tuée net, qui n'est
-prévenue de rien, laisse derrière elle ce qu'elle a jugé.
+**Une exécution qui n'arrive pas au bout.** Une exécution garde ses verdicts en mémoire et n'écrit
+ses rapports qu'à la fin : une exécution interrompue par le délai d'une CI ou par un Ctrl-C ne
+laissait donc rien. La session distingue désormais un *arrêt* d'une *annulation* : dans les deux cas,
+ce qui est en cours est interrompu, mais une exécution annulée est abandonnée, alors qu'une exécution
+arrêtée renvoie un rapport des verdicts déjà rendus, signalé comme interrompu, sans score et sans
+qu'aucune barrière soit passée (DEC0013). La ligne de commande demande cet arrêt à l'échéance fixée
+par `--stop-after`, ou au premier SIGINT ou SIGTERM. Une exécution n'est considérée comme arrêtée que
+s'il lui manque au moins un verdict : un arrêt survenu pendant la revérification des mutants tués,
+quand chaque mutant a déjà le sien, laisse un rapport complet, qui indique seulement combien de
+mutants tués ont été revérifiés. Un verdict ne devient définitif qu'à un seul endroit,
+`VerdictLedger` : immédiatement pour la plupart des statuts, et pour un dépassement de délai
+seulement une fois confirmé par une réexécution isolée. Un verdict rendu pendant l'arrêt est écarté,
+parce qu'un hôte de test tué par l'arrêt est interprété comme un plantage, et qu'un plantage compte
+comme un mutant tué. Chaque verdict définitif est aussi transmis à un observateur dès qu'il est
+rendu, et la ligne de commande l'ajoute à un journal JSON Lines placé à côté du rapport (DEC0014) :
+même une exécution tuée net, sans avoir été prévenue, laisse derrière elle ce qu'elle a jugé.
 
 **Pourquoi des bacs à sable plutôt qu'un hôte de test réutilisé à chaud.** Réutiliser un hôte d'un
 mutant à l'autre est l'optimisation la plus tentante et celle que nous refusons : c'est la source de
