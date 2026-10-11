@@ -151,14 +151,15 @@ internal sealed record RunSettings(
                 "extension, such as .json.");
         }
 
-        // The plan's name, for the same reason (DEC0016): a report named like it would be rewritten
-        // as the plan during the run and replaced by the report at the end.
+        // The plan's name too (DEC0016). Nothing would collide - the plan would simply be named
+        // report.plan.plan.json - but a step or a person finding a file named like a plan reads it as
+        // one, and a report is not a plan.
         if (reportPath.EndsWith(".plan.json", StringComparison.OrdinalIgnoreCase))
         {
             throw new ArgumentException(
                 $"The JSON report cannot be written to '{reportPath}' ({where}): a name ending in " +
-                ".plan.json is the one the plan takes beside the report. Give the report another " +
-                "name, such as report.json.");
+                ".plan.json is the one the plan takes beside the report, and a file named like a " +
+                "plan is read as one. Give the report another name, such as report.json.");
         }
     }
 

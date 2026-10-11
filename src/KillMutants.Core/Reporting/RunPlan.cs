@@ -52,10 +52,12 @@ public sealed record RunPlan(
 /// of it is computed by the run anyway; comparing it costs nothing. See DEC0015.
 /// </para>
 /// <para>
-/// The first group is known before the run starts and decides whether the log is continued or
-/// emptied. The last four are known only once the projects are discovered, built and the mutants
-/// generated, and are compared then. A field null on either side is one that side did not know yet,
-/// and is not compared.
+/// The first group is known before the run starts and decides what becomes of the log: continued
+/// for the series of the same name on the same identity, the run refused for that name on another
+/// identity, emptied when there is no plan or the plan is another series'. The last four are known
+/// only once the projects are discovered, built and the mutants generated, and are compared then;
+/// a difference there is refused too. A field null on either side is one that side did not know
+/// yet, and is not compared.
 /// </para>
 /// </remarks>
 public sealed record RunIdentity(

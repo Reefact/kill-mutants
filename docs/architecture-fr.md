@@ -365,9 +365,11 @@ ni baseline, ni couverture, et un projet plus grand qu'un budget est terminé en
 L'exécution qui atteint le dernier verdict rapporte la série complète, avec un score, parce que sa
 population est tout le code à un commit et non le début d'une exécution (DEC0015). L'identité est
 comparée deux fois, et les deux moitiés ne finissent pas de la même façon : celle que la ligne de
-commande connaît avant l'exécution — lue dans git, les trois fichiers de l'outil étant laissés hors de
-la lecture de propreté — décide si le journal est continué ou vidé ; celle que seule l'exécution
-connaît est comparée à la sélection, et une différence y est refusée sans rien toucher, parce que ce
+commande connaît avant l'exécution — lue dans git, les fichiers de l'outil étant laissés hors de la
+lecture de propreté — décide du sort du journal : continué pour la série du même nom sur la même
+identité, l'exécution refusée pour ce nom sur une autre identité, vidé quand il n'y a pas de plan ou
+qu'il est celui d'une autre série ; celle que seule l'exécution connaît est comparée à la sélection,
+et une différence y est refusée en laissant le plan et le journal tels qu'ils étaient, parce que ce
 qui diffère quand tout le reste concorde n'est pas le fait de l'utilisateur. Git reste où il était :
 la ligne de commande lit l'état du code et tend au cœur un nom opaque, comme l'est déjà le
 `comparedTo` de l'exécution partielle.

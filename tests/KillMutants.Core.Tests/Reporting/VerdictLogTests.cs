@@ -167,4 +167,50 @@ public sealed class VerdictLogTests : IDisposable
         Assert.Contains("line 1", refusal.Message, StringComparison.Ordinal);
         Assert.Contains(path, refusal.Message, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Appended to as it stood, a torn last line would have the next verdict glued onto it, and the
+    /// run after that would refuse the whole log over a line in its middle that is not a verdict.
+    /// </summary>
+    [Fact]
+    public void Appending_after_a_torn_last_line_cuts_the_fragment_first()
+    {
+        IReadOnlyList<Mutant> mutants = MutantsFor("class C { bool M(int a) => a >= 18; }");
+        string path = Path.Combine(_directory, "report.jsonl");
+
+        using (VerdictLog first = VerdictLog.Create(path))
+        {
+            first.Report(new MutantResult(mutants[0], MutantStatus.Killed));
+        }
+
+        File.AppendAllText(path, """{"key":"7de901333e8920b0","sta""");
+
+        using (VerdictLog second = VerdictLog.Append(path))
+        {
+            second.Report(new MutantResult(mutants[1], MutantStatus.Survived));
+        }
+
+        IReadOnlyList<LoggedVerdict> read = VerdictLog.Read(path);
+
+        Assert.Equal(
+            [mutants[0].Key.ToString(), mutants[1].Key.ToString()],
+            read.Select(verdict => verdict.Key));
+        Assert.Equal(2, File.ReadAllLines(path).Length);
+    }
+
+    [Fact]
+    public void Appending_to_a_log_with_no_line_feed_at_all_starts_it_over()
+    {
+        IReadOnlyList<Mutant> mutants = MutantsFor("class C { bool M(int a) => a >= 18; }");
+        string path = Path.Combine(_directory, "report.jsonl");
+
+        File.WriteAllText(path, """{"key":"7de901333e8920b0","sta""");
+
+        using (VerdictLog log = VerdictLog.Append(path))
+        {
+            log.Report(new MutantResult(mutants[0], MutantStatus.Killed));
+        }
+
+        Assert.Single(VerdictLog.Read(path));
+    }
 }

@@ -32,11 +32,14 @@ public sealed record LoggedVerdict(
         using JsonDocument document = JsonDocument.Parse(line);
         JsonElement root = document.RootElement;
 
+        // The status is compared back to its own name: Enum.TryParse also accepts a number, and a
+        // line saying "0" would otherwise read as Killed.
         if (root.ValueKind != JsonValueKind.Object ||
-            !root.TryGetProperty("key", out JsonElement key) || key.GetString() is not { Length: > 0 } keyText ||
-            !root.TryGetProperty("status", out JsonElement status) ||
-            !Enum.TryParse(status.GetString(), ignoreCase: false, out MutantStatus parsed) ||
-            !Enum.IsDefined(parsed))
+            Text(root, "key") is not { Length: > 0 } keyText ||
+            Text(root, "status") is not { } statusText ||
+            !Enum.TryParse(statusText, ignoreCase: false, out MutantStatus parsed) ||
+            !Enum.IsDefined(parsed) ||
+            !string.Equals(parsed.ToString(), statusText, StringComparison.Ordinal))
         {
             throw new FormatException("The line names no mutant key, or no status this tool produces.");
         }
@@ -44,6 +47,7 @@ public sealed record LoggedVerdict(
         IReadOnlyList<TestName> killedBy =
             root.TryGetProperty("killedBy", out JsonElement tests) && tests.ValueKind == JsonValueKind.Array
                 ? [.. tests.EnumerateArray()
+                    .Where(test => test.ValueKind == JsonValueKind.String)
                     .Select(test => test.GetString())
                     .Where(name => !string.IsNullOrWhiteSpace(name))
                     .Select(name => TestName.Create(name!))]

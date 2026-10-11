@@ -336,10 +336,11 @@ nor coverage, and a project larger than one budget is finished over several runs
 reaches the last verdict reports the series complete, with a score, because its population is the
 whole codebase at one commit and not the front of a run (DEC0015). The identity is compared twice,
 and the two halves end differently: the half the command line knows before the run — read from git
-with the tool's own three files left out of the dirtiness read — decides whether the log is continued
-or emptied; the half only the run knows is compared at selection, and a difference there is refused
-with nothing touched, because what differs after everything else matched is not something the user
-did. Git stays where it was: the command line reads the code state and hands the core an opaque name,
+with the tool's own files left out of the dirtiness read — decides what becomes of the log: continued
+for the series of the same name on the same identity, the run refused for that name on another
+identity, emptied when there is no plan or it is another series'; the half only the run knows is
+compared at selection, and a difference there is refused with the plan and the log as they were,
+because what differs after everything else matched is not something the user did. Git stays where it was: the command line reads the code state and hands the core an opaque name,
 as the partial run's `comparedTo` already is.
 
 **Why sandboxes rather than a shared, warmed-up test host.** Reusing one host across mutants is the

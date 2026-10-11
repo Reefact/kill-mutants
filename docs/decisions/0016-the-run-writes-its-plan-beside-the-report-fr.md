@@ -67,9 +67,9 @@ Nommé d'après le rapport, comme l'est le journal, parce que le mainteneur a pr
 option et qu'un lecteur qui trouve l'un des trois fichiers sait où sont les deux autres ; et
 `.plan.json` est refusé comme nom de rapport pour la raison qui fait que `.jsonl` l'est déjà.
 
-Écrit à chaque exécution qui écrit un rapport, pas seulement à une exécution reprise, parce que
-l'exécution qu'il faudra continuer est celle qui ne savait pas qu'elle serait arrêtée, et parce que le
-reste d'une exécution tuée vaut d'être lu même quand personne ne le continue.
+Écrit à chaque exécution qui écrit un rapport, pas seulement à celle qui nomme une série, parce que
+le reste d'une exécution tuée vaut d'être lu même quand personne ne le continue, et que seul un plan
+dit de quoi les lignes du journal faisaient partie.
 
 ## Alternatives envisagées
 
@@ -93,8 +93,8 @@ reste d'une exécution tuée vaut d'être lu même quand personne ne le continue
 
 * **Description :** une exécution ordinaire écrit rapport et journal comme aujourd'hui ; seule une
   exécution qui nomme une série écrit un plan.
-* **Pourquoi écartée :** l'exécution qui vaut le plus d'être continuée est celle qui a été tuée sans
-  l'avoir demandé, et son reste est illisible sans plan.
+* **Pourquoi écartée :** une exécution qui ne nomme aucune série peut être tuée elle aussi, et son
+  reste est illisible sans plan.
 
 ### Alternative 4 — Une option nommant le chemin du plan
 

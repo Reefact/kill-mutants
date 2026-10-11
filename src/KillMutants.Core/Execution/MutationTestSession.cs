@@ -537,9 +537,10 @@ internal sealed class MutationTestSession
     /// <para>
     /// The sample is drawn from every kill the project has a verdict for, the ones inherited from
     /// an earlier run of the series included (DEC0015). A run that completes a series may itself
-    /// have judged a handful of mutants, and a report that prints a score beside "no kills
-    /// re-verified" is the state this check exists to prevent; a kill reached last week is as
-    /// re-testable as one reached a minute ago, since the code is the same.
+    /// have judged a handful of mutants, and a sample over those alone would leave the series'
+    /// kills unchecked; a kill reached last week is as re-testable as one reached a minute ago,
+    /// since the code is the same. Only a project with a remainder gets here at all, so a run that
+    /// inherits everything re-verifies nothing - and its report says so, beside the series caveat.
     /// </para>
     /// </remarks>
     private async Task ReVerifyKillsAsync(

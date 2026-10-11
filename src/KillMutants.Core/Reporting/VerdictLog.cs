@@ -63,13 +63,29 @@ public sealed class VerdictLog : IProgress<MutantResult>, IDisposable
     /// Opens the log at <paramref name="path"/> to add to it, keeping every line already there.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// For a run that continues a series: the lines already there were reached on the same code and
     /// are about to be inherited, so emptying them would throw away what the run is resuming from.
     /// Whether that is so is the caller's to establish before opening - see DEC0015.
+    /// </para>
+    /// <para>
+    /// A run killed mid-write leaves a last line cut short. Appended to as it stands, the next
+    /// verdict would be glued onto the fragment, and the run after that would find a line in the
+    /// middle of the file that is not a verdict and refuse the whole log. Every complete line ends
+    /// in a line feed, so the fragment is whatever follows the last one, and it is cut before the
+    /// first new line is written. <see cref="Read"/> skips the same fragment for the same reason.
+    /// </para>
     /// </remarks>
     /// <exception cref="IOException">The file could not be opened.</exception>
     /// <exception cref="UnauthorizedAccessException">The file could not be opened.</exception>
-    public static VerdictLog Append(string path) => Open(path, FileMode.Append);
+    public static VerdictLog Append(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+
+        CutTornLastLine(Path.GetFullPath(path));
+
+        return Open(path, FileMode.Append);
+    }
 
     /// <summary>Reads back every verdict a log holds.</summary>
     /// <remarks>
@@ -113,6 +129,46 @@ public sealed class VerdictLog : IProgress<MutantResult>, IDisposable
         }
 
         return verdicts;
+    }
+
+    private static void CutTornLastLine(string path)
+    {
+        if (!File.Exists(path))
+        {
+            return;
+        }
+
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.Read);
+
+        if (stream.Length == 0)
+        {
+            return;
+        }
+
+        stream.Position = stream.Length - 1;
+
+        if (stream.ReadByte() == '\n')
+        {
+            return;
+        }
+
+        // Back to the byte after the last line feed, or to the start when there is none. A line is
+        // short, so reading one byte at a time is the simplest thing that is fast enough.
+        long keep = stream.Length - 1;
+
+        while (keep > 0)
+        {
+            stream.Position = keep - 1;
+
+            if (stream.ReadByte() == '\n')
+            {
+                break;
+            }
+
+            keep--;
+        }
+
+        stream.SetLength(keep);
     }
 
     private static VerdictLog Open(string path, FileMode mode)

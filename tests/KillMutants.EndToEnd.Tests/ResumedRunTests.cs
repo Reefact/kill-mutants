@@ -82,10 +82,12 @@ public class ResumedRunTests
         Assert.Equal(2, series.Runs.Count);
         Assert.Equal(15, series.Runs[^1].Verdicts);
 
-        // The two inherited verdicts are the two the first run reached, in their place.
+        // The two inherited verdicts are the two the first run reached, in their place, as they were:
+        // same status, same tests named.
         Assert.Equal(
-            stopped.Results.Select(result => result.Mutant.Key),
-            completed.Results.Take(2).Select(result => result.Mutant.Key));
+            stopped.Results.Select(result => (result.Mutant.Key, result.Status, result.KilledBy.Count)),
+            completed.Results.Take(2).Select(result => (result.Mutant.Key, result.Status, result.KilledBy.Count)));
+        Assert.All(completed.Results.Take(2), result => Assert.NotEmpty(result.KilledBy));
 
         IReadOnlyList<LoggedVerdict> logged = VerdictLog.Read(store.LogPath);
 
@@ -116,9 +118,11 @@ public class ResumedRunTests
         using var fixture = FixtureCopy.Create();
         RunPlanStore store = StoreIn(fixture);
 
+        MutationTestReport first;
+
         using (VerdictLog log = VerdictLog.Create(store.LogPath))
         {
-            await Session(new XUnitTestRunner(), log, Start("nightly", store))
+            first = await Session(new XUnitTestRunner(), log, Start("nightly", store))
                 .RunAsync(fixture.Root, TestContext.Current.CancellationToken);
         }
 
@@ -137,6 +141,12 @@ public class ResumedRunTests
         Assert.Equal(17, again.Series!.Inherited);
         Assert.Equal(0, again.Series.Runs[^1].Verdicts);
         Assert.Equal(17, VerdictLog.Read(store.LogPath).Count);
+        Assert.Equal(first.Score.ToString(), again.Score.ToString());
+
+        // Inherited as reached: the same verdict, with the same tests named, for every mutant.
+        Assert.Equal(
+            first.Results.Select(result => (result.Mutant.Key, result.Status, string.Join(",", result.KilledBy))),
+            again.Results.Select(result => (result.Mutant.Key, result.Status, string.Join(",", result.KilledBy))));
     }
 
     /// <summary>
@@ -161,19 +171,24 @@ public class ResumedRunTests
         string planBefore = File.ReadAllText(store.PlanPath);
         int linesBefore = VerdictLog.Read(store.LogPath).Count;
 
+        var counting = new CountingRunner(new XUnitTestRunner());
+
         using (VerdictLog log = VerdictLog.Append(store.LogPath))
         {
             var continuation = new RunContinuation(
                 "nightly", Identity, tampered, VerdictLog.Read(store.LogPath), store);
 
             ResumeException refusal = await Assert.ThrowsAsync<ResumeException>(
-                () => Session(new XUnitTestRunner(), log, continuation)
+                () => Session(counting, log, continuation)
                     .RunAsync(fixture.Root, TestContext.Current.CancellationToken));
 
             Assert.Contains("nightly", refusal.Message, StringComparison.Ordinal);
             Assert.Contains("not the ones the earlier run selected", refusal.Message, StringComparison.Ordinal);
+            Assert.Contains("left as they were", refusal.Message, StringComparison.Ordinal);
         }
 
+        // Refused before the baseline, so before any test ran.
+        Assert.Equal(0, counting.Runs);
         Assert.Equal(planBefore, File.ReadAllText(store.PlanPath));
         Assert.Equal(linesBefore, VerdictLog.Read(store.LogPath).Count);
     }
@@ -230,6 +245,60 @@ public class ResumedRunTests
         Assert.Equal(MutantStatus.Killed, lastTimedOut.Status);
         Assert.NotEmpty(lastCrashed.KilledBy);
         Assert.All(again.Results, result => Assert.Equal(MutantStatus.Killed, result.Status));
+
+        // A third run reads the later line for each of the two keys, and so inherits everything.
+        var counting = new CountingRunner(new XUnitTestRunner());
+        MutationTestReport third;
+
+        using (VerdictLog log = VerdictLog.Append(store.LogPath))
+        {
+            third = await Session(counting, log, Continue("nightly", store))
+                .RunAsync(fixture.Root, TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal(0, counting.Runs);
+        Assert.Equal(17, third.Series!.Inherited);
+        Assert.Equal(3, third.Series.Runs.Count);
+    }
+
+    /// <summary>
+    /// A disagreement <c>--verify-kills</c> finds is written to the plan as it is found, since the log
+    /// holds verdicts and nothing else, and the next run of the series reports it still.
+    /// </summary>
+    [Fact]
+    public async Task A_disagreement_found_by_re_verification_reaches_the_plan_and_the_next_run()
+    {
+        using var fixture = FixtureCopy.Create();
+        RunPlanStore store = StoreIn(fixture);
+
+        // Every re-test passes, so every sampled kill disagrees with itself.
+        var disagreeing = new PassesOnReTestRunner(new XUnitTestRunner(), mutantRunsBeforePassing: 17);
+        MutationTestReport first;
+
+        using (VerdictLog log = VerdictLog.Create(store.LogPath))
+        {
+            first = await Session(disagreeing, log, Start("nightly", store), verifyKills: 2)
+                .RunAsync(fixture.Root, TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal(2, first.Results.Count(result => result.Disagreement is not null));
+
+        RunPlan plan = store.ReadPlan()!;
+
+        Assert.Equal(2, Assert.Single(plan.Runs).Disagreements.Count);
+        Assert.Equal(2, plan.Runs[0].KillsReVerified);
+
+        MutationTestReport again;
+
+        using (VerdictLog log = VerdictLog.Append(store.LogPath))
+        {
+            again = await Session(new XUnitTestRunner(), log, Continue("nightly", store))
+                .RunAsync(fixture.Root, TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal(
+            first.Results.Where(result => result.Disagreement is not null).Select(result => result.Mutant.Key),
+            again.Results.Where(result => result.Disagreement is not null).Select(result => result.Mutant.Key));
     }
 
     /// <summary>A disagreement lives in the plan, not the log, and the series keeps reporting it.</summary>
@@ -331,6 +400,31 @@ public class ResumedRunTests
         Assert.NotNull(plan.Identity.Fingerprint);
         Assert.Equal("xUnit 4.0.0", plan.Identity.TestFramework);
         Assert.Equal(["Sample.Library/Sample.Library.csproj <- Sample.Library.Tests/Sample.Library.Tests.csproj"], plan.Identity.TargetGraph);
+    }
+
+    /// <summary>
+    /// Runs normally through the baseline and the given number of mutant runs, then reports every
+    /// further run as passing - which is what a flaky kill looks like when it is re-tested.
+    /// </summary>
+    private sealed class PassesOnReTestRunner(ITestRunner inner, int mutantRunsBeforePassing) : ITestRunner
+    {
+        private int _mutantRuns;
+
+        public Task<IReadOnlyList<TestName>> DiscoverAsync(
+            TestProject testProject, CancellationToken cancellationToken = default) =>
+            inner.DiscoverAsync(testProject, cancellationToken);
+
+        public Task<TestRunOutcome> RunAsync(TestRunRequest request, CancellationToken cancellationToken = default)
+        {
+            if (!request.StopOnFirstFailure ||
+                Interlocked.Increment(ref _mutantRuns) <= mutantRunsBeforePassing)
+            {
+                return inner.RunAsync(request, cancellationToken);
+            }
+
+            return Task.FromResult(new TestRunOutcome(
+                Total: 1, Failed: 0, Errors: 0, Duration: TimeSpan.FromMilliseconds(1), TimedOut: false));
+        }
     }
 
     /// <summary>Counts the test runs it is asked for, and delegates every one of them.</summary>

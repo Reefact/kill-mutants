@@ -86,8 +86,8 @@ internal sealed class PlanKeeper
             {
                 throw new ResumeException(
                     $"The series '{_continuation.Series}' cannot be continued by this run: {why}. " +
-                    $"Nothing was changed. Choose another series name, or delete " +
-                    $"'{_continuation.Store.PlanPath}' to start this one again.");
+                    "The plan and the log were left as they were. Choose another series name, or " +
+                    $"delete '{_continuation.Store.PlanPath}' to start this one again.");
             }
 
             Inherit(all, earlier, ledger);

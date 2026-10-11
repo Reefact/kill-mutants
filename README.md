@@ -125,6 +125,13 @@ A timeout is logged only once it has been confirmed on its own, so no line is ev
 later one
 ([DEC0014](docs/decisions/0014-each-verdict-is-appended-to-a-log-beside-the-report-en.md)).
 
+Every run that writes a report also writes a plan beside it — the same path ending in `.plan.json`,
+here `artifacts/mutation.plan.json` — that says what code and settings it measured and lists every
+mutant it selected, so that plan minus log is what remains after a killed run, readable without the
+tool. A report path ending in `.jsonl` or `.plan.json` is refused, because those names are the log's
+and the plan's
+([DEC0016](docs/decisions/0016-the-run-writes-its-plan-beside-the-report-en.md)).
+
 A project that does not fit in one budget is finished over several runs. `--resume <id>` makes the
 run belong to a *series* named by the caller — the commit hash, typically:
 
@@ -132,19 +139,18 @@ run belong to a *series* named by the caller — the commit hash, typically:
 dotnet killmutants --resume "$GITHUB_SHA" --stop-after 80m --report-json artifacts/mutation.json
 ```
 
-The first run of a series starts it, and writes beside the report a plan — the same path ending in
-`.plan.json` — that says what code and settings it measured and lists every mutant it selected, so
-that plan minus log is what remains. A later run given the same name, on the same commit with a
+The first run of a series starts it. A later run given the same name, on the same commit with a
 clean tree, the same settings and the same tool, inherits every verdict the log holds — except
 timeouts, which are only final under the budget that confirmed them, and kills no test is named for,
-which a stop can manufacture — and judges only the rest; a project with nothing left is neither built
-against nor measured. The run that reaches the last verdict reports the whole series, score included;
-until then each run is a stopped run, and exits as one. A series of that name on other code, or with
-other settings, is refused with the difference named and nothing touched, and another name starts
-another series. What travels between jobs is the plan and the log — an artifact, a cache keyed on the
-commit — and the checkout has to stay on the series' commit until the series is done
-([DEC0015](docs/decisions/0015-a-resumed-run-inherits-the-verdicts-its-series-reached-on-the-same-code-en.md),
-[DEC0016](docs/decisions/0016-the-run-writes-its-plan-beside-the-report-en.md)).
+which a stop can manufacture — and judges only the rest; a project with nothing left gets no sandbox,
+no baseline and no coverage pass, and runs no test at all. The run that reaches the last verdict
+reports the whole series, score included; until then each run is a stopped run, and exits as one. A
+series of that name on other code, or with other settings, is refused with the difference named and
+nothing touched. Another name, or no name, over the same report path starts afresh: the plan is
+replaced and the log emptied, so a series shares its report path with nothing else. What travels
+between jobs is the plan and the log — an artifact, a cache keyed on the commit — and the checkout
+has to stay on the series' commit until the series is done
+([DEC0015](docs/decisions/0015-a-resumed-run-inherits-the-verdicts-its-series-reached-on-the-same-code-en.md)).
 
 ## Judging a change rather than a codebase
 
@@ -244,10 +250,10 @@ and so the catalogue that produced a score is versioned with the code that was s
 }
 ```
 
-Every option but `--resume` has a key — `configuration`, `exclude`, `mutators`, `without`,
-`parallel`, `coverage`, `breakAt`, `reportJson`, `stopAfter` — and anything given on the command line
-wins, so the file states the habit and the command line states the exception. A series is named per
-run, by whatever knows which run this is, which is never the file. A list on the command line replaces the file's rather than
+Every option that states a habit has a key — `configuration`, `exclude`, `mutators`, `without`,
+`parallel`, `coverage`, `breakAt`, `verifyKills`, `reportJson`, `stopAfter` — and anything given on
+the command line wins, so the file states the habit and the command line states the exception.
+`--since` and `--resume` say what one run is about, and have none. A list on the command line replaces the file's rather than
 adding to it. Paths in the file are relative to the file. A misspelt key stops the run rather than
 being ignored.
 

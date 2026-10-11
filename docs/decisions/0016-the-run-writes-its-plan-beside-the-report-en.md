@@ -61,9 +61,9 @@ Named from the report, as the log is, because the maintainer preferred derivatio
 reader who finds one of the three files knows where the other two are; and `.plan.json` is refused as
 a report name for the reason `.jsonl` already is.
 
-Written on every run that writes a report, not only on a resumed one, because the run that will need
-to be continued is the one that did not know it would be stopped, and because a killed run's remainder
-is worth reading even when nobody continues it.
+Written on every run that writes a report, not only on one that names a series, because a killed
+run's remainder is worth reading even when nobody continues it, and only a plan says what the log's
+lines were a part of.
 
 ## Alternatives considered
 
@@ -84,8 +84,8 @@ is worth reading even when nobody continues it.
 
 * **Description:** a plain run writes report and log as today; only a run that names a series writes a
   plan.
-* **Why rejected:** the run most worth continuing is the one that was killed without having asked to
-  be, and its remainder is unreadable without a plan.
+* **Why rejected:** a run that names no series can be killed too, and its remainder is unreadable
+  without a plan.
 
 ### Alternative 4 — An option naming the plan's path
 

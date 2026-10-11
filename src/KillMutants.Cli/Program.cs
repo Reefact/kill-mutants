@@ -338,7 +338,7 @@ internal static class Program
     }
 
     /// <summary>The log this run writes verdicts to, and the series it belongs to.</summary>
-    private sealed record ReportFiles(VerdictLog Log, RunContinuation Continuation);
+    internal sealed record ReportFiles(VerdictLog Log, RunContinuation Continuation);
 
     /// <summary>
     /// Clears the report an earlier run left at <paramref name="reportPath"/>, then opens this run's
@@ -363,12 +363,16 @@ internal static class Program
     /// </para>
     /// </remarks>
     /// <exception cref="ResumeException">The series asked for cannot be continued by this run.</exception>
-    private static async Task<ReportFiles> OpenReportFilesAsync(RunSettings settings, string reportPath)
+    internal static async Task<ReportFiles> OpenReportFilesAsync(RunSettings settings, string reportPath)
     {
         var store = new RunPlanStore(reportPath);
-        RunPlan? earlier = store.ReadPlan();
 
-        // Read on every run that writes a report, not only on one that names a series: a plan that
+        // Read only for a run that names a series. A run that names none replaces whatever plan is
+        // there, so a plan it cannot read is not its problem - refusing would stop a run over a file
+        // it was about to delete.
+        RunPlan? earlier = settings.Resume is null ? null : store.ReadPlan();
+
+        // The code state, on the other hand, is read on every run that writes a report: a plan that
         // records what code it describes is what lets a later run, or a person, know what a killed
         // run's remainder is about. Null outside a working copy, which is an ordinary place to run.
         CodeState? code = await GitCodeState
@@ -396,16 +400,6 @@ internal static class Program
                     "lives on one commit; run from a committed clone to start one.");
             }
 
-            if (!code.IsExact)
-            {
-                // Said now rather than discovered next time: a series started on a dirty tree is one
-                // no later run can continue, and the person who can commit is the one reading this.
-                Console.Error.WriteLine(
-                    $"The tree has uncommitted changes based on {code.Name}, so the series " +
-                    $"'{series}' cannot be continued by a later run. Commit first to start a series " +
-                    "that can.");
-            }
-
             if (earlier is not null && string.Equals(earlier.Series, series, StringComparison.Ordinal))
             {
                 if (identity.WhyNotContinuedBy(earlier.Identity) is { } why)
@@ -418,7 +412,23 @@ internal static class Program
 
                 continues = true;
             }
+
+            if (!code.IsExact)
+            {
+                // Said now rather than discovered next time: a series started on a dirty tree is one
+                // no later run can continue, and the person who can commit is the one reading this.
+                // After the check above, so that a refusal is not preceded by advice about a series
+                // this run is not going to start.
+                Console.Error.WriteLine(
+                    $"The tree has uncommitted changes based on {code.Name}, so the series " +
+                    $"'{series}' cannot be continued by a later run. Commit first to start a series " +
+                    "that can.");
+            }
         }
+
+        // Read before anything is touched, so a log this run cannot believe refuses it with the
+        // directory as it was.
+        IReadOnlyList<LoggedVerdict> verdicts = continues ? VerdictLog.Read(store.LogPath) : [];
 
         // A file only. A directory where the report should go is left for the report's own write to
         // refuse, at the end, with the message that says the measuring itself worked.
@@ -429,8 +439,6 @@ internal static class Program
 
         if (continues)
         {
-            IReadOnlyList<LoggedVerdict> verdicts = VerdictLog.Read(store.LogPath);
-
             return new ReportFiles(
                 VerdictLog.Append(store.LogPath),
                 new RunContinuation(settings.Resume, identity, earlier, verdicts, store));
@@ -443,20 +451,6 @@ internal static class Program
         return new ReportFiles(
             VerdictLog.Create(store.LogPath),
             new RunContinuation(settings.Resume, identity, Earlier: null, [], store));
-    }
-
-    /// <summary>
-    /// Clears the report an earlier run left at <paramref name="reportPath"/>, then creates this
-    /// run's verdict log beside it, for a run that keeps no plan.
-    /// </summary>
-    internal static VerdictLog OpenVerdictLog(string reportPath)
-    {
-        if (File.Exists(reportPath))
-        {
-            File.Delete(reportPath);
-        }
-
-        return VerdictLog.Create(VerdictLog.PathBeside(reportPath));
     }
 
     /// <summary>
@@ -495,9 +489,10 @@ internal static class Program
 
             Settings:
               A project may keep its habits in killmutants.json, in the directory above. Every
-              option below has a key there - configuration, exclude, mutators, without, parallel,
-              coverage, breakAt, verifyKills, reportJson, stopAfter - and anything given on the
-              command line wins.
+              option below that states a habit has a key there - configuration, exclude, mutators,
+              without, parallel, coverage, breakAt, verifyKills, reportJson, stopAfter - and anything
+              given on the command line wins. --since and --resume say what one run is about, and
+              have none.
 
             Options:
               -c, --configuration <cfg> Build configuration to analyse and run. Defaults to Release.

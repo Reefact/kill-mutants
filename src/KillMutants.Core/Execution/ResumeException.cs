@@ -23,4 +23,9 @@ public sealed class ResumeException : Exception
         : base(message, innerException)
     {
     }
+
+    /// <summary>Creates the exception.</summary>
+    public ResumeException()
+    {
+    }
 }

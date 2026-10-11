@@ -56,6 +56,9 @@ public class LoggedVerdictTests
     [InlineData("""{"status":"Killed"}""")]
     [InlineData("""{"key":"abc","status":"Eaten"}""")]
     [InlineData("""{"key":"","status":"Killed"}""")]
+    [InlineData("""{"key":"abc","status":"0"}""")]
+    [InlineData("""{"key":5,"status":"Killed"}""")]
+    [InlineData("""{"key":"abc","status":["Killed"]}""")]
     [InlineData("""["key"]""")]
     public void A_line_that_is_not_a_verdict_is_refused(string line)
     {

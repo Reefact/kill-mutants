@@ -70,6 +70,11 @@ Ce que le code offre pour bâtir cela, et ce qu'il n'offre pas :
   ses mutants tués et une qui les a tous vérifiés se lisent l'une comme l'autre « aucun désaccord ».
 * Chaque verdict devient définitif en un seul endroit, `VerdictLedger`, qui consigne ce que l'exécution
   a sélectionné et ce qu'elle a rendu ; un rapport est construit à partir du seul registre.
+* `RunEnvironment` consigne déjà la version de xUnit lue dans les assemblies de test construites, et
+  la découverte apparie chaque projet sous test aux projets de test qui l'atteignent, directement ou
+  à travers un autre projet. Rejuger un mutant coûte un lancement de tests, ou un budget quand il
+  dépasse de nouveau son délai. Sur l'exécution de ce dépôt sur lui-même du 7 octobre 2026, un mutant
+  sur 797 a dépassé son délai.
 * Les codes de sortie sont un contrat public ([DEC0009](0009-exit-codes-are-a-public-contract-fr.md)) :
   une nouvelle cause d'un résultat qu'un code désigne déjà rejoint ce code. Une exécution partielle n'a
   pas de score ([DEC0010](0010-a-partial-run-reports-findings-not-a-score-fr.md)) ; DEC0010 nomme
@@ -80,7 +85,8 @@ Ce que le code offre pour bâtir cela, et ce qu'il n'offre pas :
   survivre à un job voyage sous forme d'artefact ou d'entrée de cache. Une exécution planifiée extrait
   la tête de sa branche, qui bouge d'une nuit à l'autre. Une exécution de pull request extrait un
   commit de merge synthétique dont le hash change chaque fois que la branche de base bouge, même sans
-  nouveau commit sur la pull request.
+  nouveau commit sur la pull request. Les images des runners hébergés sont mises à jour entre deux
+  exécutions planifiées.
 
 Trois conceptions ont été confrontées avant la rédaction de cet enregistrement — le plan-et-reprise
 décrit par le mainteneur, un découpage sans état de la population en shards fusionnés ensuite, et une
@@ -142,8 +148,7 @@ exécution a mesurés. Rejuger coûte un budget par dépassement de délai et ga
 délai d'un rapport consolidé explicable à partir de ce rapport. Un mutant tué sans test nommé est jugé
 de nouveau parce qu'un plantage est le seul verdict que l'arrêt lui-même peut fabriquer, que la mise à
 l'écart qui en protège repose sur l'ordre des événements, et qu'un arbre de processus tué par un
-runner ne se fait jamais entendre. Les vrais mutants tués par plantage sont rares, si bien que le coût
-se limite à une réexécution chacun.
+runner ne se fait jamais entendre. Le rejuger coûte une réexécution par mutant de ce genre.
 
 Le score est légitime sur une série terminée là où DEC0013 l'a refusé : la population est chaque
 mutant sélectionné de la base de code à un état nommé, jugé en plusieurs exécutions, ce qui est la
@@ -207,8 +212,8 @@ bouge, si bien que le cas demande ses propres faits plutôt qu'une note en bas d
   à côté de lui le budget sous lequel il a été jugé.
 * **Pourquoi écartée :** les budgets du rapport consolidé ne décriraient alors que l'exécution qui l'a
   écrit, et un lecteur ne trouverait le budget derrière un dépassement de délai hérité qu'au travers
-  d'une seconde structure. Les dépassements de délai représentent quelques pour cent des verdicts, et
-  les juger de nouveau coûte un budget chacun.
+  d'une seconde structure. Un mutant sur 797 a dépassé son délai sur l'exécution de ce dépôt sur
+  lui-même, et en rejuger un coûte un budget.
 
 ### Alternative 6 — Faire tourner l'ordre pour que chaque projet soit atteint au fil de plusieurs nuits
 
@@ -242,6 +247,10 @@ bouge, si bien que le cas demande ses propres faits plutôt qu'une note en bas d
   et de combien d'exécutions.
 * `--resume` a besoin de `--report-json`, parce que la série vit à côté du rapport, et d'un dépôt git,
   parce que l'état du code y est lu.
+* Une exécution au même chemin de rapport qui ne nomme aucune série, ou en nomme une autre, remplace
+  le plan et vide le journal : une série ne partage son chemin de rapport avec rien d'autre.
+* Deux mutants qui partagent une clé sont tous deux rejugés, puisqu'une ligne du journal ne peut pas
+  dire duquel elle parle.
 
 ### Risques
 
