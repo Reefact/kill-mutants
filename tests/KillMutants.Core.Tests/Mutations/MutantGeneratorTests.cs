@@ -37,11 +37,33 @@ public class MutantGeneratorTests
         var generator = new MutantGenerator(MutatorCatalog.Default);
         Compilation Snippet() => TestCompilation.From("class C { bool M(int x) => x >= 1; }");
 
-        IReadOnlyList<Mutant> first = generator.Generate(Snippet());
-        IReadOnlyList<Mutant> second = generator.Generate(Snippet());
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+
+        IReadOnlyList<Mutant> first =
+            generator.Generate(Snippet(), cancellationToken: cancellationToken);
+        IReadOnlyList<Mutant> second =
+            generator.Generate(Snippet(), cancellationToken: cancellationToken);
 
         Assert.Equal(["M1", "M2"], first.Select(mutant => mutant.Id.ToString()));
         Assert.Equal(["M3", "M4"], second.Select(mutant => mutant.Id.ToString()));
+    }
+
+    /// <summary>
+    /// Every project's mutants are generated before any is tested, so a stop that generation did
+    /// not observe would wait for all of them - on a large repository, the margin a deadline leaves
+    /// before the CI's own kill (DEC0013).
+    /// </summary>
+    [Fact]
+    public void Generation_stops_when_the_run_is_stopped()
+    {
+        using var stop = new CancellationTokenSource();
+
+        stop.Cancel();
+
+        Assert.ThrowsAny<OperationCanceledException>(
+            () => new MutantGenerator(MutatorCatalog.Default).Generate(
+                TestCompilation.From("class C { bool M(int x) => x >= 1; }"),
+                cancellationToken: stop.Token));
     }
 
     [Fact]

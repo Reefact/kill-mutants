@@ -266,7 +266,9 @@ internal sealed class MutationTestSession
         foreach ((MutationTestTarget target, ProjectCompilation compilation) in targets.Zip(compilations))
         {
             mutantsOf.Add(generator.Generate(
-                compilation.Compilation, selection?.For(target.ProjectUnderTest)));
+                compilation.Compilation,
+                selection?.For(target.ProjectUnderTest),
+                cancellationToken));
         }
 
         run.Verdicts.Select(mutantsOf.SelectMany(mutants => mutants));

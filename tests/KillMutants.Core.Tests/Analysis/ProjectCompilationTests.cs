@@ -79,7 +79,8 @@ public class ProjectCompilationTests
     {
         ProjectCompilation compilation = await CompileFixtureAsync();
         IReadOnlyList<Mutant> mutants = new MutantGenerator(MutatorCatalog.Default)
-            .Generate(compilation.Compilation);
+            .Generate(
+                compilation.Compilation, cancellationToken: TestContext.Current.CancellationToken);
 
         Mutant mutant = mutants.First(candidate => candidate.MutatedText == "age > 18");
         Assert.Equal("age >= 18", mutant.OriginalText);
