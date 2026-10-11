@@ -123,3 +123,5 @@ celle qui empêche un agent de merger une pull request.
 | [DEC0010](0010-a-partial-run-reports-findings-not-a-score-fr.md) | Une exécution partielle rapporte des constats, pas un score | Accepté |
 | [DEC0011](0011-widen-a-partial-run-selection-when-a-test-file-changes-fr.md) | Élargir la sélection d'une exécution partielle quand un fichier de test change | Accepté |
 | [DEC0012](0012-a-partial-run-abstains-when-the-earlier-state-is-incomplete-fr.md) | Une exécution partielle retient son verdict sur un état antérieur incomplet | Accepté |
+| [DEC0013](0013-a-stopped-run-reports-what-it-judged-and-passes-no-gate-fr.md) | Une exécution arrêtée rapporte ce qu'elle a jugé et ne passe aucune barrière | Proposé |
+| [DEC0014](0014-each-verdict-is-appended-to-a-log-beside-the-report-fr.md) | Chaque verdict est ajouté à un journal à côté du rapport dès qu'il est définitif | Proposé |

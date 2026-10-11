@@ -114,3 +114,5 @@ request.
 | [DEC0010](0010-a-partial-run-reports-findings-not-a-score-en.md) | A partial run reports findings, not a score | Accepted |
 | [DEC0011](0011-widen-a-partial-run-selection-when-a-test-file-changes-en.md) | Widen a partial run's selection when a test file changes | Accepted |
 | [DEC0012](0012-a-partial-run-abstains-when-the-earlier-state-is-incomplete-en.md) | A partial run withholds its verdict over an incomplete earlier state | Accepted |
+| [DEC0013](0013-a-stopped-run-reports-what-it-judged-and-passes-no-gate-en.md) | A stopped run reports what it judged and passes no gate | Proposed |
+| [DEC0014](0014-each-verdict-is-appended-to-a-log-beside-the-report-en.md) | Each verdict is appended to a log beside the report as soon as it is final | Proposed |
