@@ -39,7 +39,10 @@ public sealed record RunWarning(string Text)
         // still did - an assumption "carrying the score", a verdict to settle "before the score is
         // believed" - which told the reader of a report that deliberately has no number to trust or
         // distrust one. What such a run has instead is a verdict, and that is what they now say.
-        string number = report.Scope.IsPartial ? "verdict" : "score";
+        //
+        // A run that was stopped has neither, whatever its scope (DEC0013): what it has is the
+        // counts of what it judged, so those are what a warning on one qualifies.
+        string number = !report.IsComplete ? "counts" : report.Scope.IsPartial ? "verdict" : "score";
 
         if (report.Detected > 0 &&
             report.TimedOut >= report.Detected * TimeoutShareOfDetections &&
@@ -84,10 +87,14 @@ public sealed record RunWarning(string Text)
         {
             string what = $"the {number}";
 
-            warnings.Add(new RunWarning(
-                $"{Count(report.Untestable)} of {Count(report.Total)} mutants could not be built " +
-                $"and are outside {what} entirely. {char.ToUpperInvariant(what[0])}{what[1..]} " +
-                "describes the rest."));
+            // The counts include these - they are what the counts say - so on a stopped run the
+            // sentence about being outside a number has nothing to be outside of.
+            warnings.Add(new RunWarning(report.IsComplete
+                ? $"{Count(report.Untestable)} of {Count(report.Total)} mutants could not be built " +
+                  $"and are outside {what} entirely. {char.ToUpperInvariant(what[0])}{what[1..]} " +
+                  "describes the rest."
+                : $"{Count(report.Untestable)} of {Count(report.Total)} mutants judged could not " +
+                  "be built, so the suite was never asked about them."));
         }
 
         return warnings;

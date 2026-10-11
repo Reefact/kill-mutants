@@ -24,6 +24,9 @@ public static class JsonReportWriter
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
+    /// <summary>The same rules on one line, which is what a line of a JSON Lines file has to be.</summary>
+    private static readonly JsonSerializerOptions LineOptions = new(Options) { WriteIndented = false };
+
     /// <summary>Writes the report as JSON.</summary>
     public static void Write(TextWriter writer, MutationTestReport report)
     {
@@ -31,6 +34,22 @@ public static class JsonReportWriter
         ArgumentNullException.ThrowIfNull(report);
 
         writer.Write(JsonSerializer.Serialize(Describe(report), Options));
+    }
+
+    /// <summary>
+    /// One mutant's verdict as a single line of JSON, in the shape every entry of the report's
+    /// <c>mutants</c> has.
+    /// </summary>
+    /// <remarks>
+    /// The same shape on purpose, and from the same code: a consumer that reads the verdict log a run
+    /// left behind it, and later the report that run wrote, should not have to learn two ways of
+    /// naming one mutant. See <see cref="VerdictLog"/>.
+    /// </remarks>
+    public static string Line(MutantResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        return JsonSerializer.Serialize(Describe(result), LineOptions);
     }
 
     private static object Describe(MutationTestReport report) => new
@@ -42,10 +61,12 @@ public static class JsonReportWriter
         // tell them apart from `scope`, and neither can be mistaken for a zero that was measured.
         // Emitting the ratio for a partial run would put a percentage over a population defined by
         // the diff into a field named like the one over a codebase - the exact seam DEC0010 refuses.
-        score = report.Scope.IsPartial || report.Score.IsUndefined
+        // A stopped run has none either: the mutants it judged are the ones it reached first, not a
+        // sample of anything (DEC0013).
+        score = HasNoScore(report) || report.Score.IsUndefined
             ? null
             : (double?)Math.Round(report.Score.Value, 4),
-        scoreDisplay = report.Scope.IsPartial ? null : report.Score.ToString(),
+        scoreDisplay = HasNoScore(report) ? null : report.Score.ToString(),
         durationSeconds = Math.Round(report.Duration.TotalSeconds, 2),
 
         // Which population was inspected. Without it, a partial report is indistinguishable from a
@@ -74,6 +95,14 @@ public static class JsonReportWriter
         hasUndetected = report.HasUndetected,
         inconclusive = report.IsInconclusive,
 
+        // Whether every mutant the run selected reached a verdict, published beside the verdict for
+        // the reason comparisonIsIncomplete is: on a stopped run hasUndetected false means "none
+        // found among those judged", and a consumer that reads it without reading this acts on a
+        // run that never got to the rest. mutantsSelected is null when the run stopped before it had
+        // selected anything, and equals the number judged when it was not stopped at all.
+        complete = report.IsComplete,
+        mutantsSelected = report.Stopped is { } stopped ? stopped.Selected : report.Total,
+
         // Projects the change stopped covering. They carry no mutants - nothing reaches them - so a
         // consumer reading only the counts would see a clean run over a component that lost its
         // tests entirely.
@@ -87,7 +116,7 @@ public static class JsonReportWriter
 
         // Published so a CI job can act on them rather than only a person reading a terminal.
         warnings = report.Warnings.Select(warning => warning.Text).ToArray(),
-        byMutator = report.ByMutator.Select(family => Describe(family, report.Scope)).ToArray(),
+        byMutator = report.ByMutator.Select(family => Describe(family, report)).ToArray(),
         mutants = report.Results.Select(Describe).ToArray(),
     };
 
@@ -104,7 +133,10 @@ public static class JsonReportWriter
 
         // A run measures what it builds, which is not always exactly the state it names.
         comparedToIsExact = scope.ComparedToIsExact,
-        changedFiles = scope.ChangedFiles,
+
+        // Null rather than zero when the run stopped before it had read the change: zero would say
+        // that nothing changed, which nothing established.
+        changedFiles = scope.IsResolved ? (int?)scope.ChangedFiles : null,
     };
 
     private static object Describe(RunEnvironment environment) => new
@@ -126,7 +158,7 @@ public static class JsonReportWriter
         timeoutMarginSeconds = environment.TimeoutBudgets.Select(b => b.Margin.TotalSeconds).Distinct(),
     };
 
-    private static object Describe(MutatorSummary family, RunScope scope) => new
+    private static object Describe(MutatorSummary family, MutationTestReport report) => new
     {
         mutator = family.Mutator.ToString(),
         mutants = family.Total,
@@ -136,10 +168,14 @@ public static class JsonReportWriter
 
         // Null on a partial run for the same reason the run's own score is: a per-family ratio over
         // a population defined by the diff is the whole objection in miniature. The counts stay.
-        score = scope.IsPartial || family.Score.IsUndefined
+        score = HasNoScore(report) || family.Score.IsUndefined
             ? null
             : (double?)Math.Round(family.Score.Value, 4),
     };
+
+    /// <summary>True when the run's population is not one a percentage can describe.</summary>
+    private static bool HasNoScore(MutationTestReport report) =>
+        report.Scope.IsPartial || !report.IsComplete;
 
     private static object Describe(MutantResult result) => new
     {

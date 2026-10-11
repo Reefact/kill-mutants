@@ -15,6 +15,8 @@ namespace KillMutants.Cli;
 /// <param name="Threshold">The score the run must reach, or null when it was not given.</param>
 /// <param name="ThresholdCleared">True when <c>--break-at none</c> was given.</param>
 /// <param name="Since">The revision to measure a change from, or null for the whole codebase.</param>
+/// <param name="StopAfter">How long the run may take before it stops, or null when not given.</param>
+/// <param name="StopAfterCleared">True when <c>--stop-after none</c> was given.</param>
 /// <remarks>
 /// Every setting is nullable, and that is the point: <c>--configuration Release</c> and saying
 /// nothing must be told apart, because a project's <c>killmutants.json</c> sits between them.
@@ -33,7 +35,9 @@ internal sealed record CommandLineOptions(
     string? JsonReportPath,
     double? Threshold,
     bool ThresholdCleared,
-    string? Since)
+    string? Since,
+    TimeSpan? StopAfter = null,
+    bool StopAfterCleared = false)
 {
     /// <summary>
     /// Parses the command line. The defaults are chosen so that <c>dotnet killmutants</c> with no
@@ -62,6 +66,8 @@ internal sealed record CommandLineOptions(
         // and --since refuses a threshold from either source.
         bool thresholdCleared = false;
         string? since = null;
+        TimeSpan? stopAfter = null;
+        bool stopAfterCleared = false;
 
         for (int index = 0; index < args.Count; index++)
         {
@@ -201,6 +207,34 @@ internal sealed record CommandLineOptions(
 
                     break;
 
+                case "--stop-after":
+                    index++;
+
+                    if (index >= args.Count)
+                    {
+                        throw new ArgumentException($"'{argument}' needs {Duration.Expected}.");
+                    }
+
+                    // Last one wins, for the reason --break-at's does: a later value clears an
+                    // earlier 'none', or a job that asked for a deadline twice would have none.
+                    if (string.Equals(args[index], EmptyList, StringComparison.OrdinalIgnoreCase))
+                    {
+                        stopAfterCleared = true;
+                        stopAfter = null;
+
+                        break;
+                    }
+
+                    if (!Duration.TryParse(args[index], out TimeSpan deadline))
+                    {
+                        throw new ArgumentException($"'{args[index]}' is not {Duration.Expected}.");
+                    }
+
+                    stopAfterCleared = false;
+                    stopAfter = deadline;
+
+                    break;
+
                 case "--report-json":
                     index++;
 
@@ -242,7 +276,9 @@ internal sealed record CommandLineOptions(
             jsonReportPath,
             threshold,
             thresholdCleared,
-            since);
+            since,
+            stopAfter,
+            stopAfterCleared);
     }
 
     /// <summary>Parses a comma-separated list of mutator family names.</summary>

@@ -223,4 +223,79 @@ public class ConsoleReportWriterTests
         // the suite; a timeout is a detection.
         Assert.Contains("Mutation score: 100%", output, StringComparison.Ordinal);
     }
+
+    private static string RenderStopped(RunScope scope, int? selected, params MutantResult[] results)
+    {
+        var writer = new StringWriter();
+
+        ConsoleReportWriter.Write(
+            writer, new MutationTestReport(results, scope: scope, stopped: new EarlyStop(selected)));
+
+        return writer.ToString().ReplaceLineEndings("\n");
+    }
+
+    /// <summary>
+    /// First, before the findings it qualifies, for the reason the comparison caveat is: a reader
+    /// has to know the run did not get to everything before reading what it found.
+    /// </summary>
+    [Fact]
+    public void A_stopped_run_says_so_before_anything_else_and_prints_no_score()
+    {
+        IReadOnlyList<Mutant> mutants = MutantsFor("class C { bool M(int a) => a >= 18; }");
+
+        string output = RenderStopped(
+            RunScope.WholeCodebase,
+            selected: 9,
+            new MutantResult(mutants[0], MutantStatus.Killed),
+            new MutantResult(mutants[1], MutantStatus.Survived));
+
+        Assert.StartsWith(
+            "KillMutants\n\nStopped before the end: 2 of the 9 mutant(s) it selected have a verdict.",
+            output,
+            StringComparison.Ordinal);
+        Assert.True(
+            output.IndexOf("Stopped before the end", StringComparison.Ordinal) <
+            output.IndexOf("Survived (1)", StringComparison.Ordinal));
+        Assert.DoesNotContain("Mutation score:", output, StringComparison.Ordinal);
+        Assert.Contains("No mutation score: the run stopped", output, StringComparison.Ordinal);
+
+        // Nor the per-family ratio, which is the same number in miniature.
+        Assert.DoesNotContain("%", output, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A partial run's verdict is a claim about its whole selection, and a stopped one has not judged
+    /// it - whatever it found among the mutants it did reach, and whatever the comparison says.
+    /// </summary>
+    [Fact]
+    public void A_stopped_partial_run_gives_no_verdict()
+    {
+        IReadOnlyList<Mutant> mutants = MutantsFor("class C { bool M(int a) => a >= 18; }");
+
+        string output = RenderStopped(
+            Partial, selected: 9, new MutantResult(mutants[0], MutantStatus.Killed));
+
+        Assert.Contains(
+            "No verdict: 0 of 1 mutant(s) judged were undetected, and the run stopped before it " +
+            "had judged the rest.",
+            output,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("Verdict:", output, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_run_stopped_before_it_selected_anything_says_so()
+    {
+        string output = RenderStopped(RunScope.Unresolved, selected: null);
+
+        Assert.Contains("it had not yet selected a single mutant", output, StringComparison.Ordinal);
+        Assert.Contains(
+            "No verdict: the run stopped before it had judged a single mutant.",
+            output,
+            StringComparison.Ordinal);
+
+        // A change it never read has no file count, and a zero would say nothing changed.
+        Assert.Contains("Scope: a change the run stopped before resolving\n", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("files changed", output, StringComparison.Ordinal);
+    }
 }

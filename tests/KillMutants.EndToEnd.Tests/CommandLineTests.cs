@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 
 namespace KillMutants.EndToEnd.Tests;
 
@@ -299,5 +300,163 @@ public class CommandLineTests
 
         // And it says the measuring part worked, so nobody re-runs a sweep they already have.
         Assert.Contains("The mutation run finished", error, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A deadline met before the run could test anything, with no gate asked for: the report says it
+    /// stopped and the shell is told 0, as for any run that only reports. Exit 2 would read as a
+    /// broken tool to a nightly job that only met the deadline it was given (DEC0013).
+    /// </summary>
+    [Fact]
+    public async Task A_run_that_meets_its_deadline_reports_what_it_judged_and_fails_no_gate_it_was_not_given()
+    {
+        using var fixture = FixtureCopy.Create();
+        string reportPath = Path.Combine(fixture.Root, "out", "report.json");
+
+        (int exitCode, string output, string error) = await RunAsync(
+            fixture.Root, "--stop-after", "1s", "--report-json", reportPath);
+
+        Assert.Equal(Success, exitCode);
+        Assert.Contains("Stopped before the end", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("Mutation score:", output, StringComparison.Ordinal);
+        Assert.Contains("stopped by its 1s deadline", error, StringComparison.Ordinal);
+
+        using JsonDocument report = JsonDocument.Parse(await File.ReadAllTextAsync(
+            reportPath, TestContext.Current.CancellationToken));
+
+        Assert.False(report.RootElement.GetProperty("complete").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, report.RootElement.GetProperty("score").ValueKind);
+
+        // The log is created before the run starts, so it is there even when nothing reached it.
+        Assert.True(File.Exists(Path.ChangeExtension(reportPath, ".jsonl")));
+    }
+
+    /// <summary>A gate is a claim about every mutant, and a stopped run cannot make it.</summary>
+    [Fact]
+    public async Task A_run_that_meets_its_deadline_does_not_pass_the_gate_it_was_given()
+    {
+        using var fixture = FixtureCopy.Create();
+
+        (int exitCode, _, string error) = await RunAsync(
+            fixture.Root, "--stop-after", "1s", "--break-at", "50");
+
+        Assert.Equal(GateNotPassed, exitCode);
+        Assert.Contains("cannot be shown to pass", error, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The log is the report's mutants, one per line, as they landed (DEC0014). On a complete run it
+    /// holds exactly what the report holds, which is what makes it safe to read when the report is
+    /// not there.
+    /// </summary>
+    [Fact]
+    public async Task Every_verdict_lands_in_the_log_beside_the_report()
+    {
+        using var fixture = FixtureCopy.Create();
+        string reportPath = Path.Combine(fixture.Root, "out", "report.json");
+
+        (int exitCode, _, _) = await RunAsync(
+            fixture.Root, "--mutators", "Comparison", "--report-json", reportPath);
+
+        Assert.Equal(Success, exitCode);
+
+        using JsonDocument report = JsonDocument.Parse(await File.ReadAllTextAsync(
+            reportPath, TestContext.Current.CancellationToken));
+
+        string[] lines = await File.ReadAllLinesAsync(
+            Path.ChangeExtension(reportPath, ".jsonl"), TestContext.Current.CancellationToken);
+
+        Dictionary<string, string> logged = lines
+            .Select(line => JsonDocument.Parse(line).RootElement)
+            .ToDictionary(
+                line => line.GetProperty("key").GetString()!,
+                line => line.GetProperty("status").GetString()!);
+
+        Dictionary<string, string> reported = report.RootElement.GetProperty("mutants")
+            .EnumerateArray()
+            .ToDictionary(
+                mutant => mutant.GetProperty("key").GetString()!,
+                mutant => mutant.GetProperty("status").GetString()!);
+
+        Assert.True(report.RootElement.GetProperty("complete").GetBoolean());
+        Assert.NotEmpty(reported);
+        Assert.Equal(reported.Count, lines.Length);
+        Assert.Equal(reported, logged);
+    }
+
+    /// <summary>
+    /// Ctrl-C, as a person at a terminal sends it, ends the run with the report of what it judged
+    /// rather than with nothing.
+    /// </summary>
+    /// <remarks>
+    /// Unix only. Windows delivers Ctrl-C to the processes sharing a console and has no way to send
+    /// it to one process from another, so on Windows this has nothing to send; the stop it leads to
+    /// is the same one the deadline tests above exercise on every platform. The fixture's code has a
+    /// mutation that never terminates, so the run is certain to still be testing when the signal
+    /// lands, however fast the machine.
+    /// </remarks>
+    [Fact]
+    public async Task An_interrupted_run_writes_the_report_of_what_it_had_judged()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows cannot send SIGINT to one process.");
+
+        using var fixture = FixtureCopy.Create();
+        fixture.UseCodeWhoseMutationNeverTerminates();
+        string reportPath = Path.Combine(fixture.Root, "out", "report.json");
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "dotnet",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+
+        foreach (string argument in (string[])[CommandLinePath(), fixture.Root, "--report-json", reportPath])
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        using var process = Process.Start(startInfo)!;
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        Task<string> output = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var testing = new TaskCompletionSource();
+        var error = new System.Text.StringBuilder();
+
+        Task readingErrors = Task.Run(
+            async () =>
+            {
+                while (await process.StandardError.ReadLineAsync(cancellationToken) is { } line)
+                {
+                    error.AppendLine(line);
+
+                    if (line.StartsWith("Testing mutants", StringComparison.Ordinal))
+                    {
+                        testing.TrySetResult();
+                    }
+                }
+
+                testing.TrySetResult();
+            },
+            cancellationToken);
+
+        await testing.Task.WaitAsync(cancellationToken);
+
+        using (var kill = Process.Start("kill", ["-INT", process.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)]))
+        {
+            await kill.WaitForExitAsync(cancellationToken);
+        }
+
+        await process.WaitForExitAsync(cancellationToken);
+        await readingErrors;
+
+        Assert.Equal(Success, process.ExitCode);
+        Assert.Contains("Stopped before the end", await output, StringComparison.Ordinal);
+        Assert.Contains("stopped by SIGINT", error.ToString(), StringComparison.Ordinal);
+
+        using JsonDocument report = JsonDocument.Parse(await File.ReadAllTextAsync(
+            reportPath, cancellationToken));
+
+        Assert.False(report.RootElement.GetProperty("complete").GetBoolean());
     }
 }

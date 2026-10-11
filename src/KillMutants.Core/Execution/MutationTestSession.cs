@@ -29,6 +29,7 @@ internal sealed class MutationTestSession
     private readonly int _verifyKills;
     private readonly IChangeSource? _changes;
     private readonly IProgress<MutationTestProgress>? _progress;
+    private readonly IProgress<MutantResult>? _verdicts;
 
     public MutationTestSession(
         ITestRunner testRunner,
@@ -40,7 +41,8 @@ internal sealed class MutationTestSession
         MutatorCatalog? catalog = null,
         int verifyKills = 0,
         IChangeSource? changes = null,
-        IProgress<MutationTestProgress>? progress = null)
+        IProgress<MutationTestProgress>? progress = null,
+        IProgress<MutantResult>? verdicts = null)
     {
         ArgumentNullException.ThrowIfNull(testRunner);
         ArgumentException.ThrowIfNullOrWhiteSpace(configuration);
@@ -66,6 +68,7 @@ internal sealed class MutationTestSession
         _verifyKills = verifyKills;
         _changes = changes;
         _progress = progress;
+        _verdicts = verdicts;
     }
 
     /// <summary>
@@ -79,12 +82,83 @@ internal sealed class MutationTestSession
     private static int DefaultWorkerCount => Math.Max(1, Environment.ProcessorCount / 2);
 
     /// <summary>Discovers, mutates, tests and reports.</summary>
+    /// <param name="searchDirectory">The directory to search for projects.</param>
+    /// <param name="cancellationToken">Abandons the run, which then reports nothing.</param>
+    /// <param name="stopToken">
+    /// Ends the run early, which then reports the verdicts it had reached - see
+    /// <see cref="MutationTestReport.Stopped"/>.
+    /// </param>
     public async Task<MutationTestReport> RunAsync(
         string searchDirectory,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        CancellationToken stopToken = default)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
+        // One token for everything the run does, so a stop reaches whatever is in flight - a build, a
+        // baseline, a test host - exactly as a cancellation does. What separates the two is decided
+        // once, here, where the run ends: a cancelled run is abandoned, and a stopped one reports
+        // what it had judged. See DEC0013.
+        using var running = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, stopToken);
+
+        var run = new RunSoFar(_verdicts)
+        {
+            Scope = _changes is null ? RunScope.WholeCodebase : RunScope.Unresolved,
+        };
+
+        try
+        {
+            return await RunToTheEndAsync(searchDirectory, run, stopwatch, running.Token)
+                .ConfigureAwait(false);
+        }
+        catch (Exception) when (
+            stopToken.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            // Whatever failed once a stop was asked for is put down to the stop, not only the
+            // cancellation it raises. Stopping ends the processes the run was waiting on, and one
+            // that ends that way can surface as anything its caller makes of a dead process - a red
+            // baseline, an unreadable coverage file. None of it is a finding about the code.
+            return Report(run, stopwatch.Elapsed, new EarlyStop(run.Verdicts.Selected));
+        }
+    }
+
+    /// <summary>What a report is made of, gathered as the run goes so a stopped run can report it.</summary>
+    private sealed class RunSoFar(IProgress<MutantResult>? verdicts)
+    {
+        public VerdictLedger Verdicts { get; } = new(verdicts);
+
+        public RunScope Scope { get; set; } = RunScope.WholeCodebase;
+
+        public ChangeSelection? Selection { get; set; }
+
+        public IReadOnlyList<MutationTestTarget> Targets { get; set; } = [];
+
+        // Recorded as the run goes, because a budget is derived per project and a report that omits
+        // it cannot explain a timeout afterwards.
+        public List<TimeBudget> Budgets { get; } = [];
+
+        // How many kills were actually re-verified, so the report can say how strong that check was
+        // rather than leaving "no disagreements" to mean either everything or nothing.
+        public List<int> Verified { get; } = [];
+    }
+
+    private MutationTestReport Report(RunSoFar run, TimeSpan elapsed, EarlyStop? stopped) =>
+        new(
+            run.Verdicts.InOrder(),
+            elapsed,
+            RunEnvironment.Describe(
+                _workerCount, TestFrameworkOf(run.Targets), run.Budgets, run.Verified.Sum()),
+            run.Scope,
+            run.Selection?.CoverageLost,
+            run.Selection?.UnreadComponents,
+            stopped);
+
+    private async Task<MutationTestReport> RunToTheEndAsync(
+        string searchDirectory,
+        RunSoFar run,
+        System.Diagnostics.Stopwatch stopwatch,
+        CancellationToken cancellationToken)
+    {
         // Built here rather than in the constructor: the patterns are relative to the directory the
         // run was pointed at, which only this call knows.
         PathFilter exclusions = PathFilter.Excluding(searchDirectory, _exclude);
@@ -99,6 +173,8 @@ internal sealed class MutationTestSession
             .DiscoverAsync(searchDirectory, cancellationToken)
             .ConfigureAwait(false);
 
+        run.Targets = targets;
+
         // Resolved after discovery, because the selection is expressed in terms of what discovery
         // found - which projects are test projects, and which mutable projects each of them
         // exercises - and before anything is built, because a change that selects nothing must not
@@ -112,6 +188,9 @@ internal sealed class MutationTestSession
                 .ConfigureAwait(false);
 
         RunScope scope = selection?.Scope ?? RunScope.WholeCodebase;
+
+        run.Selection = selection;
+        run.Scope = scope;
 
         // Discovery answered with no targets rather than refusing, because a partial run has to be
         // able to ask why - and this is where the answer is. Review found the run ending before the
@@ -165,49 +244,41 @@ internal sealed class MutationTestSession
         }
 
         // One generator for the whole session, so mutant identifiers never repeat across projects.
+        //
+        // Every project's mutants are generated before any is tested, which costs nothing - the
+        // compilations are all in memory already - and lets a run that is stopped say how many it
+        // had selected rather than only how many it reached.
         var generator = new MutantGenerator(_catalog, exclusions, searchDirectory);
-        List<MutantResult> results = [];
-
-        // Recorded as the run goes, because a budget is derived per project and a report that omits
-        // it cannot explain a timeout afterwards.
-        List<TimeBudget> budgets = [];
-
-        // How many kills were actually re-verified, so the report can say how strong that check was
-        // rather than leaving "no disagreements" to mean either everything or nothing.
-        List<int> verified = [];
+        List<IReadOnlyList<Mutant>> mutantsOf = [];
 
         foreach ((MutationTestTarget target, ProjectCompilation compilation) in targets.Zip(compilations))
         {
-            results.AddRange(await TestTargetAsync(
-                    target, compilation, generator, selection, budgets, verified, cancellationToken)
-                .ConfigureAwait(false));
+            mutantsOf.Add(generator.Generate(
+                compilation.Compilation, selection?.For(target.ProjectUnderTest)));
         }
 
-        return new MutationTestReport(
-            results,
-            stopwatch.Elapsed,
-            RunEnvironment.Describe(
-                _workerCount, TestFrameworkOf(targets), budgets, verified.Sum()),
-            scope,
-            selection?.CoverageLost,
-            selection?.UnreadComponents);
+        run.Verdicts.Select(mutantsOf.SelectMany(mutants => mutants));
+
+        for (int index = 0; index < targets.Count; index++)
+        {
+            await TestTargetAsync(
+                    targets[index], compilations[index], mutantsOf[index], run, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return Report(run, stopwatch.Elapsed, stopped: null);
     }
 
-    private async Task<IReadOnlyList<MutantResult>> TestTargetAsync(
+    private async Task TestTargetAsync(
         MutationTestTarget target,
         ProjectCompilation compilation,
-        MutantGenerator generator,
-        ChangeSelection? selection,
-        List<TimeBudget> budgets,
-        List<int> verified,
+        IReadOnlyList<Mutant> mutants,
+        RunSoFar run,
         CancellationToken cancellationToken)
     {
-        IReadOnlyList<Mutant> mutants = generator.Generate(
-            compilation.Compilation, selection?.For(target.ProjectUnderTest));
-
         if (mutants.Count == 0)
         {
-            return [];
+            return;
         }
 
         string sandboxRoot = Scratch.CreateDirectory();
@@ -226,7 +297,7 @@ internal sealed class MutationTestSession
             TimeBudget measured = await VerifyBaselineAsync(target, compilation, sandboxes[0], cancellationToken)
                 .ConfigureAwait(false);
 
-            budgets.Add(measured);
+            run.Budgets.Add(measured);
 
             TimeSpan budget = measured.Budget;
 
@@ -237,19 +308,19 @@ internal sealed class MutationTestSession
                 : null;
 
             MutantResult[] results = await TestMutantsAsync(
-                    compilation, sandboxes, mutants, coverage, budget, cancellationToken)
+                    compilation, sandboxes, mutants, coverage, budget, run.Verdicts, cancellationToken)
                 .ConfigureAwait(false);
 
             // Only now that every worker has stopped, so a re-run competes with nothing.
             await ConfirmTimeoutsAloneAsync(
-                    compilation, sandboxes[0], mutants, results, coverage, budget, cancellationToken)
+                    compilation, sandboxes[0], mutants, results, coverage, budget, run.Verdicts,
+                    cancellationToken)
                 .ConfigureAwait(false);
 
-            verified.Add(await ReVerifyKillsAsync(
-                    compilation, sandboxes[0], mutants, results, coverage, budget, cancellationToken)
+            run.Verified.Add(await ReVerifyKillsAsync(
+                    compilation, sandboxes[0], mutants, results, coverage, budget, run.Verdicts,
+                    cancellationToken)
                 .ConfigureAwait(false));
-
-            return results;
         }
         finally
         {
@@ -277,6 +348,7 @@ internal sealed class MutationTestSession
         IReadOnlyList<Mutant> mutants,
         CoverageMap? coverage,
         TimeSpan budget,
+        VerdictLedger verdicts,
         CancellationToken cancellationToken)
     {
         var pending = new ConcurrentQueue<int>(Enumerable.Range(0, mutants.Count));
@@ -287,9 +359,18 @@ internal sealed class MutationTestSession
         {
             while (pending.TryDequeue(out int index))
             {
-                results[index] = await TestMutantAsync(
+                MutantResult result = await TestMutantAsync(
                         compilation, sandbox, mutants[index], coverage, budget, cancellationToken)
                     .ConfigureAwait(false);
+
+                results[index] = result;
+
+                // A timeout is not a verdict yet: it is re-run alone, once the workers have stopped,
+                // before it is believed. Everything else is final as it lands.
+                if (result.Status != MutantStatus.Timeout)
+                {
+                    verdicts.Reach(result);
+                }
 
                 _progress?.Report(new MutationTestProgress(
                     MutationTestPhase.TestingMutants, Interlocked.Increment(ref tested), mutants.Count));
@@ -333,6 +414,7 @@ internal sealed class MutationTestSession
         MutantResult[] results,
         CoverageMap? coverage,
         TimeSpan budget,
+        VerdictLedger verdicts,
         CancellationToken cancellationToken)
     {
         int[] timedOut = [.. Enumerable
@@ -364,6 +446,8 @@ internal sealed class MutationTestSession
                         $"worker(s) running, then {alone.Status} when re-run on its own. The budget " +
                         "was exceeded because of the load, not because of the mutation.",
                 };
+
+            verdicts.Reach(results[index]);
         }
     }
 
@@ -397,6 +481,7 @@ internal sealed class MutationTestSession
         MutantResult[] results,
         CoverageMap? coverage,
         TimeSpan budget,
+        VerdictLedger verdicts,
         CancellationToken cancellationToken)
     {
         if (_verifyKills <= 0)
@@ -431,6 +516,8 @@ internal sealed class MutationTestSession
                         $"reported {MutantStatus.Killed} and then {again.Status} when tested again " +
                         "on its own. One of the two runs is wrong, and this tool cannot tell which.",
                 };
+
+                verdicts.Amend(results[index]);
             }
         }
 
@@ -544,6 +631,28 @@ internal sealed class MutationTestSession
     }
 
     private async Task<MutantResult> TestMutantAsync(
+        ProjectCompilation compilation,
+        TestSandbox sandbox,
+        Mutant mutant,
+        CoverageMap? coverage,
+        TimeSpan budget,
+        CancellationToken cancellationToken)
+    {
+        MutantResult result = await JudgeAsync(
+                compilation, sandbox, mutant, coverage, budget, cancellationToken)
+            .ConfigureAwait(false);
+
+        // Not kept once the run is coming down, whatever it says. Stopping ends the test hosts the
+        // run is waiting on, and a signal that stops this process may have reached the host too; a
+        // host that ends either way reads as a crash, which counts as a kill. Such a verdict cannot
+        // be told apart from one the mutation caused, so none reached at that point is kept - the
+        // mutant is simply one the run did not get to.
+        cancellationToken.ThrowIfCancellationRequested();
+
+        return result;
+    }
+
+    private async Task<MutantResult> JudgeAsync(
         ProjectCompilation compilation,
         TestSandbox sandbox,
         Mutant mutant,

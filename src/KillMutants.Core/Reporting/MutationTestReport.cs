@@ -18,13 +18,17 @@ public sealed class MutationTestReport
     /// Components the earlier state was reconstructed without, which make the comparison behind
     /// every other figure here provisional.
     /// </param>
+    /// <param name="stopped">
+    /// How far the run had got when it was stopped, or null when it ran to the end.
+    /// </param>
     public MutationTestReport(
         IReadOnlyList<MutantResult> results,
         TimeSpan duration = default,
         RunEnvironment? environment = null,
         RunScope? scope = null,
         IReadOnlyList<string>? coverageLost = null,
-        IReadOnlyList<string>? unreadComponents = null)
+        IReadOnlyList<string>? unreadComponents = null,
+        EarlyStop? stopped = null)
     {
         ArgumentNullException.ThrowIfNull(results);
 
@@ -34,6 +38,7 @@ public sealed class MutationTestReport
         Scope = scope ?? RunScope.WholeCodebase;
         CoverageLost = coverageLost ?? [];
         UnreadComponents = unreadComponents ?? [];
+        Stopped = stopped;
         Killed = Count(MutantStatus.Killed);
         Survived = Count(MutantStatus.Survived);
         TimedOut = Count(MutantStatus.Timeout);
@@ -185,6 +190,27 @@ public sealed class MutationTestReport
     /// </para>
     /// </remarks>
     public bool ComparisonIsIncomplete => UnreadComponents.Count > 0;
+
+    /// <summary>How far the run had got when it was stopped, or null when it ran to the end.</summary>
+    /// <remarks>
+    /// <para>
+    /// A stopped run holds the verdicts it had reached and no others, so every count here is a count
+    /// of what it judged. Those are facts, and they are kept. What they cannot be is a description of
+    /// the codebase: the mutants judged are the ones the run reached first - whole projects in the
+    /// order they were found, then the front of the next - and not a sample, so a score over them
+    /// would describe the files that happened to come first. See DEC0013.
+    /// </para>
+    /// <para>
+    /// A mutant that timed out and had not yet been re-run on its own when the run stopped has no
+    /// verdict, and is not among <see cref="Results"/>: a timeout is believed only once it has been
+    /// confirmed alone, and counting an unconfirmed one would credit the suite with a detection the
+    /// run had not established.
+    /// </para>
+    /// </remarks>
+    public EarlyStop? Stopped { get; }
+
+    /// <summary>True when every mutant the run selected has a verdict.</summary>
+    public bool IsComplete => Stopped is null;
 
     /// <summary>What each mutator family cost and bought, most mutants first.</summary>
     public IReadOnlyList<MutatorSummary> ByMutator { get; }

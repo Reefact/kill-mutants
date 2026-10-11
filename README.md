@@ -60,6 +60,8 @@ The few choices that are expensive to reverse. Each is recorded in [docs/decisio
 | DEC0010 — A partial run reports findings, not a score | [en](docs/decisions/0010-a-partial-run-reports-findings-not-a-score-en.md) | [fr](docs/decisions/0010-a-partial-run-reports-findings-not-a-score-fr.md) |
 | DEC0011 — Widen a partial run's selection when a test file changes | [en](docs/decisions/0011-widen-a-partial-run-selection-when-a-test-file-changes-en.md) | [fr](docs/decisions/0011-widen-a-partial-run-selection-when-a-test-file-changes-fr.md) |
 | DEC0012 — A partial run withholds its verdict over an incomplete earlier state | [en](docs/decisions/0012-a-partial-run-abstains-when-the-earlier-state-is-incomplete-en.md) | [fr](docs/decisions/0012-a-partial-run-abstains-when-the-earlier-state-is-incomplete-fr.md) |
+| DEC0013 — A stopped run reports what it judged and passes no gate | [en](docs/decisions/0013-a-stopped-run-reports-what-it-judged-and-passes-no-gate-en.md) | [fr](docs/decisions/0013-a-stopped-run-reports-what-it-judged-and-passes-no-gate-fr.md) |
+| DEC0014 — Each verdict is appended to a log beside the report as soon as it is final | [en](docs/decisions/0014-each-verdict-is-appended-to-a-log-beside-the-report-en.md) | [fr](docs/decisions/0014-each-verdict-is-appended-to-a-log-beside-the-report-fr.md) |
 
 ## Installing
 
@@ -95,6 +97,29 @@ dotnet killmutants --exclude "tests/fixtures/*" --exclude "*.Generated.cs"
 ```
 
 Note that `*` matches `/` as well, so `tests/*` covers everything beneath `tests`.
+
+A run that outgrows its CI budget should not take its measurements down with it. `--stop-after`
+gives the run a deadline of its own; set it below the job's timeout, with room for the mutants still
+in flight and for writing the report:
+
+```bash
+dotnet killmutants --stop-after 80m --report-json artifacts/mutation.json
+```
+
+When the deadline comes, the run stops testing and reports the verdicts it reached. Such a report
+says it stopped, prints no score — the mutants it judged are the ones it reached first, not a sample
+— and passes no gate: it exits `1` when `--break-at` or `--since` asked for one, and `0` otherwise,
+with a line on standard error either way. Ctrl-C, SIGINT and SIGTERM stop it the same way, and a
+second Ctrl-C ends it at once. The deadline is the one that works on GitHub Actions, where a job's
+own timeout signals the step's shell rather than the tool and kills everything seconds later
+([DEC0013](docs/decisions/0013-a-stopped-run-reports-what-it-judged-and-passes-no-gate-en.md)).
+
+Every verdict also lands, as soon as it is final, in a JSON Lines log beside the report — the same
+path ending in `.jsonl`, here `artifacts/mutation.jsonl` — one line per mutant, in the shape of the
+report's `mutants` entries. It is there for the run that never gets to write its report: a job
+cancelled by a newer push, a runner that was lost. A timeout is logged only once it has been
+confirmed on its own, so no line is ever contradicted by a later one
+([DEC0014](docs/decisions/0014-each-verdict-is-appended-to-a-log-beside-the-report-en.md)).
 
 ## Judging a change rather than a codebase
 
@@ -195,8 +220,8 @@ and so the catalogue that produced a score is versioned with the code that was s
 ```
 
 Every option has a key — `configuration`, `exclude`, `mutators`, `without`, `parallel`, `coverage`,
-`breakAt`, `reportJson` — and anything given on the command line wins, so the file states the habit
-and the command line states the exception. A list on the command line replaces the file's rather than
+`breakAt`, `reportJson`, `stopAfter` — and anything given on the command line wins, so the file states
+the habit and the command line states the exception. A list on the command line replaces the file's rather than
 adding to it. Paths in the file are relative to the file. A misspelt key stops the run rather than
 being ignored.
 
@@ -234,7 +259,8 @@ score, which is the point.
 `1` is named for the gate rather than for one of its causes, because it has more than one: a score
 below `--break-at`, and a score that is **undefined** because no mutant could be tested — a run that
 demonstrated nothing cannot be shown to have met a threshold, and reporting success would let a
-misconfigured job stay green for ever. A build script branches on *findings* either way; standard
+misconfigured job stay green for ever. A run stopped before the end joins it for the same reason,
+when it was given a gate: it has not judged everything the gate is about. A build script branches on *findings* either way; standard
 error says which case it was. The mapping is fixed
 ([DEC0009](docs/decisions/0009-exit-codes-are-a-public-contract-en.md)): a code is never renumbered,
 and a new cause of an outcome a code already names joins it rather than taking a code of its own.
