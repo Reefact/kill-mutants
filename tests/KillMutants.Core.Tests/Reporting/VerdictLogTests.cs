@@ -154,6 +154,59 @@ public sealed class VerdictLogTests : IDisposable
         Assert.Single(VerdictLog.Read(path));
     }
 
+    /// <summary>
+    /// Torn means physically unfinished. A last line that is not a verdict but ends in a line feed is
+    /// complete, and tolerating it once would only move the refusal: <c>Append</c> keeps a line that
+    /// ends in a line feed, the next verdict lands after it, and the resume after that finds it in
+    /// the middle of the file. Refused at the first read instead, with the same line named both
+    /// times - the two resumes are played out here to show it.
+    /// </summary>
+    [Fact]
+    public void A_complete_last_line_that_is_not_a_verdict_is_refused_at_the_first_resume_not_the_second()
+    {
+        IReadOnlyList<Mutant> mutants = MutantsFor("class C { bool M(int a) => a >= 18; }");
+        string path = Path.Combine(_directory, "report.jsonl");
+
+        File.WriteAllText(
+            path,
+            JsonReportWriter.Line(new MutantResult(mutants[0], MutantStatus.Killed)) + "\nnot a verdict\n");
+
+        // The first resume reads before it appends, and is refused here.
+        IOException first = Assert.Throws<IOException>(() => VerdictLog.Read(path));
+
+        Assert.Contains("line 2", first.Message, StringComparison.Ordinal);
+
+        // Had it appended anyway, the line would be in the middle, and the second resume would be
+        // refused over the same line - not a torn one, and not a later one.
+        using (VerdictLog log = VerdictLog.Append(path))
+        {
+            log.Report(new MutantResult(mutants[1], MutantStatus.Survived));
+        }
+
+        Assert.Equal(3, File.ReadAllLines(path).Length);
+
+        IOException second = Assert.Throws<IOException>(() => VerdictLog.Read(path));
+
+        Assert.Contains("line 2", second.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>The line feed is what tells a torn line from a complete one - whatever the content.</summary>
+    [Fact]
+    public void Only_a_last_line_without_a_line_feed_is_taken_for_torn()
+    {
+        IReadOnlyList<Mutant> mutants = MutantsFor("class C { bool M(int a) => a >= 18; }");
+        string path = Path.Combine(_directory, "report.jsonl");
+        string verdict = JsonReportWriter.Line(new MutantResult(mutants[0], MutantStatus.Killed));
+
+        File.WriteAllText(path, verdict + "\n" + verdict[..^3]);
+
+        Assert.Single(VerdictLog.Read(path));
+
+        File.WriteAllText(path, verdict + "\n" + verdict[..^3] + "\n");
+
+        Assert.Throws<IOException>(() => VerdictLog.Read(path));
+    }
+
     [Fact]
     public void Reading_refuses_a_line_that_is_not_a_verdict_and_names_it()
     {

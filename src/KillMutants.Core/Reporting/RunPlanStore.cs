@@ -99,8 +99,12 @@ public sealed class RunPlanStore
         }
 
         // A document with a part missing is JSON and is not a plan; said here, with the file named,
-        // rather than as a null reference three phases later.
-        if (plan.Identity is null || plan.Mutants is null || plan.Runs is null)
+        // rather than as a null reference three phases later. Checked down to the lists the
+        // continuation reads, because the serializer fills a missing list with null, not with
+        // nothing, and the first use of one would be an unnamed crash after the log was opened.
+        // The mutants are the one part allowed to be absent: a series stopped before it selected
+        // them has none yet - see RunPlan.
+        if (!IsWhole(plan))
         {
             throw new IOException(
                 $"The plan '{PlanPath}' is missing part of what a plan holds. Delete it to start the " +
@@ -109,6 +113,22 @@ public sealed class RunPlanStore
 
         return plan;
     }
+
+    private static bool IsWhole(RunPlan plan) =>
+        plan.Identity is
+        {
+            ToolVersion: not null,
+            Configuration: not null,
+            Mutators: not null,
+            Without: not null,
+            Exclude: not null,
+        } &&
+        (plan.Identity.Code is null || plan.Identity.Code is { Name: not null, Directory: not null }) &&
+        (plan.Mutants is null || plan.Mutants.All(mutant => mutant is { Key: not null })) &&
+        plan.Runs is not null &&
+        plan.Runs.All(run =>
+            run is { Started: not null, ToolVersion: not null, Disagreements: not null } &&
+            run.Disagreements.All(disagreement => disagreement is { Key: not null, Disagreement: not null }));
 
     /// <summary>Writes the plan, whole, over whatever was there.</summary>
     public void WritePlan(RunPlan plan)

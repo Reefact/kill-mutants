@@ -53,6 +53,33 @@ public class RunIdentityTests
         Assert.Contains("ffffffff", why, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Two services of one repository with the same layout describe themselves identically from the
+    /// commit down - the keys and the graph are relative to the directory the run was pointed at -
+    /// so the directory has to be part of what is compared, or one would inherit the other's verdicts.
+    /// </summary>
+    [Fact]
+    public void Another_directory_of_the_same_commit_does_not_continue()
+    {
+        RunIdentity first = Identity(code: new CodeState("0123abcd", IsExact: true, "services/first"));
+        RunIdentity second = Identity(code: new CodeState("0123abcd", IsExact: true, "services/second"));
+
+        string? why = second.WhyNotContinuedBy(first);
+
+        Assert.Contains("'services/first'", why, StringComparison.Ordinal);
+        Assert.Contains("'services/second'", why, StringComparison.Ordinal);
+        Assert.Null(second.WhyNotContinuedBy(second));
+    }
+
+    [Fact]
+    public void The_top_of_the_working_copy_is_named_as_such()
+    {
+        RunIdentity top = Identity(code: new CodeState("0123abcd", IsExact: true));
+        RunIdentity below = Identity(code: new CodeState("0123abcd", IsExact: true, "src"));
+
+        Assert.Contains("the top", below.WhyNotContinuedBy(top), StringComparison.Ordinal);
+    }
+
     [Fact]
     public void A_tree_with_uncommitted_changes_never_continues_on_either_side()
     {

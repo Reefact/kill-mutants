@@ -325,10 +325,14 @@ also told to an observer as it lands, which the command line appends to a JSON L
 report (DEC0014), so even a run killed outright, which hears nothing, leaves behind what it judged.
 
 **A run that belongs to a series.** `--resume <id>` names a series, and the run keeps a plan beside
-the report (DEC0016): what identifies the run — the commit and whether the tree is exactly it, the
-settings, the tool, and once the mutants are generated the population, the project graph and the
-xUnit version — and every mutant it selected, so that plan minus log is what remains, readable
-without the tool. A later run of the same name on the same identity inherits the log's final verdicts
+the report (DEC0016): what identifies the run — the commit, whether the tree is exactly it and which
+directory of it the run was pointed at, the settings, the tool, and once the mutants are generated
+the population, the project graph and the xUnit version — and every mutant it selected, so that plan
+minus log is what remains, readable without the tool. The first plan of a series is written before
+discovery, with no mutants yet, so a run stopped during the build leaves one; each run records where
+in the log it began, and a later run recomputes every earlier run's count from the log rather than
+from a plan a killed run never got to rewrite. A later run of the same name on the same identity
+inherits the log's final verdicts
 into the ledger before any mutant is tested — timeouts excepted, since each is final only under the
 budget that confirmed it, and kills no test is named for, since a crash is the one verdict a stop can
 manufacture — and tests only the rest, so a project with nothing left pays neither sandbox, baseline
@@ -339,9 +343,10 @@ and the two halves end differently: the half the command line knows before the r
 with the tool's own files left out of the dirtiness read — decides what becomes of the log: continued
 for the series of the same name on the same identity, the run refused for that name on another
 identity, emptied when there is no plan or it is another series'; the half only the run knows is
-compared at selection, and a difference there is refused with the plan and the log as they were,
-because what differs after everything else matched is not something the user did. Git stays where it was: the command line reads the code state and hands the core an opaque name,
-as the partial run's `comparedTo` already is.
+compared at selection, and a difference there is refused with the plan, the log and the report as
+they were — the command line puts back the report it had cleared — because what differs after
+everything else matched is not something the user did. Git stays where it was: the command line
+reads the code state and hands the core an opaque name, as the partial run's `comparedTo` already is.
 
 **Why sandboxes rather than a shared, warmed-up test host.** Reusing one host across mutants is the
 most tempting optimisation available and the one we refuse: it is the source of Stryker's

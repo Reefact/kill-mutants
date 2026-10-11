@@ -109,6 +109,16 @@ internal sealed class MutationTestSession
             Scope = _changes is null ? RunScope.WholeCodebase : RunScope.Unresolved,
         };
 
+        // Before anything is discovered, so that a run stopped during discovery, the build or the
+        // generation - which still writes a report - has a plan beside it (DEC0016). Outside the
+        // handler below on purpose: a plan that cannot be written is a file problem to say now, not
+        // something a stop did.
+        if (_continuation is { } continuation)
+        {
+            run.Plan = new PlanKeeper(continuation, _workerCount);
+            run.Plan.Start();
+        }
+
         try
         {
             return await RunToTheEndAsync(searchDirectory, run, stopwatch, running.Token)
@@ -155,8 +165,7 @@ internal sealed class MutationTestSession
     {
         public VerdictLedger Verdicts { get; } = new(verdicts);
 
-        // The plan beside the report, once the run has one to keep - see PlanKeeper. Null for a
-        // caller that writes no report.
+        // The plan beside the report - see PlanKeeper. Null for a caller that writes no report.
         public PlanKeeper? Plan { get; set; }
 
         public RunScope Scope { get; set; } = RunScope.WholeCodebase;
@@ -298,14 +307,10 @@ internal sealed class MutationTestSession
 
         run.Verdicts.Select(all);
 
-        // The one moment the whole population is known, and so the one moment a plan can be written
-        // and an earlier run's verdicts inherited against it (DEC0015, DEC0016). Before any mutant is
-        // tested, so that a run refused here has changed nothing on disk.
-        if (_continuation is { } continuation)
-        {
-            run.Plan = new PlanKeeper(continuation, _workerCount);
-            run.Plan.Begin(all, targets, scope, searchDirectory, TestFrameworkOf(targets), run.Verdicts);
-        }
+        // The one moment the whole population is known, and so the one moment the plan can list it
+        // and an earlier run's verdicts be inherited against it (DEC0015, DEC0016). Before any mutant
+        // is tested, so that a run refused here has changed nothing on disk.
+        run.Plan?.Begin(all, targets, scope, searchDirectory, TestFrameworkOf(targets), run.Verdicts);
 
         for (int index = 0; index < targets.Count; index++)
         {

@@ -128,8 +128,9 @@ later one
 Every run that writes a report also writes a plan beside it — the same path ending in `.plan.json`,
 here `artifacts/mutation.plan.json` — that says what code and settings it measured and lists every
 mutant it selected, so that plan minus log is what remains after a killed run, readable without the
-tool. A report path ending in `.jsonl` or `.plan.json` is refused, because those names are the log's
-and the plan's
+tool. It is written before anything is discovered, with the mutant list still `null`, and rewritten
+whole once the mutants are selected, so a run stopped during the build leaves one too. A report path
+ending in `.jsonl` or `.plan.json` is refused, because those names are the log's and the plan's
 ([DEC0016](docs/decisions/0016-the-run-writes-its-plan-beside-the-report-en.md)).
 
 A project that does not fit in one budget is finished over several runs. `--resume <id>` makes the
@@ -140,7 +141,8 @@ dotnet killmutants --resume "$GITHUB_SHA" --stop-after 80m --report-json artifac
 ```
 
 The first run of a series starts it. A later run given the same name, on the same commit with a
-clean tree, the same settings and the same tool, inherits every verdict the log holds — except
+clean tree, pointed at the same directory of it, with the same settings and the same tool, inherits
+every verdict the log holds — except
 timeouts, which are only final under the budget that confirmed them, and kills no test is named for,
 which a stop can manufacture — and judges only the rest; a project with nothing left gets no sandbox,
 no baseline and no coverage pass, and runs no test at all. The run that reaches the last verdict

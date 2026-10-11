@@ -60,7 +60,7 @@ public class ResumedRunTests
         RunPlan plan = Assert.IsType<RunPlan>(store.ReadPlan());
 
         Assert.Equal("nightly", plan.Series);
-        Assert.Equal(17, plan.Mutants.Count);
+        Assert.Equal(17, plan.Mutants!.Count);
         Assert.Equal(2, Assert.Single(plan.Runs).Verdicts);
         Assert.Equal(2, VerdictLog.Read(store.LogPath).Count);
 
@@ -315,7 +315,7 @@ public class ResumedRunTests
         }
 
         RunPlan plan = store.ReadPlan()!;
-        string key = plan.Mutants[3].Key;
+        string key = plan.Mutants![3].Key;
         const string disagreement = "reported Killed and then Survived when tested again on its own.";
 
         store.WritePlan(plan with
@@ -394,12 +394,161 @@ public class ResumedRunTests
 
         Assert.Null(plan.Series);
         Assert.Null(report.Series);
-        Assert.Equal(report.Total, plan.Mutants.Count);
+        Assert.Equal(report.Total, plan.Mutants!.Count);
         Assert.Equal(report.Results.Select(result => result.Mutant.Key.ToString()), plan.Mutants.Select(mutant => mutant.Key));
         Assert.Equal("0123abcd", plan.Identity.Code!.Name);
         Assert.NotNull(plan.Identity.Fingerprint);
         Assert.Equal("xUnit 4.0.0", plan.Identity.TestFramework);
         Assert.Equal(["Sample.Library/Sample.Library.csproj <- Sample.Library.Tests/Sample.Library.Tests.csproj"], plan.Identity.TargetGraph);
+    }
+
+    /// <summary>
+    /// A run can be stopped - a deadline, a signal - while it is still discovering, building or
+    /// generating, and such a run writes a report. The plan has to be beside it all the same: written
+    /// before anything is discovered, with no mutants yet, and listing them from the next run on.
+    /// </summary>
+    [Fact]
+    public async Task A_series_stopped_before_it_selected_anything_leaves_a_plan_and_is_continued()
+    {
+        using var fixture = FixtureCopy.Create();
+        RunPlanStore store = StoreIn(fixture);
+        using var stop = new CancellationTokenSource();
+
+        await stop.CancelAsync();
+
+        MutationTestReport stopped;
+
+        using (VerdictLog log = VerdictLog.Create(store.LogPath))
+        {
+            stopped = await Session(new XUnitTestRunner(), log, Start("nightly", store))
+                .RunAsync(fixture.Root, TestContext.Current.CancellationToken, stop.Token);
+        }
+
+        Assert.False(stopped.IsComplete);
+        Assert.Null(stopped.Stopped!.Selected);
+        Assert.Single(stopped.Series!.Runs);
+
+        RunPlan plan = Assert.IsType<RunPlan>(store.ReadPlan());
+
+        Assert.Equal("nightly", plan.Series);
+        Assert.Null(plan.Mutants);
+        Assert.Null(plan.Identity.Fingerprint);
+        Assert.Equal("0123abcd", plan.Identity.Code!.Name);
+
+        PlannedRun only = Assert.Single(plan.Runs);
+
+        Assert.Equal(0, only.Verdicts);
+        Assert.Equal(0, only.LogLinesBefore);
+        Assert.Empty(VerdictLog.Read(store.LogPath));
+
+        MutationTestReport completed;
+
+        using (VerdictLog log = VerdictLog.Append(store.LogPath))
+        {
+            completed = await Session(new XUnitTestRunner(), log, Continue("nightly", store))
+                .RunAsync(fixture.Root, TestContext.Current.CancellationToken);
+        }
+
+        Assert.True(completed.IsComplete);
+        Assert.Equal(0, completed.Series!.Inherited);
+        Assert.Equal(2, completed.Series.Runs.Count);
+        Assert.Equal(17, completed.Series.Runs[^1].Verdicts);
+        Assert.Equal(17, store.ReadPlan()!.Mutants!.Count);
+    }
+
+    /// <summary>
+    /// A continuing run stopped before it selected anything has not compared the half of the identity
+    /// only a run knows, so the plan it leaves is the series', with this run added to it and nothing
+    /// reached - not a preliminary one that would lose the population.
+    /// </summary>
+    [Fact]
+    public async Task A_continuing_run_stopped_before_it_selected_anything_keeps_the_series_population()
+    {
+        using var fixture = FixtureCopy.Create();
+        RunPlanStore store = StoreIn(fixture);
+
+        using (VerdictLog log = VerdictLog.Create(store.LogPath))
+        {
+            await Session(new XUnitTestRunner(), log, Start("nightly", store))
+                .RunAsync(fixture.Root, TestContext.Current.CancellationToken);
+        }
+
+        using var stop = new CancellationTokenSource();
+
+        await stop.CancelAsync();
+
+        MutationTestReport stopped;
+
+        using (VerdictLog log = VerdictLog.Append(store.LogPath))
+        {
+            stopped = await Session(new XUnitTestRunner(), log, Continue("nightly", store))
+                .RunAsync(fixture.Root, TestContext.Current.CancellationToken, stop.Token);
+        }
+
+        Assert.False(stopped.IsComplete);
+
+        RunPlan plan = Assert.IsType<RunPlan>(store.ReadPlan());
+
+        Assert.Equal(17, plan.Mutants!.Count);
+        Assert.NotNull(plan.Identity.Fingerprint);
+        Assert.Equal([17, 0], plan.Runs.Select(run => run.Verdicts));
+        Assert.Equal([0, 17], plan.Runs.Select(run => run.LogLinesBefore));
+
+        var counting = new CountingRunner(new XUnitTestRunner());
+        MutationTestReport third;
+
+        using (VerdictLog log = VerdictLog.Append(store.LogPath))
+        {
+            third = await Session(counting, log, Continue("nightly", store))
+                .RunAsync(fixture.Root, TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal(0, counting.Runs);
+        Assert.Equal(17, third.Series!.Inherited);
+        Assert.Equal(3, third.Series.Runs.Count);
+    }
+
+    /// <summary>
+    /// A run that is killed never reaches the stop handler: its plan says what it had written at the
+    /// end of the last project it finished, while the log took verdicts after that. The log is the
+    /// authority, so the next run recomputes every earlier run's count from where in the log each
+    /// began, and the final report's runs sum to the series.
+    /// </summary>
+    [Fact]
+    public async Task A_run_killed_before_it_recorded_its_count_has_it_recomputed_from_the_log()
+    {
+        using var fixture = FixtureCopy.Create();
+        RunPlanStore store = StoreIn(fixture);
+        using var stop = new CancellationTokenSource();
+
+        using (VerdictLog log = VerdictLog.Create(store.LogPath))
+        {
+            await Session(
+                    new StopsOnMutantRunner(new XUnitTestRunner(), stop, stopOnMutantRun: 3),
+                    log,
+                    Start("nightly", store))
+                .RunAsync(fixture.Root, TestContext.Current.CancellationToken, stop.Token);
+        }
+
+        // As a killed run leaves it: two verdicts in the log, none in the plan.
+        RunPlan plan = store.ReadPlan()!;
+
+        store.WritePlan(plan with { Runs = [plan.Runs[0] with { Verdicts = 0 }] });
+
+        Assert.Equal(2, VerdictLog.Read(store.LogPath).Count);
+
+        MutationTestReport completed;
+
+        using (VerdictLog log = VerdictLog.Append(store.LogPath))
+        {
+            completed = await Session(new XUnitTestRunner(), log, Continue("nightly", store))
+                .RunAsync(fixture.Root, TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal([2, 15], completed.Series!.Runs.Select(run => run.Verdicts));
+        Assert.Equal([0, 2], completed.Series.Runs.Select(run => run.LogLinesBefore));
+        Assert.Equal(completed.Total, completed.Series.Runs.Sum(run => run.Verdicts));
+        Assert.Equal([2, 15], store.ReadPlan()!.Runs.Select(run => run.Verdicts));
     }
 
     /// <summary>

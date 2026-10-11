@@ -7,15 +7,22 @@ using KillMutants.Reporting;
 namespace KillMutants.Execution;
 
 /// <summary>
-/// Keeps the plan beside the report for one run: completes the identity once the mutants are
-/// selected, decides what an earlier run's verdicts may be inherited, and rewrites the plan as the
-/// run learns what it reached.
+/// Keeps the plan beside the report for one run: writes it before anything is discovered, completes
+/// the identity once the mutants are selected, decides what an earlier run's verdicts may be
+/// inherited, and rewrites the plan as the run learns what it reached.
 /// </summary>
 /// <remarks>
 /// <para>
 /// Kept out of <see cref="MutationTestSession"/> so that the phase list there stays readable; the
 /// session tells this what it selected and what it reached, and this decides what that means for the
 /// series. See DEC0015 for what is inherited and DEC0016 for what is written.
+/// </para>
+/// <para>
+/// A plan exists from the moment the run starts, because a run can be stopped before it has selected
+/// anything and still writes a report. The first run of a series writes a preliminary plan - the
+/// identity's known half, no mutants - at <see cref="Start"/>; a run that continues a series leaves
+/// the earlier plan in place until <see cref="Begin"/>, since a refusal there has to leave it as it
+/// was, and a stop before then records this run against the earlier population.
 /// </para>
 /// <para>
 /// Two kinds of verdict are never inherited, whatever the log says. A timeout is final only under
@@ -31,10 +38,11 @@ internal sealed class PlanKeeper
     private readonly RunContinuation _continuation;
     private readonly int _workerCount;
     private readonly string _started;
+    private readonly int _logLinesBefore;
     private readonly List<PlannedDisagreement> _disagreements = [];
 
-    private RunIdentity? _identity;
-    private IReadOnlyList<PlannedMutant> _mutants = [];
+    private RunIdentity _identity;
+    private IReadOnlyList<PlannedMutant>? _mutants;
     private int _killsReVerified;
 
     public PlanKeeper(RunContinuation continuation, int workerCount)
@@ -44,6 +52,34 @@ internal sealed class PlanKeeper
         _continuation = continuation;
         _workerCount = workerCount;
         _started = DateTimeOffset.UtcNow.ToString("o", CultureInfo.InvariantCulture);
+
+        // The verdicts read from the log are the lines it held - the caller read it with a torn
+        // last line skipped, and opened it with the same line cut - so this is where this run's
+        // lines begin, and where the previous run's end.
+        _logLinesBefore = continuation.EarlierVerdicts.Count;
+
+        // Until the mutants are selected, the plan describes what is known: for a continuing run,
+        // the population the series already has; for a first run, the identity's known half and no
+        // population.
+        _identity = continuation.Earlier?.Identity ?? continuation.Identity;
+        _mutants = continuation.Earlier?.Mutants;
+    }
+
+    /// <summary>
+    /// Writes the first plan of a series before anything is discovered, so that a run stopped
+    /// before it selected anything has a plan beside its report.
+    /// </summary>
+    /// <remarks>
+    /// Nothing is written for a run that continues a series: the earlier plan is already there, and
+    /// <see cref="Begin"/> may yet refuse to continue it, in which case it has to be found as it was.
+    /// </remarks>
+    /// <exception cref="IOException">The plan could not be written.</exception>
+    public void Start()
+    {
+        if (_continuation.Earlier is null)
+        {
+            Write(reachedHere: 0);
+        }
     }
 
     /// <summary>
@@ -65,7 +101,7 @@ internal sealed class PlanKeeper
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(ledger);
 
-        _identity = _continuation.Identity with
+        RunIdentity identity = _continuation.Identity with
         {
             Scope = new PlannedScope(
                 scope.IsPartial ? "partial" : "full",
@@ -82,7 +118,7 @@ internal sealed class PlanKeeper
             // Everything known before the run matched, or the caller would not have continued the
             // log. What differs here can only come from the build or the generation, and the user
             // did not cause it - so the files stay as they are, and the message names it.
-            if (_identity.WhyNotContinuedBy(earlier.Identity) is { } why)
+            if (identity.WhyNotContinuedBy(earlier.Identity) is { } why)
             {
                 throw new ResumeException(
                     $"The series '{_continuation.Series}' cannot be continued by this run: {why}. " +
@@ -93,9 +129,10 @@ internal sealed class PlanKeeper
             Inherit(all, earlier, ledger);
         }
 
+        _identity = identity;
         _mutants = [.. all.Select(Describe)];
 
-        Write(ledger);
+        Write(ledger.ReachedHere);
     }
 
     /// <summary>Keeps a disagreement <c>--verify-kills</c> found, so the series carries it.</summary>
@@ -107,16 +144,17 @@ internal sealed class PlanKeeper
     }
 
     /// <summary>Rewrites the plan with what this run has reached so far.</summary>
+    /// <remarks>
+    /// Before <see cref="Begin"/> - a run stopped while discovering, building or generating - the
+    /// plan written is the one the series had, with this run added to it and nothing reached.
+    /// </remarks>
     public void Record(VerdictLedger ledger, int killsReVerified)
     {
         ArgumentNullException.ThrowIfNull(ledger);
 
         _killsReVerified = killsReVerified;
 
-        if (_identity is not null)
-        {
-            Write(ledger);
-        }
+        Write(ledger.ReachedHere);
     }
 
     /// <summary>What the report says about the series, or null for a run that named none.</summary>
@@ -125,7 +163,7 @@ internal sealed class PlanKeeper
         ArgumentNullException.ThrowIfNull(ledger);
 
         return _continuation.Series is { } series
-            ? new RunSeries(series, ledger.Inherited, Runs(ledger))
+            ? new RunSeries(series, ledger.Inherited, Runs(ledger.ReachedHere))
             : null;
     }
 
@@ -177,24 +215,46 @@ internal sealed class PlanKeeper
         }
     }
 
-    private void Write(VerdictLedger ledger) =>
+    private void Write(int reachedHere) =>
         _continuation.Store.WritePlan(new RunPlan(
-            RunPlan.CurrentFormat, _continuation.Series, _identity!, _mutants, Runs(ledger)));
+            RunPlan.CurrentFormat, _continuation.Series, _identity, _mutants, Runs(reachedHere)));
 
-    private IReadOnlyList<PlannedRun> Runs(VerdictLedger ledger) =>
-    [
-        .. _continuation.Earlier?.Runs ?? [],
-        new PlannedRun(
+    /// <summary>
+    /// Every run of the series, the earlier ones with their counts taken from the log rather than
+    /// from what they last wrote.
+    /// </summary>
+    /// <remarks>
+    /// A run that is killed rewrote its plan at the end of the last project it finished, and the
+    /// log took verdicts after that. The lines between where one run began and where the next did
+    /// are the ones it wrote, and the last earlier run's end is where this one began - see
+    /// <see cref="PlannedRun.LogLinesBefore"/>.
+    /// </remarks>
+    private List<PlannedRun> Runs(int reachedHere)
+    {
+        IReadOnlyList<PlannedRun> earlier = _continuation.Earlier?.Runs ?? [];
+        List<PlannedRun> runs = new(earlier.Count + 1);
+
+        for (int index = 0; index < earlier.Count; index++)
+        {
+            int end = index + 1 < earlier.Count ? earlier[index + 1].LogLinesBefore : _logLinesBefore;
+
+            runs.Add(earlier[index] with { Verdicts = Math.Max(0, end - earlier[index].LogLinesBefore) });
+        }
+
+        runs.Add(new PlannedRun(
             _started,
             _continuation.Identity.ToolVersion,
             RuntimeInformation.FrameworkDescription,
             RuntimeInformation.OSDescription,
             Environment.ProcessorCount,
             _workerCount,
-            ledger.ReachedHere,
+            _logLinesBefore,
+            reachedHere,
             _killsReVerified,
-            [.. _disagreements]),
-    ];
+            [.. _disagreements]));
+
+        return runs;
+    }
 
     /// <summary>
     /// Each project under test with the suites reaching it, by paths relative to the directory the

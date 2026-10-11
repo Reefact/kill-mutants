@@ -99,6 +99,13 @@ internal static class Program
                 // A stack trace would add noise, not information.
                 Console.Error.WriteLine(exception.Message);
 
+                // A series refused once the mutants were generated promised its files as they were,
+                // and the report is the one this run had already cleared.
+                if (exception is ResumeException)
+                {
+                    RestoreEarlierReport(files);
+                }
+
                 return ExitCode.CouldNotRun;
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
@@ -337,8 +344,36 @@ internal static class Program
         return gated ? ExitCode.GateNotPassed : ExitCode.Success;
     }
 
-    /// <summary>The log this run writes verdicts to, and the series it belongs to.</summary>
-    internal sealed record ReportFiles(VerdictLog Log, RunContinuation Continuation);
+    /// <summary>
+    /// The log this run writes verdicts to, the series it belongs to, and the report it cleared on
+    /// the way in - kept so a refusal that comes later can put it back.
+    /// </summary>
+    /// <param name="Log">Where this run's verdicts land.</param>
+    /// <param name="Continuation">What the run needs to keep its plan.</param>
+    /// <param name="EarlierReport">
+    /// The report that stood at the path when a run continuing a series cleared it, or null when
+    /// there was none or the run starts a series.
+    /// </param>
+    internal sealed record ReportFiles(VerdictLog Log, RunContinuation Continuation, byte[]? EarlierReport)
+    {
+        /// <summary>
+        /// Puts the cleared report back, for a run that was refused after the files were opened.
+        /// </summary>
+        /// <remarks>
+        /// The half of the identity only the run knows is compared once the mutants are generated,
+        /// and a refusal there promises that the series' files are as they were. The plan and the log
+        /// are, because nothing wrote to them; the report was cleared when the run started, for the
+        /// reason given on <see cref="OpenReportFilesAsync"/>, and only this run knows what it held.
+        /// </remarks>
+        /// <exception cref="IOException">The report could not be written back.</exception>
+        public void RestoreEarlierReport()
+        {
+            if (EarlierReport is { } report)
+            {
+                File.WriteAllBytes(Continuation.Store.ReportPath, report);
+            }
+        }
+    }
 
     /// <summary>
     /// Clears the report an earlier run left at <paramref name="reportPath"/>, then opens this run's
@@ -431,9 +466,18 @@ internal static class Program
         IReadOnlyList<LoggedVerdict> verdicts = continues ? VerdictLog.Read(store.LogPath) : [];
 
         // A file only. A directory where the report should go is left for the report's own write to
-        // refuse, at the end, with the message that says the measuring itself worked.
+        // refuse, at the end, with the message that says the measuring itself worked. A run that
+        // continues a series keeps what it clears: the run may yet be refused once the mutants are
+        // generated, and that refusal promises the series' files as they were - see ReportFiles.
+        byte[]? earlierReport = null;
+
         if (File.Exists(reportPath))
         {
+            if (continues)
+            {
+                earlierReport = File.ReadAllBytes(reportPath);
+            }
+
             File.Delete(reportPath);
         }
 
@@ -441,7 +485,8 @@ internal static class Program
         {
             return new ReportFiles(
                 VerdictLog.Append(store.LogPath),
-                new RunContinuation(settings.Resume, identity, earlier, verdicts, store));
+                new RunContinuation(settings.Resume, identity, earlier, verdicts, store),
+                earlierReport);
         }
 
         // The old plan goes at the same moment the log is emptied, so that no plan from another run
@@ -450,7 +495,23 @@ internal static class Program
 
         return new ReportFiles(
             VerdictLog.Create(store.LogPath),
-            new RunContinuation(settings.Resume, identity, Earlier: null, [], store));
+            new RunContinuation(settings.Resume, identity, Earlier: null, [], store),
+            EarlierReport: null);
+    }
+
+    private static void RestoreEarlierReport(ReportFiles? files)
+    {
+        try
+        {
+            files?.RestoreEarlierReport();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // The refusal is already on the way out with its own exit code; what is added is the
+            // one thing it promised and could not keep.
+            Console.Error.WriteLine(
+                $"The report that was there could not be put back: {exception.Message}");
+        }
     }
 
     /// <summary>
@@ -528,11 +589,11 @@ internal static class Program
                                         Pass 'none' to clear a stopAfter the file sets.
                   --resume <id>         Belong to the series named <id> - the commit hash, say.
                                         A run that finds, beside its report, the plan of a series
-                                        of that name on the same commit, with a clean tree and the
-                                        same settings, inherits the verdicts it reached and judges
-                                        only the rest; the run that judges the last of them reports
-                                        the whole series, score included. Otherwise it starts the
-                                        series. Needs --report-json.
+                                        of that name on the same commit and directory, with a
+                                        clean tree and the same settings, inherits the verdicts it
+                                        reached and judges only the rest; the run that judges the
+                                        last of them reports the whole series, score included.
+                                        Otherwise it starts the series. Needs --report-json.
                   --verify-kills <n>    Test n of the mutants reported killed a second time, on
                                         their own, and report any verdict that does not repeat.
                                         Costs one test run each. Defaults to 0.

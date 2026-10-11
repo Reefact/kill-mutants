@@ -30,7 +30,7 @@ public sealed class RunPlanStoreTests : IDisposable
             ["src/Core.csproj <- tests/Core.Tests.csproj"],
             "xUnit 4.0.0"),
         [new PlannedMutant("7223f8dbce52736a", "M1", "Comparison", "src/Ages.cs", 3, 17, "a >= 18", "a > 18")],
-        [new PlannedRun("2026-10-11T20:00:00.0000000+00:00", "0.1.0-alpha", ".NET 10", "Linux", 4, 2, 1, 0,
+        [new PlannedRun("2026-10-11T20:00:00.0000000+00:00", "0.1.0-alpha", ".NET 10", "Linux", 4, 2, 0, 1, 0,
             [new PlannedDisagreement("7223f8dbce52736a", "reported Killed and then Survived")])]);
 
     [Theory]
@@ -84,6 +84,79 @@ public sealed class RunPlanStoreTests : IDisposable
         Assert.Contains("missing part", refusal.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The serializer fills a missing list with null rather than with nothing, and the first use of
+    /// one would be an unnamed crash after the log was opened. Each part the continuation reads is
+    /// checked, and the file is named.
+    /// </summary>
+    [Theory]
+    [InlineData("\"mutators\": [\"Comparison\"],", "")]
+    [InlineData("\"exclude\": [],", "")]
+    [InlineData("\"disagreements\": []", "\"other\": []")]
+    [InlineData("\"key\": \"7223f8dbce52736a\", \"id\"", "\"id\"")]
+    public void A_plan_missing_a_nested_part_is_refused(string present, string absent)
+    {
+        RunPlanStore store = Store();
+        const string whole = """
+            {
+              "format": 1,
+              "series": "nightly",
+              "identity": {
+                "code": { "name": "0123abcd", "isExact": true, "directory": "" },
+                "toolVersion": "0.1.0-alpha",
+                "configuration": "Release",
+                "coverage": true,
+                "mutators": ["Comparison"],
+                "without": [],
+                "exclude": [],
+                "scope": null,
+                "fingerprint": null,
+                "targetGraph": null,
+                "testFramework": null
+              },
+              "mutants": [
+                { "key": "7223f8dbce52736a", "id": "M1", "mutator": "Comparison", "path": "src/Ages.cs",
+                  "line": 3, "character": 17, "original": "a >= 18", "mutated": "a > 18" }
+              ],
+              "runs": [
+                { "started": "2026-10-11T20:00:00.0000000+00:00", "toolVersion": "0.1.0-alpha",
+                  "runtime": ".NET 10", "operatingSystem": "Linux", "processorCount": 4, "workerCount": 2,
+                  "logLinesBefore": 0, "verdicts": 1, "killsReVerified": 0, "disagreements": [] }
+              ]
+            }
+            """;
+
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(store.PlanPath, whole);
+
+        Assert.NotNull(store.ReadPlan());
+
+        Assert.Contains(present, whole, StringComparison.Ordinal);
+        File.WriteAllText(store.PlanPath, whole.Replace(present, absent, StringComparison.Ordinal));
+
+        IOException refusal = Assert.Throws<IOException>(() => store.ReadPlan());
+
+        Assert.Contains("missing part", refusal.Message, StringComparison.Ordinal);
+        Assert.Contains(store.PlanPath, refusal.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The first plan of a series is written before anything is discovered, so a run stopped during
+    /// the build leaves one; it has no mutants yet, and says so rather than listing none.
+    /// </summary>
+    [Fact]
+    public void A_plan_written_before_the_mutants_are_selected_has_none_and_is_read_back()
+    {
+        RunPlanStore store = Store();
+
+        store.WritePlan(Plan() with { Mutants = null });
+
+        RunPlan read = Assert.IsType<RunPlan>(store.ReadPlan());
+
+        Assert.Null(read.Mutants);
+        Assert.Contains("\"mutants\": null", File.ReadAllText(store.PlanPath), StringComparison.Ordinal);
+    }
+
     [Fact]
     public void A_plan_written_is_read_back_whole()
     {
@@ -108,7 +181,7 @@ public sealed class RunPlanStoreTests : IDisposable
         Assert.Equal(written.Identity.Fingerprint, read.Identity.Fingerprint);
         Assert.Equal(written.Identity.TargetGraph, read.Identity.TargetGraph);
         Assert.Equal(written.Identity.TestFramework, read.Identity.TestFramework);
-        Assert.Equal(written.Mutants, read.Mutants);
+        Assert.Equal(written.Mutants!, read.Mutants!);
         Assert.Equal(written.Runs.Count, read.Runs.Count);
         Assert.Equal(written.Runs[0] with { Disagreements = [] }, read.Runs[0] with { Disagreements = [] });
         Assert.Equal(written.Runs[0].Disagreements, read.Runs[0].Disagreements);
