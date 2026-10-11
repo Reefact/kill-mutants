@@ -5,25 +5,46 @@ namespace KillMutants.Cli;
 
 /// <summary>Shows where a run has got to, on one line.</summary>
 /// <remarks>
+/// <para>
 /// A run takes minutes, and silence is indistinguishable from a hang. On a terminal the line is
 /// rewritten in place; when the output is redirected - a CI log, a pipe - each phase is announced
 /// once instead, because thousands of carriage returns in a log file help nobody.
+/// </para>
+/// <para>
+/// Announcing a phase once is not enough on its own, and a CI log is where that showed. A run whose
+/// mutant testing took fifty-seven minutes printed <c>Testing mutants</c> and then nothing until
+/// the job was cancelled, so its log could not say whether the run had been at 800 of 816 or stuck
+/// on the first. The silence the paragraph above rules out on a terminal had moved into the log. So
+/// a counted phase is also written again with its count, at most once per <see cref="Interval"/>:
+/// an hour costs sixty lines, not thousands. The clock is read only when something is reported, so
+/// a phase that stops making progress stops writing, and the last count written says where it
+/// stopped.
+/// </para>
 /// </remarks>
 internal sealed class ConsoleProgressReporter : IProgress<MutationTestProgress>, IDisposable
 {
+    /// <summary>
+    /// The least time between two lines for the same phase, when the output is redirected.
+    /// </summary>
+    internal static readonly TimeSpan Interval = TimeSpan.FromMinutes(1);
+
     private readonly TextWriter _writer;
     private readonly bool _rewritesInPlace;
+    private readonly TimeProvider _time;
     private readonly Lock _gate = new();
 
     private MutationTestPhase? _announced;
+    private long _lastWritten;
     private int _lastWidth;
 
-    public ConsoleProgressReporter(TextWriter writer, bool rewritesInPlace)
+    public ConsoleProgressReporter(
+        TextWriter writer, bool rewritesInPlace, TimeProvider? time = null)
     {
         ArgumentNullException.ThrowIfNull(writer);
 
         _writer = writer;
         _rewritesInPlace = rewritesInPlace;
+        _time = time ?? TimeProvider.System;
     }
 
     /// <inheritdoc />
@@ -39,8 +60,17 @@ internal sealed class ConsoleProgressReporter : IProgress<MutationTestProgress>,
             }
             else if (_announced != value.Phase)
             {
+                // Announced without its count: what the first report of a phase counts is how
+                // far it had got when it began, and the line written a minute later is the one
+                // that says how far it has got.
                 _announced = value.Phase;
+                _lastWritten = _time.GetTimestamp();
                 _writer.WriteLine(Describe(value with { Completed = 0, Total = 0 }));
+            }
+            else if (value.IsCounted && _time.GetElapsedTime(_lastWritten) >= Interval)
+            {
+                _lastWritten = _time.GetTimestamp();
+                _writer.WriteLine(Describe(value));
             }
         }
     }

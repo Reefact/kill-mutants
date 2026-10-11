@@ -330,7 +330,10 @@ l'emporteraient silencieusement sur un fichier qu'elles n'ont jamais mentionné.
 sortie standard : `killmutants > rapport.txt` capture donc le rapport sans y mêler la ligne de
 progression. Sur un terminal cette ligne est réécrite sur place ; quand le flux est redirigé, chaque
 phase est annoncée une fois, parce que des milliers de retours chariot dans un journal de CI
-n'aident personne.
+n'aident personne. Une phase qui compte est aussi réécrite avec son compte, au plus une fois par
+minute, parce qu'une annonce seule laissait le journal d'un job annulé incapable de dire si le test
+s'était arrêté à 800 mutants sur 816 ou au premier : une heure coûte soixante lignes, et une phase
+qui n'avance pas n'en ajoute aucune.
 
 **Pourquoi des bacs à sable plutôt qu'un hôte de test réutilisé à chaud.** Réutiliser un hôte d'un
 mutant à l'autre est l'optimisation la plus tentante et celle que nous refusons : c'est la source de

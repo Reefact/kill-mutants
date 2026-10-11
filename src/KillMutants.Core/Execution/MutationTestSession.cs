@@ -339,10 +339,13 @@ internal sealed class MutationTestSession
             .Range(0, results.Length)
             .Where(index => results[index].Status == MutantStatus.Timeout)];
 
-        foreach (int index in timedOut)
+        for (int confirmed = 0; confirmed < timedOut.Length; confirmed++)
         {
+            int index = timedOut[confirmed];
+
             _progress?.Report(new MutationTestProgress(
-                MutationTestPhase.ConfirmingTimeouts, 0, timedOut.Length, mutants[index].Id.ToString()));
+                MutationTestPhase.ConfirmingTimeouts, confirmed, timedOut.Length,
+                mutants[index].Id.ToString()));
 
             MutantResult alone = await TestMutantAsync(
                     compilation, sandbox, mutants[index], coverage, budget, cancellationToken)
