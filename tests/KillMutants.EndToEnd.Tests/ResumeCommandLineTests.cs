@@ -188,6 +188,53 @@ public class ResumeCommandLineTests
         Assert.Equal(selected, (await File.ReadAllLinesAsync(logPath, TestContext.Current.CancellationToken)).Length);
     }
 
+    /// <summary>
+    /// The root git reports is the real path; a working copy reached through a link is the same tree
+    /// under another spelling, and the tool's own files beside the report must still be left out of
+    /// the dirtiness read, or the series never continues. Unix only: creating a link on Windows
+    /// needs a privilege the runner does not grant.
+    /// </summary>
+    [Fact]
+    public async Task A_series_continues_in_a_working_copy_reached_through_a_symbolic_link()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Creating a symbolic link needs a privilege on Windows.");
+
+        using var fixture = FixtureCopy.Create();
+        await MakeWorkingCopyAsync(fixture);
+
+        string link = fixture.Root.TrimEnd(Path.DirectorySeparatorChar) + "-link";
+        File.CreateSymbolicLink(link, fixture.Root);
+
+        try
+        {
+            string reportPath = Path.Combine(link, "out", "report.json");
+
+            (int exitCode, _, string error) = await RunAsync(
+                link, "--mutators", "Comparison", "--report-json", reportPath, "--resume", "one");
+
+            Assert.True(exitCode == Success, error);
+            Assert.DoesNotContain("uncommitted changes", error, StringComparison.Ordinal);
+
+            (exitCode, _, error) = await RunAsync(
+                link, "--mutators", "Comparison", "--report-json", reportPath, "--resume", "one");
+
+            Assert.True(exitCode == Success, error);
+
+            using JsonDocument second = await ReadAsync(reportPath);
+
+            JsonElement series = second.RootElement.GetProperty("series");
+
+            Assert.Equal(
+                second.RootElement.GetProperty("totals").GetProperty("mutants").GetInt32(),
+                series.GetProperty("inherited").GetInt32());
+            Assert.Equal(2, series.GetProperty("runs").GetArrayLength());
+        }
+        finally
+        {
+            File.Delete(link);
+        }
+    }
+
     [Fact]
     public async Task A_series_cannot_start_outside_a_git_working_copy()
     {
