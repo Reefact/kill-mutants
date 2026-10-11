@@ -13,6 +13,7 @@ namespace KillMutants.Cli;
 /// <param name="BreakAt">The mutation score the run must reach, as a percentage.</param>
 /// <param name="VerifyKills">How many of the mutants reported killed to test a second time.</param>
 /// <param name="ReportJson">Where to write the machine-readable report, relative to this file.</param>
+/// <param name="StopAfter">How long a run may take before it stops, written as <c>85m</c>.</param>
 /// <remarks>
 /// <para>
 /// Every setting is optional and every one mirrors a command-line option, because the file exists to
@@ -35,7 +36,8 @@ internal sealed record ConfigurationFile(
     bool? Coverage = null,
     double? BreakAt = null,
     int? VerifyKills = null,
-    string? ReportJson = null)
+    string? ReportJson = null,
+    string? StopAfter = null)
 {
     /// <summary>The file KillMutants looks for in the directory it was pointed at.</summary>
     public const string Name = "killmutants.json";

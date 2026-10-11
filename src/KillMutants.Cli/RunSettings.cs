@@ -15,6 +15,9 @@ namespace KillMutants.Cli;
 /// <param name="JsonReportPath">Where to write the machine-readable report, or null for none.</param>
 /// <param name="Threshold">The score the run must reach, or null when the run only reports.</param>
 /// <param name="Since">The revision to measure a change from, or null for the whole codebase.</param>
+/// <param name="StopAfter">
+/// How long the run may take before it stops and reports what it judged, or null for no limit.
+/// </param>
 internal sealed record RunSettings(
     string Directory,
     string Configuration,
@@ -26,7 +29,8 @@ internal sealed record RunSettings(
     int VerifyKills,
     string? JsonReportPath,
     double? Threshold,
-    string? Since)
+    string? Since,
+    TimeSpan? StopAfter = null)
 {
     /// <summary>Resolves what was asked against what the project keeps in its file.</summary>
     /// <param name="options">What the command line asked for.</param>
@@ -59,6 +63,10 @@ internal sealed record RunSettings(
         RejectImpossible(file);
         RejectThresholdWithSince(options, file);
 
+        string? jsonReportPath = options.JsonReportPath ?? Resolve(file?.ReportJson, file?.Directory);
+
+        RejectReportNamedLikeItsLog(jsonReportPath, fromFile: options.JsonReportPath is null);
+
         return new RunSettings(
             options.Directory,
             options.Configuration ?? file?.Configuration ?? "Release",
@@ -68,9 +76,39 @@ internal sealed record RunSettings(
             mutators,
             without,
             options.VerifyKills ?? file?.VerifyKills ?? 0,
-            options.JsonReportPath ?? Resolve(file?.ReportJson, file?.Directory),
+            jsonReportPath,
             options.ThresholdCleared ? null : options.Threshold ?? file?.BreakAt,
-            options.Since);
+            options.Since,
+            options.StopAfterCleared ? null : options.StopAfter ?? StopAfterIn(file));
+    }
+
+    /// <summary>The deadline the file sets, already known to be readable.</summary>
+    private static TimeSpan? StopAfterIn(ConfigurationFile? file) =>
+        file?.StopAfter is { } text && Duration.TryParse(text, out TimeSpan deadline) ? deadline : null;
+
+    /// <summary>
+    /// Refuses a report path that would share its name with the verdict log written beside it.
+    /// </summary>
+    /// <remarks>
+    /// The log takes the report's name with <c>.jsonl</c> in place of its extension (DEC0014), so a
+    /// report already named that way would be the log: written line by line as the run goes, then
+    /// replaced by the report at the end. A job reading it after a cancelled run would find JSON
+    /// Lines where it expected the report, and after a completed one would find the log gone.
+    /// </remarks>
+    private static void RejectReportNamedLikeItsLog(string? reportPath, bool fromFile)
+    {
+        if (reportPath is null ||
+            !string.Equals(Path.GetExtension(reportPath), ".jsonl", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        string where = fromFile ? $"'reportJson' in {ConfigurationFile.Name}" : "'--report-json'";
+
+        throw new ArgumentException(
+            $"The JSON report cannot be written to '{reportPath}' ({where}): a name ending in " +
+            ".jsonl is the one the verdict log takes beside the report. Give the report another " +
+            "extension, such as .json.");
     }
 
     /// <summary>
@@ -153,6 +191,14 @@ internal sealed record RunSettings(
             throw new ArgumentException(
                 $"'{breakAt.ToString(CultureInfo.InvariantCulture)}' is not a percentage between " +
                 $"0 and 100 ('breakAt' in {ConfigurationFile.Name}).");
+        }
+
+        // A deadline the file cannot express is refused rather than dropped, or a job that believes
+        // it stops in time would run until its CI kills it - the case the option exists to prevent.
+        if (file.StopAfter is { } stopAfter && !Duration.TryParse(stopAfter, out _))
+        {
+            throw new ArgumentException(
+                $"'{stopAfter}' is not {Duration.Expected} ('stopAfter' in {ConfigurationFile.Name}).");
         }
     }
 

@@ -335,6 +335,20 @@ minute, parce qu'une annonce seule laissait le journal d'un job annulé incapabl
 s'était arrêté à 800 mutants sur 816 ou au premier : une heure coûte soixante lignes, et une phase
 qui n'avance pas n'en ajoute aucune.
 
+**Une exécution qui n'arrive pas au bout.** Une exécution garde ses verdicts en mémoire et écrit ses
+rapports quand elle se termine : une exécution interrompue par le délai d'une CI ou par un Ctrl-C ne
+laissait donc rien du tout. La session distingue désormais un *arrêt* d'une *annulation* : les deux
+mettent fin à ce qui est en cours, mais une exécution annulée est abandonnée, tandis qu'une exécution
+arrêtée renvoie un rapport des verdicts qu'elle avait atteints, marqué comme arrêté, sans score et
+sans barrière passée (DEC0013). La ligne de commande demande un arrêt quand l'échéance de
+`--stop-after` arrive ou au premier SIGINT ou SIGTERM. Un verdict devient définitif à un seul endroit,
+`VerdictLedger` — immédiatement pour la plupart des statuts, et pour un timeout seulement une fois
+confirmé seul —, et un verdict atteint pendant que l'exécution s'arrête est écarté, parce qu'un hôte
+de test tué par l'arrêt se lit comme un plantage et qu'un plantage compte comme un mutant tué. Chaque
+verdict définitif est aussi transmis à un observateur dès qu'il arrive, et la ligne de commande
+l'ajoute à un journal JSON Lines à côté du rapport (DEC0014) : même une exécution tuée net, qui n'est
+prévenue de rien, laisse derrière elle ce qu'elle a jugé.
+
 **Pourquoi des bacs à sable plutôt qu'un hôte de test réutilisé à chaud.** Réutiliser un hôte d'un
 mutant à l'autre est l'optimisation la plus tentante et celle que nous refusons : c'est la source de
 la plainte de correction la plus ancienne chez Stryker, où de l'état global de processus fuit entre

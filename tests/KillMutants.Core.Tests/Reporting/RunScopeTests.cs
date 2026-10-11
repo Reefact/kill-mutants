@@ -49,4 +49,17 @@ public class RunScopeTests
 
         Assert.Equal("changes from build-41 to build-42", scope.ToString());
     }
+
+    /// <summary>
+    /// Stopped before it read the change, a partial run is still one: recorded as the whole codebase,
+    /// it would read as a full run that judged little, and lose the gate a partial run always is.
+    /// </summary>
+    [Fact]
+    public void A_change_the_run_stopped_before_reading_is_still_a_partial_run()
+    {
+        Assert.True(RunScope.Unresolved.IsPartial);
+        Assert.False(RunScope.Unresolved.IsResolved);
+        Assert.True(RunScope.WholeCodebase.IsResolved);
+        Assert.Equal("a change the run stopped before resolving", RunScope.Unresolved.ToString());
+    }
 }

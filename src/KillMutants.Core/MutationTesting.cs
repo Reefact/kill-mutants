@@ -53,7 +53,18 @@ public static class MutationTesting
     /// what it reads to answer.
     /// </param>
     /// <param name="progress">Told where the run has got to, so a caller can show it.</param>
-    /// <param name="cancellationToken">Cancels the run.</param>
+    /// <param name="verdicts">
+    /// Told each verdict the moment it is final, so a caller can keep it somewhere a run that never
+    /// finishes cannot take with it - see <see cref="Reporting.VerdictLog"/>. A timeout is told once
+    /// it has been confirmed alone; a disagreement found by <paramref name="verifyKills"/> is in the
+    /// report only.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the run, which then reports nothing.</param>
+    /// <param name="stopToken">
+    /// Stops the run early. It ends what is in flight, as cancelling does, and then returns a report
+    /// of the verdicts reached so far, marked as stopped - see
+    /// <see cref="Reporting.MutationTestReport.Stopped"/> and DEC0013.
+    /// </param>
     /// <exception cref="ArgumentException">A named mutator family does not exist.</exception>
     /// <exception cref="Projects.ProjectAnalysisException">The projects could not be analysed.</exception>
     /// <exception cref="BaselineVerificationException">The unmutated code does not pass its tests.</exception>
@@ -78,13 +89,15 @@ public static class MutationTesting
         int verifyKills = 0,
         Selection.IChangeSource? changes = null,
         IProgress<Reporting.MutationTestProgress>? progress = null,
-        CancellationToken cancellationToken = default)
+        IProgress<Reporting.MutantResult>? verdicts = null,
+        CancellationToken cancellationToken = default,
+        CancellationToken stopToken = default)
     {
         var session = new MutationTestSession(
             new XUnitTestRunner(), configuration, timeoutPolicy: null, workerCount, measureCoverage,
             exclude, Mutations.Mutators.MutatorCatalog.Of(mutators, withoutMutators), verifyKills,
-            changes, progress);
+            changes, progress, verdicts);
 
-        return session.RunAsync(searchDirectory, cancellationToken);
+        return session.RunAsync(searchDirectory, cancellationToken, stopToken);
     }
 }

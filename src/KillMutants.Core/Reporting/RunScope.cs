@@ -46,12 +46,33 @@ public sealed record RunScope(
     /// <summary>A run over the whole codebase.</summary>
     public static RunScope WholeCodebase { get; } = new(null, null, true, 0);
 
+    /// <summary>
+    /// A run asked to judge a change that was stopped before it had established what the change was.
+    /// </summary>
+    /// <remarks>
+    /// Still partial, which is the reason it exists. Recording such a run as the whole codebase would
+    /// make a run that judged nothing about a change read as a full run that happened to judge
+    /// little, and would take the gate a partial run always is away with it. See DEC0013.
+    /// </remarks>
+    public static RunScope Unresolved { get; } = new(null, null, false, 0) { IsResolved = false };
+
+    /// <summary>
+    /// False when the run stopped before it knew what the change it was asked about was, in which
+    /// case neither state is named and <see cref="ChangedFiles"/> counts nothing.
+    /// </summary>
+    public bool IsResolved { get; private init; } = true;
+
     /// <summary>True when only what a change touched was inspected.</summary>
-    public bool IsPartial => ComparedFrom is not null;
+    public bool IsPartial => ComparedFrom is not null || !IsResolved;
 
     /// <summary>The two states as a reader wants them: short, and honest about what was built.</summary>
     public override string ToString()
     {
+        if (!IsResolved)
+        {
+            return "a change the run stopped before resolving";
+        }
+
         if (!IsPartial)
         {
             return "the whole codebase";

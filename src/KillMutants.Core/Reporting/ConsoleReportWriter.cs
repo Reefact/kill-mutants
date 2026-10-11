@@ -15,6 +15,7 @@ public static class ConsoleReportWriter
         writer.WriteLine("KillMutants");
         writer.WriteLine();
 
+        WriteStopCaveat(writer, report);
         WriteComparisonCaveat(writer, report);
 
         // The findings come before the totals because they are the point of the run: a survivor
@@ -79,18 +80,64 @@ public static class ConsoleReportWriter
         writer.WriteLine();
     }
 
+    /// <summary>Says the run was stopped, before anything that being stopped leaves incomplete.</summary>
+    /// <remarks>
+    /// First, for the reason the comparison caveat below it is: every count and finding that follows
+    /// is a statement about the mutants the run reached, and a reader has to know that before reading
+    /// them rather than four screens later.
+    /// </remarks>
+    private static void WriteStopCaveat(TextWriter writer, MutationTestReport report)
+    {
+        if (report.Stopped is not { } stopped)
+        {
+            return;
+        }
+
+        string reached = stopped.Selected is { } selected
+            ? $"{Format(report.Total)} of the {Format(selected)} mutant(s) it selected have a verdict"
+            : "it had not yet selected a single mutant";
+
+        foreach (string line in Wrap(
+                     $"Stopped before the end: {reached}. The verdicts below were really reached and " +
+                     "hold; the mutants without one were never asked about, and nothing here says " +
+                     "what they would have been.",
+                     width: 88))
+        {
+            writer.WriteLine(line);
+        }
+
+        writer.WriteLine();
+    }
+
     private static void WriteScopeAndScore(TextWriter writer, MutationTestReport report)
     {
         if (!report.Scope.IsPartial)
         {
-            writer.WriteLine($"Mutation score: {report.Score}");
+            if (report.IsComplete)
+            {
+                writer.WriteLine($"Mutation score: {report.Score}");
+
+                return;
+            }
+
+            foreach (string line in Wrap(
+                         "No mutation score: the run stopped before the end, and the mutants it " +
+                         "judged are the ones it reached first rather than a sample of the codebase. " +
+                         "See DEC0013.",
+                         width: 88))
+            {
+                writer.WriteLine(line);
+            }
 
             return;
         }
 
-        writer.WriteLine(
-            $"Scope: {report.Scope} ({Format(report.Scope.ChangedFiles)} " +
-            $"{Plural(report.Scope.ChangedFiles, "file")} changed)");
+        // A change the run never got as far as reading has no file count to give, and printing the
+        // zero it holds would say that nothing changed.
+        writer.WriteLine(report.Scope.IsResolved
+            ? $"Scope: {report.Scope} ({Format(report.Scope.ChangedFiles)} " +
+              $"{Plural(report.Scope.ChangedFiles, "file")} changed)"
+            : $"Scope: {report.Scope}");
 
         foreach (string line in Wrap(
                      "No mutation score: a partial run's population is the change itself, chosen " +
@@ -118,7 +165,17 @@ public static class ConsoleReportWriter
         // a run whose mutants all died said "Comparison incomplete" and, four lines later, "Verdict:
         // no undetected mutant in the selected scope". Every branch below reads as a settled answer
         // - "nothing produces a mutant" included - and exactly one line may be printed here.
-        if (report.ComparisonIsIncomplete)
+        //
+        // A stopped run comes first: it has not judged its whole selection, so nothing below - not
+        // even the comparison - could settle the answer for the mutants it never reached.
+        if (!report.IsComplete)
+        {
+            writer.WriteLine(report.Total == 0
+                ? "No verdict: the run stopped before it had judged a single mutant."
+                : $"No verdict: {Format(report.Undetected)} of {Format(report.Total)} mutant(s) " +
+                  "judged were undetected, and the run stopped before it had judged the rest.");
+        }
+        else if (report.ComparisonIsIncomplete)
         {
             writer.WriteLine(report.Total == 0
                 ? "No verdict: nothing in the change produced a mutant, and what selected it was " +
@@ -240,8 +297,11 @@ public static class ConsoleReportWriter
         foreach (MutatorSummary family in report.ByMutator)
         {
             // The per-family percentage is the whole-run score in miniature, and a partial run has
-            // no population for it to be a percentage of either. The counts stay; the ratio goes.
-            string score = report.Scope.IsPartial ? string.Empty : $"  ({family.Score})";
+            // no population for it to be a percentage of either - nor does a stopped one. The counts
+            // stay; the ratio goes.
+            string score = report.Scope.IsPartial || !report.IsComplete
+                ? string.Empty
+                : $"  ({family.Score})";
 
             writer.WriteLine(
                 $"  {family.Mutator.ToString().PadRight(nameWidth)}  " +
