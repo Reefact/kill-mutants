@@ -41,13 +41,21 @@ internal sealed class MutantGenerator
     /// own path, which is the only thing that knows for certain what a project was built from - a
     /// linked file, a glob reaching outside the project directory, a file the project excludes.
     /// </param>
+    /// <param name="cancellationToken">
+    /// Observed between files, so a run that is stopped while it generates stops within one file's
+    /// walk rather than after every project's.
+    /// </param>
     /// <remarks>
     /// Identifiers continue across calls, so one generator numbers a whole run. A generator per
     /// project would otherwise restart at <c>M1</c> for each of them and make the report ambiguous.
     /// A partial run numbers only what it generated, and its report says so: see
     /// <see cref="Reporting.RunScope"/>.
     /// </remarks>
-    public IReadOnlyList<Mutant> Generate(Compilation compilation, MutantSelection? selection = null)
+    /// <exception cref="OperationCanceledException">The token was cancelled.</exception>
+    public IReadOnlyList<Mutant> Generate(
+        Compilation compilation,
+        MutantSelection? selection = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(compilation);
 
@@ -57,6 +65,12 @@ internal sealed class MutantGenerator
 
         foreach (SyntaxTree tree in compilation.SyntaxTrees)
         {
+            // Per file, because a semantic model and a walk of every node are what generation
+            // costs, and a file is the unit both are paid in. A stop that waited for every
+            // project's mutants would spend the margin a deadline leaves before the CI's own kill
+            // (DEC0013).
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (SourceFile.IsGenerated(tree) || IsExcluded(tree) || !IsSelected(tree, selection))
             {
                 continue;
@@ -66,7 +80,7 @@ internal sealed class MutantGenerator
             // built once per tree rather than per node.
             SemanticModel semanticModel = compilation.GetSemanticModel(tree);
 
-            foreach (SyntaxNode node in tree.GetRoot().DescendantNodes())
+            foreach (SyntaxNode node in tree.GetRoot(cancellationToken).DescendantNodes())
             {
                 // Three different refusals, for three different reasons: a mutation nothing could
                 // notice, a mutation that could not compile, and code the developer has said is not

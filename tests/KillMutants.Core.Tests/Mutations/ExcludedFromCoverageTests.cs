@@ -53,7 +53,8 @@ public class ExcludedFromCoverageTests
         IReadOnlyList<Mutant> mutants = new MutantGenerator(MutatorCatalog.Default).Generate(
             TestCompilation.From(
                 "namespace Mine { public sealed class ExcludeFromCodeCoverageAttribute : System.Attribute { } " +
-                "class C { [ExcludeFromCodeCoverage] public bool M(int a) => a >= 18; } }"));
+                "class C { [ExcludeFromCodeCoverage] public bool M(int a) => a >= 18; } }"),
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotEmpty(mutants);
     }
