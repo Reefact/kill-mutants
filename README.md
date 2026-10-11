@@ -117,8 +117,10 @@ own timeout signals the step's shell rather than the tool and kills everything s
 Every verdict also lands, as soon as it is final, in a JSON Lines log beside the report — the same
 path ending in `.jsonl`, here `artifacts/mutation.jsonl` — one line per mutant, in the shape of the
 report's `mutants` entries. It is there for the run that never gets to write its report: a job
-cancelled by a newer push, a runner that was lost. A timeout is logged only once it has been
-confirmed on its own, so no line is ever contradicted by a later one
+cancelled by a newer push, a runner that was lost. A report an earlier run left at that path is
+cleared when the run starts, so a log with no report beside it is always a run that did not finish.
+A timeout is logged only once it has been confirmed on its own, so no line is ever contradicted by a
+later one
 ([DEC0014](docs/decisions/0014-each-verdict-is-appended-to-a-log-beside-the-report-en.md)).
 
 ## Judging a change rather than a codebase

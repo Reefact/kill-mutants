@@ -59,15 +59,14 @@ internal static class Program
 
         try
         {
-            log = settings.JsonReportPath is { } jsonPath
-                ? VerdictLog.Create(VerdictLog.PathBeside(jsonPath))
-                : null;
+            log = settings.JsonReportPath is { } jsonPath ? OpenVerdictLog(jsonPath) : null;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             // Refused before the run rather than discovered during it, when the first verdict would
             // fail to land after a build, a baseline and a coverage pass had all been paid for.
-            Console.Error.WriteLine($"The verdict log could not be created: {exception.Message}");
+            Console.Error.WriteLine(
+                $"The report's files could not be prepared for this run: {exception.Message}");
 
             return ExitCode.CouldNotRun;
         }
@@ -318,6 +317,29 @@ internal static class Program
             undetected);
 
         return gated ? ExitCode.GateNotPassed : ExitCode.Success;
+    }
+
+    /// <summary>
+    /// Clears the report an earlier run left at <paramref name="reportPath"/>, then creates this
+    /// run's verdict log beside it.
+    /// </summary>
+    /// <remarks>
+    /// Cleared when the run starts rather than replaced when it ends, because the end is exactly what
+    /// a killed run never reaches. Left in place, an earlier run's finished report would sit beside
+    /// this run's partial log, and a step that looks for the report - as slugger's summary step
+    /// does - would publish the old verdict as this one's. Cleared, a log with no report beside it
+    /// can only be a run that did not finish, which is what DEC0014 says of it.
+    /// </remarks>
+    internal static VerdictLog OpenVerdictLog(string reportPath)
+    {
+        // A file only. A directory where the report should go is left for the report's own write to
+        // refuse, at the end, with the message that says the measuring itself worked.
+        if (File.Exists(reportPath))
+        {
+            File.Delete(reportPath);
+        }
+
+        return VerdictLog.Create(VerdictLog.PathBeside(reportPath));
     }
 
     private static void WriteJsonReport(RunSettings settings, MutationTestReport report)

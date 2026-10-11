@@ -51,6 +51,32 @@ public class StoppedRunTests
             heard.Verdicts.Select(result => result.Mutant.Key));
     }
 
+    /// <summary>
+    /// A stop that lands part way through re-verifying kills: the re-tests already done are counted,
+    /// so the report never says fewer kills were re-verified than it acted on.
+    /// </summary>
+    [Fact]
+    public async Task A_run_stopped_while_re_verifying_kills_counts_the_ones_it_re_tested()
+    {
+        using var fixture = FixtureCopy.Create();
+        using var stop = new CancellationTokenSource();
+
+        // Seventeen mutant runs, then the re-verifications: the first re-test completes and the
+        // second is the one the stop lands on.
+        var runner = new StopsOnMutantRunner(new XUnitTestRunner(), stop, stopOnMutantRun: 19);
+
+        var session = new MutationTestSession(
+            runner, "Release", timeoutPolicy: null, workerCount: 1, measureCoverage: false,
+            verifyKills: 3);
+
+        MutationTestReport report = await session.RunAsync(
+            fixture.Root, TestContext.Current.CancellationToken, stop.Token);
+
+        Assert.False(report.IsComplete);
+        Assert.Equal(17, report.Total);
+        Assert.Equal(1, report.Environment!.KillsReVerified);
+    }
+
     [Fact]
     public async Task A_run_stopped_before_it_starts_reports_that_it_selected_nothing()
     {
