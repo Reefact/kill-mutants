@@ -42,16 +42,46 @@ public sealed class RunPlanStoreTests : IDisposable
         Assert.Equal(expected, RunPlanStore.PlanPathBeside(report));
     }
 
+    /// <summary>
+    /// The pending copy is among the files to leave alone: a run killed mid-write leaves it behind,
+    /// and counted as an edit of the tree it would keep every later run from continuing the series.
+    /// </summary>
     [Fact]
-    public void The_three_files_share_a_name()
+    public void The_files_the_run_writes_share_a_name_and_include_the_pending_plan()
     {
         RunPlanStore store = Store();
 
         Assert.Equal(
-            [store.ReportPath, store.LogPath, store.PlanPath],
+            [store.ReportPath, store.LogPath, store.PlanPath, store.PlanPath + ".tmp"],
             store.Files);
         Assert.EndsWith("report.jsonl", store.LogPath, StringComparison.Ordinal);
         Assert.EndsWith("report.plan.json", store.PlanPath, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_pending_copy_a_killed_run_left_goes_with_the_plan()
+    {
+        RunPlanStore store = Store();
+
+        store.WritePlan(Plan());
+        File.WriteAllText(store.PlanPath + ".tmp", "{ half");
+
+        store.DeletePlan();
+
+        Assert.Empty(Directory.GetFiles(_directory));
+    }
+
+    [Fact]
+    public void A_plan_missing_part_of_itself_is_refused()
+    {
+        RunPlanStore store = Store();
+
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(store.PlanPath, """{ "format": 1, "series": "nightly" }""");
+
+        IOException refusal = Assert.Throws<IOException>(() => store.ReadPlan());
+
+        Assert.Contains("missing part", refusal.Message, StringComparison.Ordinal);
     }
 
     [Fact]

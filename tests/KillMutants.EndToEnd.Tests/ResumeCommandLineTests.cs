@@ -129,6 +129,10 @@ public class ResumeCommandLineTests
         Assert.True(selected > 0);
         Assert.True(File.Exists(planPath));
 
+        // A pending copy of the plan, as a run killed mid-write leaves it, is the tool's own file and
+        // does not count as an edit of the tree.
+        await File.WriteAllTextAsync(planPath + ".tmp", "{ half", TestContext.Current.CancellationToken);
+
         // The same series, the same commit: everything is inherited and the log is not re-told.
         (exitCode, _, error) = await RunAsync(
             fixture.Root, "--mutators", "Comparison", "--report-json", reportPath, "--resume", "one");
@@ -179,6 +183,7 @@ public class ResumeCommandLineTests
         Assert.Equal(CouldNotRun, exitCode);
         Assert.Contains("cannot be continued", error, StringComparison.Ordinal);
         Assert.Contains("Nothing was changed", error, StringComparison.Ordinal);
+        Assert.True(File.Exists(reportPath), "the earlier report must survive a refusal");
         Assert.Equal(planBefore, await File.ReadAllTextAsync(planPath, TestContext.Current.CancellationToken));
         Assert.Equal(selected, (await File.ReadAllLinesAsync(logPath, TestContext.Current.CancellationToken)).Length);
     }
@@ -194,6 +199,23 @@ public class ResumeCommandLineTests
 
         Assert.Equal(CouldNotRun, exitCode);
         Assert.Contains("git working copy", error, StringComparison.Ordinal);
+        Assert.False(File.Exists(Path.ChangeExtension(reportPath, ".plan.json")));
+    }
+
+    /// <summary>A working copy with no commit yet names no state a series could live on.</summary>
+    [Fact]
+    public async Task A_series_cannot_start_in_a_working_copy_with_no_commit()
+    {
+        using var fixture = FixtureCopy.Create();
+        await GitAsync(fixture.Root, "init", "-q");
+
+        string reportPath = Path.Combine(fixture.Root, "out", "report.json");
+
+        (int exitCode, _, string error) = await RunAsync(
+            fixture.Root, "--report-json", reportPath, "--resume", "one");
+
+        Assert.Equal(CouldNotRun, exitCode);
+        Assert.Contains("with a commit", error, StringComparison.Ordinal);
         Assert.False(File.Exists(Path.ChangeExtension(reportPath, ".plan.json")));
     }
 

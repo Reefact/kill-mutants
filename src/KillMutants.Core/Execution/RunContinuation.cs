@@ -27,8 +27,4 @@ public sealed record RunContinuation(
     RunIdentity Identity,
     RunPlan? Earlier,
     IReadOnlyList<LoggedVerdict> EarlierVerdicts,
-    RunPlanStore Store)
-{
-    /// <summary>True when this run continues an earlier one rather than starting a series.</summary>
-    public bool Continues => Earlier is not null;
-}
+    RunPlanStore Store);

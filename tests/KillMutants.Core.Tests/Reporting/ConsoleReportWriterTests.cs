@@ -298,4 +298,58 @@ public class ConsoleReportWriterTests
         Assert.Contains("Scope: a change the run stopped before resolving\n", output, StringComparison.Ordinal);
         Assert.DoesNotContain("files changed", output, StringComparison.Ordinal);
     }
+
+    private static PlannedRun Run(int verdicts) =>
+        new("2026-10-11T20:00:00.0000000+00:00", "test", ".NET 10", "Linux", 4, 2, verdicts, 0, []);
+
+    /// <summary>
+    /// A run that inherited everything writes a complete report in minutes; a reader has to know its
+    /// counts are the sum of several runs before reading them as one (DEC0015).
+    /// </summary>
+    [Fact]
+    public void A_resumed_series_says_what_it_inherited_before_the_counts()
+    {
+        Mutant mutant = MutantsFor("class C { bool M(int a) => a >= 18; }")[0];
+        var writer = new StringWriter();
+
+        ConsoleReportWriter.Write(
+            writer,
+            new MutationTestReport(
+                [new MutantResult(mutant, MutantStatus.Killed)],
+                series: new RunSeries("nightly", 540, [Run(540), Run(1)])));
+
+        string output = writer.ToString();
+
+        Assert.Contains("Series 'nightly': run 2, 540 verdict(s) inherited from 1 earlier run(s), 1 reached", output, StringComparison.Ordinal);
+        Assert.True(
+            output.IndexOf("Series 'nightly'", StringComparison.Ordinal) <
+            output.IndexOf("Mutants:", StringComparison.Ordinal),
+            "the series caveat must come before the counts it qualifies");
+    }
+
+    [Fact]
+    public void The_first_run_of_a_series_says_it_inherited_nothing()
+    {
+        Mutant mutant = MutantsFor("class C { bool M(int a) => a >= 18; }")[0];
+        var writer = new StringWriter();
+
+        ConsoleReportWriter.Write(
+            writer,
+            new MutationTestReport(
+                [new MutantResult(mutant, MutantStatus.Killed)],
+                series: new RunSeries("nightly", 0, [Run(1)])));
+
+        Assert.Contains("Series 'nightly': first run, nothing inherited.", writer.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_run_that_names_no_series_says_nothing_about_one()
+    {
+        Mutant mutant = MutantsFor("class C { bool M(int a) => a >= 18; }")[0];
+        var writer = new StringWriter();
+
+        ConsoleReportWriter.Write(writer, new MutationTestReport([new MutantResult(mutant, MutantStatus.Killed)]));
+
+        Assert.DoesNotContain("Series", writer.ToString(), StringComparison.Ordinal);
+    }
 }

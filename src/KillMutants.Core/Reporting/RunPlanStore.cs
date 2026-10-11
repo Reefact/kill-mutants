@@ -48,8 +48,15 @@ public sealed class RunPlanStore
     /// <summary>Where the plan goes.</summary>
     public string PlanPath { get; }
 
-    /// <summary>The three files, for whatever must leave them alone - a dirtiness read, say.</summary>
-    public IReadOnlyList<string> Files => [ReportPath, LogPath, PlanPath];
+    /// <summary>
+    /// Every file this run writes beside the report, for whatever must leave them alone - a dirtiness
+    /// read, say. The plan's pending copy is among them: a run killed mid-write leaves it behind, and
+    /// counted as an edit it would keep every later run from continuing the series.
+    /// </summary>
+    public IReadOnlyList<string> Files => [ReportPath, LogPath, PlanPath, PendingPlanPath];
+
+    /// <summary>Where a plan is written before it is moved over the old one.</summary>
+    private string PendingPlanPath => PlanPath + ".tmp";
 
     /// <summary>Where the plan goes for a report written to <paramref name="reportPath"/>.</summary>
     public static string PlanPathBeside(string reportPath)
@@ -91,6 +98,15 @@ public sealed class RunPlanStore
                 "Delete it to start the series again.");
         }
 
+        // A document with a part missing is JSON and is not a plan; said here, with the file named,
+        // rather than as a null reference three phases later.
+        if (plan.Identity is null || plan.Mutants is null || plan.Runs is null)
+        {
+            throw new IOException(
+                $"The plan '{PlanPath}' is missing part of what a plan holds. Delete it to start the " +
+                "series again.");
+        }
+
         return plan;
     }
 
@@ -101,18 +117,22 @@ public sealed class RunPlanStore
 
         Directory.CreateDirectory(Path.GetDirectoryName(PlanPath)!);
 
-        string pending = PlanPath + ".tmp";
-
-        File.WriteAllText(pending, JsonSerializer.Serialize(plan, Options));
-        File.Move(pending, PlanPath, overwrite: true);
+        File.WriteAllText(PendingPlanPath, JsonSerializer.Serialize(plan, Options));
+        File.Move(PendingPlanPath, PlanPath, overwrite: true);
     }
 
-    /// <summary>Removes the plan an earlier run left, for a run that starts a series afresh.</summary>
+    /// <summary>
+    /// Removes the plan an earlier run left, and the pending copy a killed one may have, for a run
+    /// that starts a series afresh.
+    /// </summary>
     public void DeletePlan()
     {
-        if (File.Exists(PlanPath))
+        foreach (string path in (string[])[PlanPath, PendingPlanPath])
         {
-            File.Delete(PlanPath);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 }

@@ -63,6 +63,10 @@ What the code offers to build that on, and what it does not:
   both read "no disagreements".
 * Every verdict becomes final in one place, `VerdictLedger`, which records what the run selected and
   what it reached; a report is built from the ledger alone.
+* `RunEnvironment` already records the xUnit version read from the built test assemblies, and
+  discovery pairs each project under test with the test projects that reach it, directly or through
+  another project. Judging a mutant again costs one test run, or one budget when it times out again.
+  On this repository's own run of 7 October 2026, one mutant in 797 timed out.
 * The exit codes are a public contract ([DEC0009](0009-exit-codes-are-a-public-contract-en.md)): a
   new cause of an outcome a code already names joins that code. A partial run has no score
   ([DEC0010](0010-a-partial-run-reports-findings-not-a-score-en.md)); DEC0010 names inheriting results
@@ -71,7 +75,8 @@ What the code offers to build that on, and what it does not:
 * On GitHub Actions each job starts from a fresh workspace, so anything that must outlive a job
   travels as an artifact or a cache entry. A scheduled run checks out the tip of its branch, which
   moves between nights. A pull-request run checks out a synthetic merge commit whose hash changes
-  whenever the base branch moves, even with no new commit on the pull request.
+  whenever the base branch moves, even with no new commit on the pull request. The hosted runner
+  images are updated between scheduled runs.
 
 Three designs were confronted before this record was drafted — the plan-and-resume the maintainer
 described, a stateless split of the population into shards merged afterwards, and a resume driven by
@@ -125,7 +130,7 @@ that confirmed it, and the report can only publish the budgets this run measured
 budget per timeout and keeps every timeout in a consolidated report explainable from that report. A
 kill with no test named is judged again because a crash is the one verdict the stop itself can
 manufacture, the discard that protects against it rests on ordering, and a process tree killed by a
-runner is never heard. Genuine crash kills are rare, so the cost is one run each.
+runner is never heard. Judging it again costs one run per such mutant.
 
 The score is legitimate on a completed series where DEC0013 refused it: the population is every
 selected mutant of the codebase at one named state, judged in several runs, which is the codebase and
@@ -181,7 +186,7 @@ own facts rather than a footnote here.
   under beside it.
 * **Why rejected:** the consolidated report's budgets would then describe only the run that wrote it,
   and a reader would find the budget behind an inherited timeout only through a second structure.
-  Timeouts are a few percent of verdicts, and judging them again costs one budget each.
+  One mutant in 797 timed out on this repository's own run, and judging one again costs one budget.
 
 ### Alternative 6 — Rotate the order so that every project is reached over several nights
 
@@ -212,6 +217,10 @@ own facts rather than a footnote here.
   baselined nor measured; the report says how many verdicts it inherited and from how many runs.
 * `--resume` needs `--report-json`, because the series lives beside the report, and a git repository,
   because the code state is read from it.
+* A run at the same report path that names no series, or another one, replaces the plan and empties
+  the log: a series shares its report path with nothing else.
+* Two mutants that share a key are both judged again, since a log line cannot say which one it is
+  about.
 
 ### Risks
 
