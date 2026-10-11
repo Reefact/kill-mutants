@@ -102,4 +102,69 @@ public sealed class VerdictLogTests : IDisposable
             Path.Combine(_directory, expected),
             VerdictLog.PathBeside(Path.Combine(_directory, report)));
     }
+
+    /// <summary>
+    /// A run that continues a series (DEC0015) adds to the log rather than emptying it: the lines
+    /// already there are what it is about to inherit.
+    /// </summary>
+    [Fact]
+    public void Appending_keeps_the_lines_an_earlier_run_left()
+    {
+        IReadOnlyList<Mutant> mutants = MutantsFor("class C { bool M(int a) => a >= 18; }");
+        string path = Path.Combine(_directory, "report.jsonl");
+
+        using (VerdictLog first = VerdictLog.Create(path))
+        {
+            first.Report(new MutantResult(mutants[0], MutantStatus.Killed));
+        }
+
+        using (VerdictLog second = VerdictLog.Append(path))
+        {
+            second.Report(new MutantResult(mutants[1], MutantStatus.Survived));
+        }
+
+        IReadOnlyList<LoggedVerdict> read = VerdictLog.Read(path);
+
+        Assert.Equal(
+            [mutants[0].Key.ToString(), mutants[1].Key.ToString()],
+            read.Select(verdict => verdict.Key));
+        Assert.Equal([MutantStatus.Killed, MutantStatus.Survived], read.Select(verdict => verdict.Status));
+    }
+
+    [Fact]
+    public void Reading_an_absent_log_gives_nothing()
+    {
+        Assert.Empty(VerdictLog.Read(Path.Combine(_directory, "nothing.jsonl")));
+    }
+
+    /// <summary>A run killed mid-write leaves a torn last line, which is not a verdict.</summary>
+    [Fact]
+    public void Reading_skips_a_last_line_cut_short()
+    {
+        IReadOnlyList<Mutant> mutants = MutantsFor("class C { bool M(int a) => a >= 18; }");
+        string path = Path.Combine(_directory, "report.jsonl");
+
+        using (VerdictLog log = VerdictLog.Create(path))
+        {
+            log.Report(new MutantResult(mutants[0], MutantStatus.Killed));
+        }
+
+        File.AppendAllText(path, """{"key":"7de901333e8920b0","sta""");
+
+        Assert.Single(VerdictLog.Read(path));
+    }
+
+    [Fact]
+    public void Reading_refuses_a_line_that_is_not_a_verdict_and_names_it()
+    {
+        IReadOnlyList<Mutant> mutants = MutantsFor("class C { bool M(int a) => a >= 18; }");
+        string path = Path.Combine(_directory, "report.jsonl");
+
+        File.WriteAllText(path, "not a verdict\n" + JsonReportWriter.Line(new MutantResult(mutants[0], MutantStatus.Killed)) + "\n");
+
+        IOException refusal = Assert.Throws<IOException>(() => VerdictLog.Read(path));
+
+        Assert.Contains("line 1", refusal.Message, StringComparison.Ordinal);
+        Assert.Contains(path, refusal.Message, StringComparison.Ordinal);
+    }
 }

@@ -48,6 +48,45 @@ internal sealed class GitRepository
         return new GitRepository(Path.GetFullPath(root));
     }
 
+    /// <summary>
+    /// Finds the working copy <paramref name="directory"/> sits in, or answers null when it sits in
+    /// none - or when git cannot be run at all.
+    /// </summary>
+    /// <remarks>
+    /// For a caller to whom a directory outside git is an ordinary case rather than a mistake: a run
+    /// that records the state of its code records nothing when there is none to record, and only a
+    /// run asked to continue a series needs one. <see cref="ContainingAsync"/> keeps refusing, with
+    /// the message a partial run needs.
+    /// </remarks>
+    public static async Task<GitRepository?> ContainingOrNullAsync(
+        string directory,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+
+        ProcessResult result;
+
+        try
+        {
+            result = await ProcessRunner
+                .RunAsync(
+                    "git", ["rev-parse", "--show-toplevel"], directory, Budget,
+                    cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or IOException)
+        {
+            return null;
+        }
+
+        if (result.TimedOut || !result.Succeeded)
+        {
+            return null;
+        }
+
+        return new GitRepository(Path.GetFullPath(result.StandardOutput.Trim()));
+    }
+
     /// <summary>Resolves a revision - a branch, a tag, a sha - to the commit it names.</summary>
     /// <exception cref="ChangeSelectionException">Nothing of that name is in this clone.</exception>
     public async Task<string> ResolveAsync(string revision, CancellationToken cancellationToken = default)
@@ -191,14 +230,44 @@ internal sealed class GitRepository
     /// do - it is what the feature is for, half the time - but a report naming a commit while
     /// describing a tree that is not that commit would be a report nobody can reproduce.
     /// </remarks>
-    public async Task<bool> HasUncommittedChangesAsync(CancellationToken cancellationToken = default) =>
-        !string.IsNullOrWhiteSpace(
+    public Task<bool> HasUncommittedChangesAsync(CancellationToken cancellationToken = default) =>
+        HasUncommittedChangesAsync([], cancellationToken);
+
+    /// <summary>
+    /// True when the tree about to be built is not exactly what <c>HEAD</c> points at, leaving
+    /// <paramref name="leaveAlone"/> out of the question.
+    /// </summary>
+    /// <remarks>
+    /// The files left alone are the ones KillMutants itself writes beside its report, which sit in the
+    /// working copy untracked before a run that continues a series (DEC0015). A file outside the
+    /// working copy needs no excluding and gets none.
+    /// </remarks>
+    public async Task<bool> HasUncommittedChangesAsync(
+        IEnumerable<string> leaveAlone,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(leaveAlone);
+
+        List<string> arguments = ["status", "--porcelain", "-z", "--", "."];
+
+        foreach (string path in leaveAlone)
+        {
+            string relative = Path.GetRelativePath(Root, Path.GetFullPath(path)).Replace('\\', '/');
+
+            if (!relative.StartsWith("..", StringComparison.Ordinal) && !Path.IsPathRooted(relative))
+            {
+                arguments.Add($":(exclude){relative}");
+            }
+        }
+
+        return !string.IsNullOrWhiteSpace(
             await RunRawAsync(
                     Root,
-                    ["status", "--porcelain", "-z"],
+                    arguments,
                     "The state of the working tree could not be read.",
                     cancellationToken)
                 .ConfigureAwait(false));
+    }
 
     /// <summary>The submodule paths a revision records, as repository paths.</summary>
     /// <remarks>

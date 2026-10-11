@@ -324,6 +324,24 @@ a test host the stop killed reads as a crash and a crash counts as a kill. Each 
 also told to an observer as it lands, which the command line appends to a JSON Lines log beside the
 report (DEC0014), so even a run killed outright, which hears nothing, leaves behind what it judged.
 
+**A run that belongs to a series.** `--resume <id>` names a series, and the run keeps a plan beside
+the report (DEC0016): what identifies the run — the commit and whether the tree is exactly it, the
+settings, the tool, and once the mutants are generated the population, the project graph and the
+xUnit version — and every mutant it selected, so that plan minus log is what remains, readable
+without the tool. A later run of the same name on the same identity inherits the log's final verdicts
+into the ledger before any mutant is tested — timeouts excepted, since each is final only under the
+budget that confirmed it, and kills no test is named for, since a crash is the one verdict a stop can
+manufacture — and tests only the rest, so a project with nothing left pays neither sandbox, baseline
+nor coverage, and a project larger than one budget is finished over several runs. The run that
+reaches the last verdict reports the series complete, with a score, because its population is the
+whole codebase at one commit and not the front of a run (DEC0015). The identity is compared twice,
+and the two halves end differently: the half the command line knows before the run — read from git
+with the tool's own three files left out of the dirtiness read — decides whether the log is continued
+or emptied; the half only the run knows is compared at selection, and a difference there is refused
+with nothing touched, because what differs after everything else matched is not something the user
+did. Git stays where it was: the command line reads the code state and hands the core an opaque name,
+as the partial run's `comparedTo` already is.
+
 **Why sandboxes rather than a shared, warmed-up test host.** Reusing one host across mutants is the
 most tempting optimisation available and the one we refuse: it is the source of Stryker's
 longest-standing correctness complaint, where process-global state leaks between mutants and inflates

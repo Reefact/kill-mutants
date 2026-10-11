@@ -59,6 +59,10 @@ public static class MutationTesting
     /// it has been confirmed alone; a disagreement found by <paramref name="verifyKills"/> is in the
     /// report only.
     /// </param>
+    /// <param name="continuation">
+    /// The series this run belongs to and the plan it keeps beside its report, or null for a run that
+    /// keeps none - see <see cref="Execution.RunContinuation"/>, DEC0015 and DEC0016.
+    /// </param>
     /// <param name="cancellationToken">Cancels the run, which then reports nothing.</param>
     /// <param name="stopToken">
     /// Stops the run early. It ends what is in flight, as cancelling does, and then returns a report
@@ -78,6 +82,10 @@ public static class MutationTesting
     /// it, could not be read. The run stops rather than falling back to what the current state alone
     /// can say.
     /// </exception>
+    /// <exception cref="Execution.ResumeException">
+    /// <paramref name="continuation"/> continues a series this run cannot continue honestly: the
+    /// mutants generated, the project graph or the test framework differ from the plan's.
+    /// </exception>
     public static Task<MutationTestReport> RunAsync(
         string searchDirectory,
         string configuration = "Release",
@@ -90,13 +98,14 @@ public static class MutationTesting
         Selection.IChangeSource? changes = null,
         IProgress<Reporting.MutationTestProgress>? progress = null,
         IProgress<Reporting.MutantResult>? verdicts = null,
+        Execution.RunContinuation? continuation = null,
         CancellationToken cancellationToken = default,
         CancellationToken stopToken = default)
     {
         var session = new MutationTestSession(
             new XUnitTestRunner(), configuration, timeoutPolicy: null, workerCount, measureCoverage,
             exclude, Mutations.Mutators.MutatorCatalog.Of(mutators, withoutMutators), verifyKills,
-            changes, progress, verdicts);
+            changes, progress, verdicts, continuation);
 
         return session.RunAsync(searchDirectory, cancellationToken, stopToken);
     }

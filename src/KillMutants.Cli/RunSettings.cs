@@ -18,6 +18,10 @@ namespace KillMutants.Cli;
 /// <param name="StopAfter">
 /// How long the run may take before it stops and reports what it judged, or null for no limit.
 /// </param>
+/// <param name="Resume">
+/// The series this run continues, or starts when none of that name exists beside the report; null
+/// for a run that names none. See DEC0015.
+/// </param>
 internal sealed record RunSettings(
     string Directory,
     string Configuration,
@@ -30,7 +34,8 @@ internal sealed record RunSettings(
     string? JsonReportPath,
     double? Threshold,
     string? Since,
-    TimeSpan? StopAfter = null)
+    TimeSpan? StopAfter = null,
+    string? Resume = null)
 {
     /// <summary>Resolves what was asked against what the project keeps in its file.</summary>
     /// <param name="options">What the command line asked for.</param>
@@ -66,6 +71,7 @@ internal sealed record RunSettings(
         string? jsonReportPath = options.JsonReportPath ?? Resolve(file?.ReportJson, file?.Directory);
 
         RejectReportNamedLikeItsLog(jsonReportPath, fromFile: options.JsonReportPath is null);
+        RejectResumeWithoutItsFiles(options, jsonReportPath);
 
         return new RunSettings(
             options.Directory,
@@ -79,7 +85,40 @@ internal sealed record RunSettings(
             jsonReportPath,
             options.ThresholdCleared ? null : options.Threshold ?? file?.BreakAt,
             options.Since,
-            options.StopAfterCleared ? null : options.StopAfter ?? StopAfterIn(file));
+            options.StopAfterCleared ? null : options.StopAfter ?? StopAfterIn(file),
+            options.Resume);
+    }
+
+    /// <summary>
+    /// Refuses a series that would have nowhere to live, or would measure a population a series
+    /// cannot yet describe.
+    /// </summary>
+    /// <remarks>
+    /// A series is the plan and the log beside the report, so without a report there is nothing to
+    /// continue from. And a partial run's identity would be the two revisions it compares rather
+    /// than one commit, which DEC0015 leaves to a record of its own; refusing now is what keeps a
+    /// change-scoped series from being started with an identity nobody has thought through.
+    /// </remarks>
+    private static void RejectResumeWithoutItsFiles(CommandLineOptions options, string? reportPath)
+    {
+        if (options.Resume is null)
+        {
+            return;
+        }
+
+        if (reportPath is null)
+        {
+            throw new ArgumentException(
+                "'--resume' needs '--report-json' (or 'reportJson' in killmutants.json): a series " +
+                "lives in the plan and the verdict log written beside the report.");
+        }
+
+        if (options.Since is not null)
+        {
+            throw new ArgumentException(
+                "'--resume' cannot be combined with '--since': a series measures the whole codebase at " +
+                "one commit, and what a change-scoped series would be is not decided yet.");
+        }
     }
 
     /// <summary>The deadline the file sets, already known to be readable.</summary>
@@ -97,18 +136,30 @@ internal sealed record RunSettings(
     /// </remarks>
     private static void RejectReportNamedLikeItsLog(string? reportPath, bool fromFile)
     {
-        if (reportPath is null ||
-            !string.Equals(Path.GetExtension(reportPath), ".jsonl", StringComparison.OrdinalIgnoreCase))
+        if (reportPath is null)
         {
             return;
         }
 
         string where = fromFile ? $"'reportJson' in {ConfigurationFile.Name}" : "'--report-json'";
 
-        throw new ArgumentException(
-            $"The JSON report cannot be written to '{reportPath}' ({where}): a name ending in " +
-            ".jsonl is the one the verdict log takes beside the report. Give the report another " +
-            "extension, such as .json.");
+        if (string.Equals(Path.GetExtension(reportPath), ".jsonl", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException(
+                $"The JSON report cannot be written to '{reportPath}' ({where}): a name ending in " +
+                ".jsonl is the one the verdict log takes beside the report. Give the report another " +
+                "extension, such as .json.");
+        }
+
+        // The plan's name, for the same reason (DEC0016): a report named like it would be rewritten
+        // as the plan during the run and replaced by the report at the end.
+        if (reportPath.EndsWith(".plan.json", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException(
+                $"The JSON report cannot be written to '{reportPath}' ({where}): a name ending in " +
+                ".plan.json is the one the plan takes beside the report. Give the report another " +
+                "name, such as report.json.");
+        }
     }
 
     /// <summary>
