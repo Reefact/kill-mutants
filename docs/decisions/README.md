@@ -116,3 +116,5 @@ request.
 | [DEC0012](0012-a-partial-run-abstains-when-the-earlier-state-is-incomplete-en.md) | A partial run withholds its verdict over an incomplete earlier state | Accepted |
 | [DEC0013](0013-a-stopped-run-reports-what-it-judged-and-passes-no-gate-en.md) | A stopped run reports what it judged and passes no gate | Accepted |
 | [DEC0014](0014-each-verdict-is-appended-to-a-log-beside-the-report-en.md) | Each verdict is appended to a log beside the report as soon as it is final | Accepted |
+| [DEC0015](0015-a-resumed-run-inherits-the-verdicts-its-series-reached-on-the-same-code-en.md) | A resumed run inherits the verdicts its series reached on the same code | Proposed |
+| [DEC0016](0016-the-run-writes-its-plan-beside-the-report-en.md) | The run writes its plan beside the report, as a file of its own | Proposed |
