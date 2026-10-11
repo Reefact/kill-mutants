@@ -238,9 +238,18 @@ internal sealed class GitRepository
     /// <paramref name="leaveAlone"/> out of the question.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The files left alone are the ones KillMutants itself writes beside its report, which sit in the
     /// working copy untracked before a run that continues a series (DEC0015). A file outside the
-    /// working copy needs no excluding and gets none.
+    /// working copy, or in a directory that does not exist yet, needs no excluding and gets none.
+    /// </para>
+    /// <para>
+    /// Where each file sits relative to the top of the working copy is asked of git, from the file's
+    /// own directory, rather than computed from the two paths. The root git reports is the real path;
+    /// the directory a report was named by may reach the same place through a symbolic link - macOS
+    /// puts its temporary directory behind one - or a short name, and a lexical comparison of the two
+    /// spellings excludes nothing, so the tool's own files read as edits and no series ever continues.
+    /// </para>
     /// </remarks>
     public async Task<bool> HasUncommittedChangesAsync(
         IEnumerable<string> leaveAlone,
@@ -250,13 +259,20 @@ internal sealed class GitRepository
 
         List<string> arguments = ["status", "--porcelain", "-z", "--", "."];
 
-        foreach (string path in leaveAlone)
+        foreach (IGrouping<string, string> inDirectory in leaveAlone
+                     .Select(Path.GetFullPath)
+                     .GroupBy(path => Path.GetDirectoryName(path) ?? string.Empty, StringComparer.Ordinal))
         {
-            string relative = Path.GetRelativePath(Root, Path.GetFullPath(path)).Replace('\\', '/');
+            string? prefix = await PrefixOfAsync(inDirectory.Key, cancellationToken).ConfigureAwait(false);
 
-            if (!relative.StartsWith("..", StringComparison.Ordinal) && !Path.IsPathRooted(relative))
+            if (prefix is null)
             {
-                arguments.Add($":(exclude){relative}");
+                continue;
+            }
+
+            foreach (string path in inDirectory)
+            {
+                arguments.Add($":(exclude){prefix}{Path.GetFileName(path)}");
             }
         }
 
@@ -267,6 +283,51 @@ internal sealed class GitRepository
                     "The state of the working tree could not be read.",
                     cancellationToken)
                 .ConfigureAwait(false));
+    }
+
+    /// <summary>
+    /// Where <paramref name="directory"/> sits under the top of this working copy, as a pathspec
+    /// prefix ending in <c>/</c> - empty at the top - or null when it is not in this working copy.
+    /// </summary>
+    private async Task<string?> PrefixOfAsync(string directory, CancellationToken cancellationToken)
+    {
+        if (directory.Length == 0 || !Directory.Exists(directory))
+        {
+            return null;
+        }
+
+        ProcessResult result;
+
+        try
+        {
+            result = await ProcessRunner
+                .RunAsync(
+                    "git", ["rev-parse", "--show-toplevel", "--show-prefix"], directory, Budget,
+                    cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or IOException)
+        {
+            return null;
+        }
+
+        if (result.TimedOut || !result.Succeeded)
+        {
+            return null;
+        }
+
+        // Two lines: the top of the working copy the directory is in, then the prefix. A directory
+        // in another working copy - a nested repository, say - answers with another top, and its
+        // files are not this tree's to exclude.
+        string[] lines = result.StandardOutput.Split('\n', StringSplitOptions.TrimEntries);
+
+        if (lines.Length < 1 ||
+            !string.Equals(Path.GetFullPath(lines[0]), Root, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        return lines.Length > 1 ? lines[1] : string.Empty;
     }
 
     /// <summary>The submodule paths a revision records, as repository paths.</summary>
