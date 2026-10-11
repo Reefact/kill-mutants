@@ -99,7 +99,7 @@ public static class JsonReportWriter
         // the reason comparisonIsIncomplete is: on a stopped run hasUndetected false means "none
         // found among those judged", and a consumer that reads it without reading this acts on a
         // run that never got to the rest. mutantsSelected is null when the run stopped before it had
-        // selected anything, and equals the number judged when it was not stopped at all.
+        // selected anything, and equals the number judged when the run is complete.
         complete = report.IsComplete,
         mutantsSelected = report.Stopped is { } stopped ? stopped.Selected : report.Total,
 

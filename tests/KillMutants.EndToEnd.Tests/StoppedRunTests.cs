@@ -52,11 +52,12 @@ public class StoppedRunTests
     }
 
     /// <summary>
-    /// A stop that lands part way through re-verifying kills: the re-tests already done are counted,
-    /// so the report never says fewer kills were re-verified than it acted on.
+    /// A stop that lands part way through re-verifying kills, once every mutant has its verdict. The
+    /// population is whole, so the report is complete - score, gate and all - and what the stop cut
+    /// short is the sample: the re-tests already done are counted, and no more.
     /// </summary>
     [Fact]
-    public async Task A_run_stopped_while_re_verifying_kills_counts_the_ones_it_re_tested()
+    public async Task A_stop_while_re_verifying_kills_leaves_a_fully_judged_run_complete()
     {
         using var fixture = FixtureCopy.Create();
         using var stop = new CancellationTokenSource();
@@ -72,8 +73,10 @@ public class StoppedRunTests
         MutationTestReport report = await session.RunAsync(
             fixture.Root, TestContext.Current.CancellationToken, stop.Token);
 
-        Assert.False(report.IsComplete);
+        Assert.True(report.IsComplete);
+        Assert.Null(report.Stopped);
         Assert.Equal(17, report.Total);
+        Assert.False(report.Score.IsUndefined);
         Assert.Equal(1, report.Environment!.KillsReVerified);
     }
 

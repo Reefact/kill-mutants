@@ -312,15 +312,17 @@ at the first: an hour costs sixty lines, and a phase that makes no progress adds
 
 **A run that does not reach its end.** A run keeps its verdicts in memory and writes its reports
 when it returns, so a run cut short by a CI timeout or by Ctrl-C used to leave nothing at all. The
-session now tells a *stop* from a *cancellation*: both end whatever is in flight, but a cancelled run
-is abandoned, while a stopped one returns a report of the verdicts it had reached, marked as stopped,
-with no score and no gate passed (DEC0013). The command line asks for a stop when `--stop-after`'s
-deadline comes or on the first SIGINT or SIGTERM. A verdict becomes final in one place,
-`VerdictLedger` — at once for most statuses, and for a timeout only once it has been confirmed alone —
-and a verdict reached while the run is coming down is dropped, because a test host the stop killed
-reads as a crash and a crash counts as a kill. Each final verdict is also told to an observer as it
-lands, which the command line appends to a JSON Lines log beside the report (DEC0014), so even a run
-killed outright, which hears nothing, leaves behind what it judged.
+session now tells a *stop* from a *cancellation*: both end whatever is in flight, but a cancelled
+run is abandoned, while a stopped one returns a report of the verdicts it had reached, marked as
+stopped, with no score and no gate passed (DEC0013). The command line asks for a stop when
+`--stop-after`'s deadline comes or on the first SIGINT or SIGTERM. A run counts as stopped only when
+a verdict is missing: a stop that lands while kills are being re-verified, once every mutant has its
+verdict, leaves a complete report, which says only how many kills were re-verified. A verdict
+becomes final in one place, `VerdictLedger` — at once for most statuses, and for a timeout only once
+it has been confirmed alone — and a verdict reached while the run is coming down is dropped, because
+a test host the stop killed reads as a crash and a crash counts as a kill. Each final verdict is
+also told to an observer as it lands, which the command line appends to a JSON Lines log beside the
+report (DEC0014), so even a run killed outright, which hears nothing, leaves behind what it judged.
 
 **Why sandboxes rather than a shared, warmed-up test host.** Reusing one host across mutants is the
 most tempting optimisation available and the one we refuse: it is the source of Stryker's
