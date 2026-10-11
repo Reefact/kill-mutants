@@ -125,5 +125,5 @@ celle qui empêche un agent de merger une pull request.
 | [DEC0012](0012-a-partial-run-abstains-when-the-earlier-state-is-incomplete-fr.md) | Une exécution partielle retient son verdict sur un état antérieur incomplet | Accepté |
 | [DEC0013](0013-a-stopped-run-reports-what-it-judged-and-passes-no-gate-fr.md) | Une exécution arrêtée rapporte ce qu'elle a jugé et ne passe aucune barrière | Accepté |
 | [DEC0014](0014-each-verdict-is-appended-to-a-log-beside-the-report-fr.md) | Chaque verdict est ajouté à un journal à côté du rapport dès qu'il est définitif | Accepté |
-| [DEC0015](0015-a-resumed-run-inherits-the-verdicts-its-series-reached-on-the-same-code-fr.md) | Une exécution reprise hérite des verdicts que sa série a rendus sur le même code | Proposé |
-| [DEC0016](0016-the-run-writes-its-plan-beside-the-report-fr.md) | L'exécution écrit son plan à côté du rapport, dans un fichier à part | Proposé |
+| [DEC0015](0015-a-resumed-run-inherits-the-verdicts-its-series-reached-on-the-same-code-fr.md) | Une exécution reprise hérite des verdicts que sa série a rendus sur le même code | Accepté |
+| [DEC0016](0016-the-run-writes-its-plan-beside-the-report-fr.md) | L'exécution écrit son plan à côté du rapport, dans un fichier à part | Accepté |
