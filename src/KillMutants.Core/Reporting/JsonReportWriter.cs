@@ -103,6 +103,11 @@ public static class JsonReportWriter
         complete = report.IsComplete,
         mutantsSelected = report.Stopped is { } stopped ? stopped.Selected : report.Total,
 
+        // Null for a run that named no series. Otherwise the sum this report is: how many verdicts
+        // came from earlier runs, and what each run of the series ran on - the flat environment
+        // below describes only the run that wrote this file (DEC0015).
+        series = report.Series is null ? null : Describe(report.Series),
+
         // Projects the change stopped covering. They carry no mutants - nothing reaches them - so a
         // consumer reading only the counts would see a clean run over a component that lost its
         // tests entirely.
@@ -118,6 +123,23 @@ public static class JsonReportWriter
         warnings = report.Warnings.Select(warning => warning.Text).ToArray(),
         byMutator = report.ByMutator.Select(family => Describe(family, report)).ToArray(),
         mutants = report.Results.Select(Describe).ToArray(),
+    };
+
+    private static object Describe(RunSeries series) => new
+    {
+        id = series.Id,
+        inherited = series.Inherited,
+        runs = series.Runs.Select(run => new
+        {
+            started = run.Started,
+            toolVersion = run.ToolVersion,
+            runtime = run.Runtime,
+            operatingSystem = run.OperatingSystem,
+            processorCount = run.ProcessorCount,
+            workerCount = run.WorkerCount,
+            verdicts = run.Verdicts,
+            killsReVerifiedAlone = run.KillsReVerified,
+        }).ToArray(),
     };
 
     private static object Describe(RunScope scope) => new

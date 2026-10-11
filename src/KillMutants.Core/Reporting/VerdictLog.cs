@@ -21,10 +21,13 @@ namespace KillMutants.Reporting;
 /// cost a sync per mutant to guard against a power cut, which is not what this is for.
 /// </para>
 /// <para>
-/// The file is emptied when the log is created, because a line left over from an earlier run is a
+/// The file is emptied when a run starts a series, because a line left over from an earlier run is a
 /// verdict about code that may no longer exist, and nothing in the file could tell a reader which
-/// lines were which. It is kept when the run ends: by then the report holds the same verdicts and
-/// more, and deleting a file someone may be reading would be a surprise with nothing to gain.
+/// lines were which. It is continued instead when a run resumes a series (DEC0015): the caller has
+/// established, from the plan beside it, that every line in it was reached on the same code with
+/// the same settings and tool, which is exactly what the emptying could not know. It is kept when
+/// the run ends: by then the report holds the same verdicts and more, and deleting a file someone
+/// may be reading would be a surprise with nothing to gain.
 /// </para>
 /// </remarks>
 public sealed class VerdictLog : IProgress<MutantResult>, IDisposable
@@ -54,7 +57,65 @@ public sealed class VerdictLog : IProgress<MutantResult>, IDisposable
     /// <summary>Creates the log at <paramref name="path"/>, emptying any file already there.</summary>
     /// <exception cref="IOException">The file could not be created.</exception>
     /// <exception cref="UnauthorizedAccessException">The file could not be created.</exception>
-    public static VerdictLog Create(string path)
+    public static VerdictLog Create(string path) => Open(path, FileMode.Create);
+
+    /// <summary>
+    /// Opens the log at <paramref name="path"/> to add to it, keeping every line already there.
+    /// </summary>
+    /// <remarks>
+    /// For a run that continues a series: the lines already there were reached on the same code and
+    /// are about to be inherited, so emptying them would throw away what the run is resuming from.
+    /// Whether that is so is the caller's to establish before opening - see DEC0015.
+    /// </remarks>
+    /// <exception cref="IOException">The file could not be opened.</exception>
+    /// <exception cref="UnauthorizedAccessException">The file could not be opened.</exception>
+    public static VerdictLog Append(string path) => Open(path, FileMode.Append);
+
+    /// <summary>Reads back every verdict a log holds.</summary>
+    /// <remarks>
+    /// A run that is killed can leave a last line cut short, and a torn line is not a verdict - it
+    /// is skipped, and the mutant it was about is judged again. Any other line that is not a verdict
+    /// is something else entirely, and refusing is safer than guessing which lines to believe.
+    /// </remarks>
+    /// <returns>The verdicts, in the order they landed; empty when there is no file.</returns>
+    /// <exception cref="IOException">The file holds a line that is not a verdict.</exception>
+    public static IReadOnlyList<LoggedVerdict> Read(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+
+        if (!File.Exists(path))
+        {
+            return [];
+        }
+
+        string[] lines = [.. File.ReadAllLines(path).Where(line => !string.IsNullOrWhiteSpace(line))];
+        List<LoggedVerdict> verdicts = [];
+
+        for (int index = 0; index < lines.Length; index++)
+        {
+            try
+            {
+                verdicts.Add(LoggedVerdict.Parse(lines[index]));
+            }
+            catch (Exception exception) when (exception is System.Text.Json.JsonException or FormatException)
+            {
+                if (index == lines.Length - 1)
+                {
+                    break;
+                }
+
+                throw new IOException(
+                    $"The verdict log '{path}' holds a line that is not a verdict (line " +
+                    $"{(index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture)}): " +
+                    $"{exception.Message} Delete the plan beside it to start the series again.",
+                    exception);
+            }
+        }
+
+        return verdicts;
+    }
+
+    private static VerdictLog Open(string path, FileMode mode)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
@@ -64,7 +125,7 @@ public sealed class VerdictLog : IProgress<MutantResult>, IDisposable
 
         // Shared for reading, so a job can follow it while the run goes on and a step that runs
         // after a cancelled one can read what was there.
-        var stream = new FileStream(fullPath, FileMode.Create, FileAccess.Write, FileShare.Read);
+        var stream = new FileStream(fullPath, mode, FileAccess.Write, FileShare.Read);
 
         // '\n' on every platform: a JSON Lines file is one format, not one per operating system.
         var writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false))

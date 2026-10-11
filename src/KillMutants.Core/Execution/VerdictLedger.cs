@@ -24,6 +24,8 @@ internal sealed class VerdictLedger(IProgress<MutantResult>? observer)
     private readonly Dictionary<Mutant, MutantResult> _reached = new();
     private readonly List<Mutant> _selected = [];
     private bool _hasSelected;
+    private int _inherited;
+    private int _reachedHere;
 
     /// <summary>How many mutants the run selected, or null until it has generated them.</summary>
     public int? Selected
@@ -63,6 +65,30 @@ internal sealed class VerdictLedger(IProgress<MutantResult>? observer)
         }
     }
 
+    /// <summary>How many verdicts were taken from an earlier run of the series rather than reached.</summary>
+    public int Inherited
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _inherited;
+            }
+        }
+    }
+
+    /// <summary>How many verdicts this run reached itself.</summary>
+    public int ReachedHere
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _reachedHere;
+            }
+        }
+    }
+
     /// <summary>Records a final verdict, and tells the observer.</summary>
     public void Reach(MutantResult verdict)
     {
@@ -71,9 +97,52 @@ internal sealed class VerdictLedger(IProgress<MutantResult>? observer)
         lock (_gate)
         {
             _reached[verdict.Mutant] = verdict;
+            _reachedHere++;
         }
 
         observer?.Report(verdict);
+    }
+
+    /// <summary>
+    /// Records a verdict an earlier run of the series reached, telling nobody - the log already
+    /// holds its line, and announcing it again would write it twice.
+    /// </summary>
+    /// <remarks>
+    /// Final by the same rule as <see cref="Reach"/>: what is inherited is what the earlier run
+    /// had made final. Which verdicts may be inherited at all is decided before this is called -
+    /// see DEC0015.
+    /// </remarks>
+    public void Inherit(MutantResult verdict)
+    {
+        ArgumentNullException.ThrowIfNull(verdict);
+
+        lock (_gate)
+        {
+            _reached[verdict.Mutant] = verdict;
+            _inherited++;
+        }
+    }
+
+    /// <summary>True when the mutant already has a final verdict, reached or inherited.</summary>
+    public bool IsReached(Mutant mutant)
+    {
+        ArgumentNullException.ThrowIfNull(mutant);
+
+        lock (_gate)
+        {
+            return _reached.ContainsKey(mutant);
+        }
+    }
+
+    /// <summary>The mutant's final verdict, or null when it has none yet.</summary>
+    public MutantResult? VerdictOf(Mutant mutant)
+    {
+        ArgumentNullException.ThrowIfNull(mutant);
+
+        lock (_gate)
+        {
+            return _reached.GetValueOrDefault(mutant);
+        }
     }
 
     /// <summary>Replaces a verdict already reached with an annotated one, telling nobody.</summary>

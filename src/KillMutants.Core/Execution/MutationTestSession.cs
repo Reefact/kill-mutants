@@ -30,6 +30,7 @@ internal sealed class MutationTestSession
     private readonly IChangeSource? _changes;
     private readonly IProgress<MutationTestProgress>? _progress;
     private readonly IProgress<MutantResult>? _verdicts;
+    private readonly RunContinuation? _continuation;
 
     public MutationTestSession(
         ITestRunner testRunner,
@@ -42,7 +43,8 @@ internal sealed class MutationTestSession
         int verifyKills = 0,
         IChangeSource? changes = null,
         IProgress<MutationTestProgress>? progress = null,
-        IProgress<MutantResult>? verdicts = null)
+        IProgress<MutantResult>? verdicts = null,
+        RunContinuation? continuation = null)
     {
         ArgumentNullException.ThrowIfNull(testRunner);
         ArgumentException.ThrowIfNullOrWhiteSpace(configuration);
@@ -69,6 +71,7 @@ internal sealed class MutationTestSession
         _changes = changes;
         _progress = progress;
         _verdicts = verdicts;
+        _continuation = continuation;
     }
 
     /// <summary>
@@ -125,6 +128,21 @@ internal sealed class MutationTestSession
             // about is whole, and calling it incomplete would withhold both for nothing. What the
             // stop did cut short is the sample, and the report already says how many kills it
             // re-verified.
+            //
+            // The plan is brought up to date too, so a later run of the series knows how far this
+            // one got. A write that fails here must not take the stopped report with it - this is the
+            // handler, and nothing above catches what it throws - and the log already holds every
+            // verdict, so what is lost is at most a disagreement.
+            try
+            {
+                run.Plan?.Record(run.Verdicts, run.KillsReVerified);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                // Deliberately swallowed, for the reason above; the report that follows is complete
+                // in everything but the plan's bookkeeping.
+            }
+
             return Report(
                 run,
                 stopwatch.Elapsed,
@@ -136,6 +154,10 @@ internal sealed class MutationTestSession
     private sealed class RunSoFar(IProgress<MutantResult>? verdicts)
     {
         public VerdictLedger Verdicts { get; } = new(verdicts);
+
+        // The plan beside the report, once the run has one to keep - see PlanKeeper. Null for a
+        // caller that writes no report.
+        public PlanKeeper? Plan { get; set; }
 
         public RunScope Scope { get; set; } = RunScope.WholeCodebase;
 
@@ -163,7 +185,8 @@ internal sealed class MutationTestSession
             run.Scope,
             run.Selection?.CoverageLost,
             run.Selection?.UnreadComponents,
-            stopped);
+            stopped,
+            run.Plan?.Series(run.Verdicts));
 
     private async Task<MutationTestReport> RunToTheEndAsync(
         string searchDirectory,
@@ -271,13 +294,29 @@ internal sealed class MutationTestSession
                 cancellationToken));
         }
 
-        run.Verdicts.Select(mutantsOf.SelectMany(mutants => mutants));
+        IReadOnlyList<Mutant> all = [.. mutantsOf.SelectMany(mutants => mutants)];
+
+        run.Verdicts.Select(all);
+
+        // The one moment the whole population is known, and so the one moment a plan can be written
+        // and an earlier run's verdicts inherited against it (DEC0015, DEC0016). Before any mutant is
+        // tested, so that a run refused here has changed nothing on disk.
+        if (_continuation is { } continuation)
+        {
+            run.Plan = new PlanKeeper(continuation, _workerCount);
+            run.Plan.Begin(all, targets, scope, searchDirectory, TestFrameworkOf(targets), run.Verdicts);
+        }
 
         for (int index = 0; index < targets.Count; index++)
         {
             await TestTargetAsync(
                     targets[index], compilations[index], mutantsOf[index], run, cancellationToken)
                 .ConfigureAwait(false);
+
+            // After every project rather than once at the end, because the end is what a run that is
+            // killed never reaches, and a plan that says how far the series got is what the next run
+            // reads.
+            run.Plan?.Record(run.Verdicts, run.KillsReVerified);
         }
 
         return Report(run, stopwatch.Elapsed, stopped: null);
@@ -290,13 +329,18 @@ internal sealed class MutationTestSession
         RunSoFar run,
         CancellationToken cancellationToken)
     {
-        if (mutants.Count == 0)
+        // A run that continues a series has inherited some of these already. A project with nothing
+        // left pays nothing - no sandbox, no baseline, no coverage pass - which is what lets a series
+        // reach the projects a single run never got to (DEC0015).
+        IReadOnlyList<Mutant> remaining = [.. mutants.Where(mutant => !run.Verdicts.IsReached(mutant))];
+
+        if (remaining.Count == 0)
         {
             return;
         }
 
         string sandboxRoot = Scratch.CreateDirectory();
-        int workerCount = Math.Min(_workerCount, mutants.Count);
+        int workerCount = Math.Min(_workerCount, remaining.Count);
         List<TestSandbox> sandboxes = [];
 
         try
@@ -315,6 +359,10 @@ internal sealed class MutationTestSession
 
             TimeSpan budget = measured.Budget;
 
+            // Measured over every mutant of the project, not only the remaining ones: the pass costs
+            // one run per test whatever the number of sites it records, and an inherited kill that
+            // --verify-kills samples below is then tested against the tests that reach it rather than
+            // against the whole suite.
             CoverageMap? coverage = _measureCoverage
                 ? await new CoverageCollector(_testRunner, _progress)
                     .CollectAsync(sandboxes, compilation, mutants, budget, cancellationToken)
@@ -322,18 +370,17 @@ internal sealed class MutationTestSession
                 : null;
 
             MutantResult[] results = await TestMutantsAsync(
-                    compilation, sandboxes, mutants, coverage, budget, run.Verdicts, cancellationToken)
+                    compilation, sandboxes, remaining, coverage, budget, run.Verdicts, cancellationToken)
                 .ConfigureAwait(false);
 
             // Only now that every worker has stopped, so a re-run competes with nothing.
             await ConfirmTimeoutsAloneAsync(
-                    compilation, sandboxes[0], mutants, results, coverage, budget, run.Verdicts,
+                    compilation, sandboxes[0], remaining, results, coverage, budget, run.Verdicts,
                     cancellationToken)
                 .ConfigureAwait(false);
 
             await ReVerifyKillsAsync(
-                    compilation, sandboxes[0], mutants, results, coverage, budget, run,
-                    cancellationToken)
+                    compilation, sandboxes[0], mutants, coverage, budget, run, cancellationToken)
                 .ConfigureAwait(false);
         }
         finally
@@ -487,12 +534,18 @@ internal sealed class MutationTestSession
     /// time. What it never does is change a verdict: a disagreement is reported, not silently
     /// resolved, because which of the two runs told the truth is not ours to decide.
     /// </para>
+    /// <para>
+    /// The sample is drawn from every kill the project has a verdict for, the ones inherited from
+    /// an earlier run of the series included (DEC0015). A run that completes a series may itself
+    /// have judged a handful of mutants, and a report that prints a score beside "no kills
+    /// re-verified" is the state this check exists to prevent; a kill reached last week is as
+    /// re-testable as one reached a minute ago, since the code is the same.
+    /// </para>
     /// </remarks>
     private async Task ReVerifyKillsAsync(
         ProjectCompilation compilation,
         TestSandbox sandbox,
         IReadOnlyList<Mutant> mutants,
-        MutantResult[] results,
         CoverageMap? coverage,
         TimeSpan budget,
         RunSoFar run,
@@ -505,35 +558,35 @@ internal sealed class MutationTestSession
 
         // Spread across the run rather than taken from the front, so a sample says something about
         // the whole of it. Deterministic, so two runs of the same code sample the same mutants.
-        int[] killed = [.. Enumerable
-            .Range(0, results.Length)
-            .Where(index => results[index].Status == MutantStatus.Killed)];
+        Mutant[] killed = [.. mutants
+            .Where(mutant => run.Verdicts.VerdictOf(mutant)?.Status == MutantStatus.Killed)];
 
         int wanted = Math.Min(_verifyKills, killed.Length);
 
         for (int taken = 0; taken < wanted; taken++)
         {
-            int index = killed[(int)((long)taken * killed.Length / wanted)];
+            Mutant mutant = killed[(int)((long)taken * killed.Length / wanted)];
 
             _progress?.Report(new MutationTestProgress(
-                MutationTestPhase.ReVerifyingKills, taken, wanted, mutants[index].Id.ToString()));
+                MutationTestPhase.ReVerifyingKills, taken, wanted, mutant.Id.ToString()));
 
             MutantResult again = await TestMutantAsync(
-                    compilation, sandbox, mutants[index], coverage, budget, cancellationToken)
+                    compilation, sandbox, mutant, coverage, budget, cancellationToken)
                 .ConfigureAwait(false);
 
             run.KillsReVerified++;
 
-            if (again.Status != MutantStatus.Killed)
+            if (again.Status != MutantStatus.Killed && run.Verdicts.VerdictOf(mutant) is { } held)
             {
-                results[index] = results[index] with
-                {
-                    Disagreement =
-                        $"reported {MutantStatus.Killed} and then {again.Status} when tested again " +
-                        "on its own. One of the two runs is wrong, and this tool cannot tell which.",
-                };
+                string disagreement =
+                    $"reported {MutantStatus.Killed} and then {again.Status} when tested again " +
+                    "on its own. One of the two runs is wrong, and this tool cannot tell which.";
 
-                run.Verdicts.Amend(results[index]);
+                run.Verdicts.Amend(held with { Disagreement = disagreement });
+
+                // Kept in the plan as well as in this report, so a later run of the series still
+                // reports a verdict this one found not to reproduce.
+                run.Plan?.Disagreed(mutant.Key, disagreement);
             }
         }
     }

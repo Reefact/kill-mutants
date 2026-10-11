@@ -17,6 +17,7 @@ namespace KillMutants.Cli;
 /// <param name="Since">The revision to measure a change from, or null for the whole codebase.</param>
 /// <param name="StopAfter">How long the run may take before it stops, or null when not given.</param>
 /// <param name="StopAfterCleared">True when <c>--stop-after none</c> was given.</param>
+/// <param name="Resume">The series this run continues or starts, or null when it names none.</param>
 /// <remarks>
 /// Every setting is nullable, and that is the point: <c>--configuration Release</c> and saying
 /// nothing must be told apart, because a project's <c>killmutants.json</c> sits between them.
@@ -37,7 +38,8 @@ internal sealed record CommandLineOptions(
     bool ThresholdCleared,
     string? Since,
     TimeSpan? StopAfter = null,
-    bool StopAfterCleared = false)
+    bool StopAfterCleared = false,
+    string? Resume = null)
 {
     /// <summary>
     /// Parses the command line. The defaults are chosen so that <c>dotnet killmutants</c> with no
@@ -68,6 +70,7 @@ internal sealed record CommandLineOptions(
         string? since = null;
         TimeSpan? stopAfter = null;
         bool stopAfterCleared = false;
+        string? resume = null;
 
         for (int index = 0; index < args.Count; index++)
         {
@@ -247,6 +250,23 @@ internal sealed record CommandLineOptions(
 
                     break;
 
+                case "--resume":
+                    index++;
+
+                    // A name, not a flag: the caller decides what a series is - the commit hash,
+                    // typically - and the tool only checks that what it is asked to continue is
+                    // the same code. See DEC0015.
+                    if (index >= args.Count || string.IsNullOrWhiteSpace(args[index]) ||
+                        args[index].StartsWith('-'))
+                    {
+                        throw new ArgumentException(
+                            $"'{argument}' needs a name for the series - the commit hash, typically.");
+                    }
+
+                    resume = args[index];
+
+                    break;
+
                 default:
                     if (argument.StartsWith('-'))
                     {
@@ -278,7 +298,8 @@ internal sealed record CommandLineOptions(
             thresholdCleared,
             since,
             stopAfter,
-            stopAfterCleared);
+            stopAfterCleared,
+            resume);
     }
 
     /// <summary>Parses a comma-separated list of mutator family names.</summary>

@@ -21,6 +21,9 @@ public sealed class MutationTestReport
     /// <param name="stopped">
     /// How far the run had got when it was stopped, or null when it ran to the end.
     /// </param>
+    /// <param name="series">
+    /// The series this run belongs to and what it inherited from it, or null for a run that named none.
+    /// </param>
     public MutationTestReport(
         IReadOnlyList<MutantResult> results,
         TimeSpan duration = default,
@@ -28,7 +31,8 @@ public sealed class MutationTestReport
         RunScope? scope = null,
         IReadOnlyList<string>? coverageLost = null,
         IReadOnlyList<string>? unreadComponents = null,
-        EarlyStop? stopped = null)
+        EarlyStop? stopped = null,
+        RunSeries? series = null)
     {
         ArgumentNullException.ThrowIfNull(results);
 
@@ -39,6 +43,7 @@ public sealed class MutationTestReport
         CoverageLost = coverageLost ?? [];
         UnreadComponents = unreadComponents ?? [];
         Stopped = stopped;
+        Series = series;
         Killed = Count(MutantStatus.Killed);
         Survived = Count(MutantStatus.Survived);
         TimedOut = Count(MutantStatus.Timeout);
@@ -211,6 +216,16 @@ public sealed class MutationTestReport
 
     /// <summary>True when every mutant the run selected has a verdict.</summary>
     public bool IsComplete => Stopped is null;
+
+    /// <summary>
+    /// The series this run continued or started, with what it inherited, or null when it named none.
+    /// </summary>
+    /// <remarks>
+    /// A report that is the sum of several runs says so here, beside the verdict, for the reason
+    /// <see cref="Stopped"/> is there: its counts are not one run's, and a reader has to know that
+    /// before reading them as one. See DEC0015.
+    /// </remarks>
+    public RunSeries? Series { get; }
 
     /// <summary>What each mutator family cost and bought, most mutants first.</summary>
     public IReadOnlyList<MutatorSummary> ByMutator { get; }

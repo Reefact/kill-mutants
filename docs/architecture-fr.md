@@ -352,6 +352,26 @@ comme un mutant tué. Chaque verdict définitif est aussi transmis à un observa
 rendu, et la ligne de commande l'ajoute à un journal JSON Lines placé à côté du rapport (DEC0014) :
 même une exécution tuée net, sans avoir été prévenue, laisse derrière elle ce qu'elle a jugé.
 
+**Une exécution qui appartient à une série.** `--resume <id>` nomme une série, et l'exécution tient
+un plan à côté du rapport (DEC0016) : ce qui l'identifie — le commit et le fait que l'arbre soit
+exactement celui-là, les réglages, l'outil, et une fois les mutants générés la population, le graphe
+des projets et la version de xUnit — et chaque mutant qu'elle a sélectionné, de sorte que le plan
+moins le journal soit ce qui reste, lisible sans l'outil. Une exécution ultérieure du même nom sur la
+même identité hérite des verdicts définitifs du journal dans le registre avant qu'aucun mutant ne soit
+testé — hors dépassements de délai, chacun n'étant définitif que sous le budget qui l'a confirmé, et
+hors mutants tués pour lesquels aucun test n'est nommé, un plantage étant le seul verdict qu'un arrêt
+peut fabriquer — et ne teste que le reste : un projet auquel il ne reste rien ne paie ni bac à sable,
+ni baseline, ni couverture, et un projet plus grand qu'un budget est terminé en plusieurs exécutions.
+L'exécution qui atteint le dernier verdict rapporte la série complète, avec un score, parce que sa
+population est tout le code à un commit et non le début d'une exécution (DEC0015). L'identité est
+comparée deux fois, et les deux moitiés ne finissent pas de la même façon : celle que la ligne de
+commande connaît avant l'exécution — lue dans git, les trois fichiers de l'outil étant laissés hors de
+la lecture de propreté — décide si le journal est continué ou vidé ; celle que seule l'exécution
+connaît est comparée à la sélection, et une différence y est refusée sans rien toucher, parce que ce
+qui diffère quand tout le reste concorde n'est pas le fait de l'utilisateur. Git reste où il était :
+la ligne de commande lit l'état du code et tend au cœur un nom opaque, comme l'est déjà le
+`comparedTo` de l'exécution partielle.
+
 **Pourquoi des bacs à sable plutôt qu'un hôte de test réutilisé à chaud.** Réutiliser un hôte d'un
 mutant à l'autre est l'optimisation la plus tentante et celle que nous refusons : c'est la source de
 la plainte de correction la plus ancienne chez Stryker, où de l'état global de processus fuit entre

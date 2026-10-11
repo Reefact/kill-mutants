@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Reflection;
 using KillMutants.Coverage;
 using KillMutants.Execution;
 using KillMutants.Git;
@@ -55,11 +56,13 @@ internal static class Program
         // can - which is what a CI job's own budget is measured against.
         using var stop = new RunStop(settings.StopAfter);
 
-        VerdictLog? log;
+        ReportFiles? files;
 
         try
         {
-            log = settings.JsonReportPath is { } jsonPath ? OpenVerdictLog(jsonPath) : null;
+            files = settings.JsonReportPath is { } jsonPath
+                ? await OpenReportFilesAsync(settings, jsonPath).ConfigureAwait(false)
+                : null;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -70,18 +73,27 @@ internal static class Program
 
             return ExitCode.CouldNotRun;
         }
+        catch (Exception exception) when (exception is ResumeException or ChangeSelectionException)
+        {
+            // A series this run cannot continue, or git unable to say what the code is. Both messages
+            // say what to do; nothing on disk was touched.
+            Console.Error.WriteLine(exception.Message);
 
-        using (log)
+            return ExitCode.CouldNotRun;
+        }
+
+        using (files?.Log)
         {
             MutationTestReport report;
 
             try
             {
-                report = await RunAsync(settings, log, stop.Token).ConfigureAwait(false);
+                report = await RunAsync(settings, files, stop.Token).ConfigureAwait(false);
             }
             catch (Exception exception) when (
                 exception is ProjectAnalysisException or BaselineVerificationException
-                    or TestExecutionException or CoverageException or ChangeSelectionException)
+                    or TestExecutionException or CoverageException or ChangeSelectionException
+                    or ResumeException)
             {
                 // These report a problem the user must fix, and their messages say what it is.
                 // A stack trace would add noise, not information.
@@ -122,7 +134,7 @@ internal static class Program
     }
 
     private static async Task<MutationTestReport> RunAsync(
-        RunSettings settings, VerdictLog? log, CancellationToken stopToken)
+        RunSettings settings, ReportFiles? files, CancellationToken stopToken)
     {
         using var progress = new ConsoleProgressReporter(
             Console.Error, rewritesInPlace: !Console.IsErrorRedirected);
@@ -144,8 +156,8 @@ internal static class Program
             .RunAsync(
                 settings.Directory, settings.Configuration, settings.WorkerCount,
                 settings.MeasureCoverage, settings.Exclude, settings.Mutators,
-                settings.WithoutMutators, settings.VerifyKills, changes, progress, log,
-                stopToken: stopToken)
+                settings.WithoutMutators, settings.VerifyKills, changes, progress, files?.Log,
+                files?.Continuation, stopToken: stopToken)
             .ConfigureAwait(false);
 
         // Progress goes to stderr and the report to stdout, so piping the report somewhere useful
@@ -309,29 +321,105 @@ internal static class Program
 
         bool gated = report.Scope.IsPartial || settings.Threshold is not null;
 
+        // A run that named a series can be picked up where it stopped, and the line that says it
+        // stopped is where someone looks for what to do next.
+        string next = report.Series is { } series
+            ? $" Run again with --resume {series.Id} on the same commit to judge the rest."
+            : string.Empty;
+
         Console.Error.WriteLine(
             $"The run was stopped by {stop.Reason ?? "a request to stop"} {reached}" +
             (gated
                 ? ", so the gate it was asked for cannot be shown to pass."
                 : ". No gate was asked for, so it is reported rather than failed.") +
-            undetected);
+            undetected + next);
 
         return gated ? ExitCode.GateNotPassed : ExitCode.Success;
     }
 
+    /// <summary>The log this run writes verdicts to, and the series it belongs to.</summary>
+    private sealed record ReportFiles(VerdictLog Log, RunContinuation Continuation);
+
     /// <summary>
-    /// Clears the report an earlier run left at <paramref name="reportPath"/>, then creates this
-    /// run's verdict log beside it.
+    /// Clears the report an earlier run left at <paramref name="reportPath"/>, then opens this run's
+    /// verdict log beside it - emptied for a run that starts a series, continued for one that resumes
+    /// it - and gathers what the run needs to keep its plan.
     /// </summary>
     /// <remarks>
-    /// Cleared when the run starts rather than replaced when it ends, because the end is exactly what
-    /// a killed run never reaches. Left in place, an earlier run's finished report would sit beside
-    /// this run's partial log, and a step that looks for the report - as slugger's summary step
-    /// does - would publish the old verdict as this one's. Cleared, a log with no report beside it
-    /// can only be a run that did not finish, which is what DEC0014 says of it.
+    /// <para>
+    /// The report is cleared when the run starts rather than replaced when it ends, because the end
+    /// is exactly what a killed run never reaches. Left in place, an earlier run's finished report
+    /// would sit beside this run's partial log, and a step that looks for the report - as slugger's
+    /// summary step does - would publish the old verdict as this one's. Cleared, a log with no report
+    /// beside it can only be a run that did not finish, which is what DEC0014 says of it.
+    /// </para>
+    /// <para>
+    /// Whether the log is continued is decided here, once, from the half of the identity known before
+    /// the run: the commit and whether the tree is exactly it, the settings, the tool. A series of
+    /// the name asked for, with a matching identity, is continued; a series of that name whose
+    /// identity differs is refused with the difference named, and nothing is touched; no series, or
+    /// one of another name, starts afresh - the old plan goes with the old report. The run compares
+    /// the other half, the population it generates, before it tests anything. See DEC0015.
+    /// </para>
     /// </remarks>
-    internal static VerdictLog OpenVerdictLog(string reportPath)
+    /// <exception cref="ResumeException">The series asked for cannot be continued by this run.</exception>
+    private static async Task<ReportFiles> OpenReportFilesAsync(RunSettings settings, string reportPath)
     {
+        var store = new RunPlanStore(reportPath);
+        RunPlan? earlier = store.ReadPlan();
+
+        // Read on every run that writes a report, not only on one that names a series: a plan that
+        // records what code it describes is what lets a later run, or a person, know what a killed
+        // run's remainder is about. Null outside a working copy, which is an ordinary place to run.
+        CodeState? code = await GitCodeState
+            .ReadAsync(settings.Directory, store.Files, CancellationToken.None)
+            .ConfigureAwait(false);
+
+        var identity = new RunIdentity(
+            code,
+            ToolVersion,
+            settings.Configuration,
+            settings.MeasureCoverage,
+            [.. settings.Mutators.Select(family => family.ToString())],
+            [.. settings.WithoutMutators.Select(family => family.ToString())],
+            settings.Exclude);
+
+        bool continues = false;
+
+        if (settings.Resume is { } series)
+        {
+            if (code is null)
+            {
+                throw new ResumeException(
+                    $"--resume needs to know what code it measures, and '{settings.Directory}' is " +
+                    "not inside a git working copy with a commit KillMutants can read. A series " +
+                    "lives on one commit; run from a committed clone to start one.");
+            }
+
+            if (!code.IsExact)
+            {
+                // Said now rather than discovered next time: a series started on a dirty tree is one
+                // no later run can continue, and the person who can commit is the one reading this.
+                Console.Error.WriteLine(
+                    $"The tree has uncommitted changes based on {code.Name}, so the series " +
+                    $"'{series}' cannot be continued by a later run. Commit first to start a series " +
+                    "that can.");
+            }
+
+            if (earlier is not null && string.Equals(earlier.Series, series, StringComparison.Ordinal))
+            {
+                if (identity.WhyNotContinuedBy(earlier.Identity) is { } why)
+                {
+                    throw new ResumeException(
+                        $"The series '{series}' cannot be continued by this run: {why}. Nothing was " +
+                        $"changed. Choose another series name, or delete '{store.PlanPath}' to start " +
+                        "this one again.");
+                }
+
+                continues = true;
+            }
+        }
+
         // A file only. A directory where the report should go is left for the report's own write to
         // refuse, at the end, with the message that says the measuring itself worked.
         if (File.Exists(reportPath))
@@ -339,8 +427,46 @@ internal static class Program
             File.Delete(reportPath);
         }
 
+        if (continues)
+        {
+            IReadOnlyList<LoggedVerdict> verdicts = VerdictLog.Read(store.LogPath);
+
+            return new ReportFiles(
+                VerdictLog.Append(store.LogPath),
+                new RunContinuation(settings.Resume, identity, earlier, verdicts, store));
+        }
+
+        // The old plan goes at the same moment the log is emptied, so that no plan from another run
+        // sits beside an empty log while this one discovers, builds and generates.
+        store.DeletePlan();
+
+        return new ReportFiles(
+            VerdictLog.Create(store.LogPath),
+            new RunContinuation(settings.Resume, identity, Earlier: null, [], store));
+    }
+
+    /// <summary>
+    /// Clears the report an earlier run left at <paramref name="reportPath"/>, then creates this
+    /// run's verdict log beside it, for a run that keeps no plan.
+    /// </summary>
+    internal static VerdictLog OpenVerdictLog(string reportPath)
+    {
+        if (File.Exists(reportPath))
+        {
+            File.Delete(reportPath);
+        }
+
         return VerdictLog.Create(VerdictLog.PathBeside(reportPath));
     }
+
+    /// <summary>
+    /// The KillMutants that is running, as a series records it: two runs of a series must be the
+    /// same tool, since the tool is part of how a verdict is reached.
+    /// </summary>
+    private static string ToolVersion =>
+        typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+        ?? typeof(Program).Assembly.GetName().Version?.ToString()
+        ?? "unknown";
 
     private static void WriteJsonReport(RunSettings settings, MutationTestReport report)
     {
@@ -405,6 +531,13 @@ internal static class Program
                                         what was judged. Such a run prints no score and passes no
                                         gate. Ctrl-C does the same; press it twice to quit at once.
                                         Pass 'none' to clear a stopAfter the file sets.
+                  --resume <id>         Belong to the series named <id> - the commit hash, say.
+                                        A run that finds, beside its report, the plan of a series
+                                        of that name on the same commit, with a clean tree and the
+                                        same settings, inherits the verdicts it reached and judges
+                                        only the rest; the run that judges the last of them reports
+                                        the whole series, score included. Otherwise it starts the
+                                        series. Needs --report-json.
                   --verify-kills <n>    Test n of the mutants reported killed a second time, on
                                         their own, and report any verdict that does not repeat.
                                         Costs one test run each. Defaults to 0.

@@ -16,6 +16,7 @@ public static class ConsoleReportWriter
         writer.WriteLine();
 
         WriteStopCaveat(writer, report);
+        WriteSeriesCaveat(writer, report);
         WriteComparisonCaveat(writer, report);
 
         // The findings come before the totals because they are the point of the run: a survivor
@@ -104,6 +105,36 @@ public static class ConsoleReportWriter
                      width: 88))
         {
             writer.WriteLine(line);
+        }
+
+        writer.WriteLine();
+    }
+
+    /// <summary>Says the report is the sum of several runs, before the counts that sum them.</summary>
+    /// <remarks>
+    /// A run that inherited everything writes a complete report in minutes, having tested almost
+    /// nothing itself; a reader who takes its counts for one run's would misread how the measurement
+    /// was made. Said once, here, and the rest of the report reads as it always has.
+    /// </remarks>
+    private static void WriteSeriesCaveat(TextWriter writer, MutationTestReport report)
+    {
+        if (report.Series is not { } series)
+        {
+            return;
+        }
+
+        int earlier = series.Runs.Count - 1;
+        int reached = series.Runs.Count > 0 ? series.Runs[^1].Verdicts : 0;
+
+        string line = earlier <= 0
+            ? $"Series '{series.Id}': first run, nothing inherited."
+            : $"Series '{series.Id}': run {Format(series.Runs.Count)}, {Format(series.Inherited)} " +
+              $"verdict(s) inherited from {Format(earlier)} earlier run(s), {Format(reached)} reached " +
+              "by this run. The counts below sum the whole series.";
+
+        foreach (string wrapped in Wrap(line, width: 88))
+        {
+            writer.WriteLine(wrapped);
         }
 
         writer.WriteLine();
