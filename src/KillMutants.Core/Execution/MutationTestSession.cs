@@ -138,8 +138,10 @@ internal sealed class MutationTestSession
         public List<TimeBudget> Budgets { get; } = [];
 
         // How many kills were actually re-verified, so the report can say how strong that check was
-        // rather than leaving "no disagreements" to mean either everything or nothing.
-        public List<int> Verified { get; } = [];
+        // rather than leaving "no disagreements" to mean either everything or nothing. Counted one
+        // re-test at a time: a run stopped part way through a sample has re-tested some of it, and
+        // a disagreement it found is in the report, so the count has to be there too.
+        public int KillsReVerified { get; set; }
     }
 
     private MutationTestReport Report(RunSoFar run, TimeSpan elapsed, EarlyStop? stopped) =>
@@ -147,7 +149,7 @@ internal sealed class MutationTestSession
             run.Verdicts.InOrder(),
             elapsed,
             RunEnvironment.Describe(
-                _workerCount, TestFrameworkOf(run.Targets), run.Budgets, run.Verified.Sum()),
+                _workerCount, TestFrameworkOf(run.Targets), run.Budgets, run.KillsReVerified),
             run.Scope,
             run.Selection?.CoverageLost,
             run.Selection?.UnreadComponents,
@@ -317,10 +319,10 @@ internal sealed class MutationTestSession
                     cancellationToken)
                 .ConfigureAwait(false);
 
-            run.Verified.Add(await ReVerifyKillsAsync(
-                    compilation, sandboxes[0], mutants, results, coverage, budget, run.Verdicts,
+            await ReVerifyKillsAsync(
+                    compilation, sandboxes[0], mutants, results, coverage, budget, run,
                     cancellationToken)
-                .ConfigureAwait(false));
+                .ConfigureAwait(false);
         }
         finally
         {
@@ -474,19 +476,19 @@ internal sealed class MutationTestSession
     /// resolved, because which of the two runs told the truth is not ours to decide.
     /// </para>
     /// </remarks>
-    private async Task<int> ReVerifyKillsAsync(
+    private async Task ReVerifyKillsAsync(
         ProjectCompilation compilation,
         TestSandbox sandbox,
         IReadOnlyList<Mutant> mutants,
         MutantResult[] results,
         CoverageMap? coverage,
         TimeSpan budget,
-        VerdictLedger verdicts,
+        RunSoFar run,
         CancellationToken cancellationToken)
     {
         if (_verifyKills <= 0)
         {
-            return 0;
+            return;
         }
 
         // Spread across the run rather than taken from the front, so a sample says something about
@@ -508,6 +510,8 @@ internal sealed class MutationTestSession
                     compilation, sandbox, mutants[index], coverage, budget, cancellationToken)
                 .ConfigureAwait(false);
 
+            run.KillsReVerified++;
+
             if (again.Status != MutantStatus.Killed)
             {
                 results[index] = results[index] with
@@ -517,11 +521,9 @@ internal sealed class MutationTestSession
                         "on its own. One of the two runs is wrong, and this tool cannot tell which.",
                 };
 
-                verdicts.Amend(results[index]);
+                run.Verdicts.Amend(results[index]);
             }
         }
-
-        return wanted;
     }
 
     /// <summary>The xUnit the test applications will run on, read from what was built.</summary>
