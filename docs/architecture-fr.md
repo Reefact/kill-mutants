@@ -350,13 +350,19 @@ seulement une fois confirmé par une réexécution isolée. Un verdict rendu pen
 parce qu'un hôte de test tué par l'arrêt est interprété comme un plantage, et qu'un plantage compte
 comme un mutant tué. Chaque verdict définitif est aussi transmis à un observateur dès qu'il est
 rendu, et la ligne de commande l'ajoute à un journal JSON Lines placé à côté du rapport (DEC0014) :
-même une exécution tuée net, sans avoir été prévenue, laisse derrière elle ce qu'elle a jugé.
+même une exécution interrompue brutalement, sans avoir été prévenue, laisse derrière elle ce qu'elle a
+jugé.
 
 **Une exécution qui appartient à une série.** `--resume <id>` nomme une série, et l'exécution tient
-un plan à côté du rapport (DEC0016) : ce qui l'identifie — le commit et le fait que l'arbre soit
-exactement celui-là, les réglages, l'outil, et une fois les mutants générés la population, le graphe
-des projets et la version de xUnit — et chaque mutant qu'elle a sélectionné, de sorte que le plan
-moins le journal soit ce qui reste, lisible sans l'outil. Une exécution ultérieure du même nom sur la
+un plan à côté du rapport (DEC0016) : ce qui l'identifie — le commit, le fait que l'arbre soit
+exactement celui-là et le répertoire du commit vers lequel l'exécution a été pointée, les réglages,
+l'outil, et une fois les mutants générés la population, le graphe des projets et la version de
+xUnit — et chaque mutant qu'elle a sélectionné, de sorte que le plan moins le journal soit ce qui
+reste, lisible sans l'outil. Le premier plan d'une série est écrit avant la découverte, sans mutants
+encore, pour qu'une exécution arrêtée pendant le build en laisse un ; chaque exécution y consigne la
+ligne du journal où elle a commencé, et une exécution ultérieure recalcule le compte de chaque
+exécution antérieure à partir du journal plutôt que d'un plan qu'une exécution interrompue
+brutalement n'a jamais pu réécrire. Une exécution ultérieure du même nom sur la
 même identité hérite des verdicts définitifs du journal dans le registre avant qu'aucun mutant ne soit
 testé — hors dépassements de délai, chacun n'étant définitif que sous le budget qui l'a confirmé, et
 hors mutants tués pour lesquels aucun test n'est nommé, un plantage étant le seul verdict qu'un arrêt
@@ -369,8 +375,9 @@ commande connaît avant l'exécution — lue dans git, les fichiers de l'outil �
 lecture de propreté — décide du sort du journal : continué pour la série du même nom sur la même
 identité, l'exécution refusée pour ce nom sur une autre identité, vidé quand il n'y a pas de plan ou
 qu'il est celui d'une autre série ; celle que seule l'exécution connaît est comparée à la sélection,
-et une différence y est refusée en laissant le plan et le journal tels qu'ils étaient, parce que ce
-qui diffère quand tout le reste concorde n'est pas le fait de l'utilisateur. Git reste où il était :
+et une différence y est refusée en laissant le plan, le journal et le rapport tels qu'ils étaient — la
+ligne de commande remet en place le rapport qu'elle avait effacé —, parce que ce qui diffère quand
+tout le reste concorde n'est pas le fait de l'utilisateur. Git reste où il était :
 la ligne de commande lit l'état du code et tend au cœur un nom opaque, comme l'est déjà le
 `comparedTo` de l'exécution partielle.
 

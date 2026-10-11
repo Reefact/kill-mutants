@@ -11,18 +11,31 @@ namespace KillMutants.Reporting;
 /// <param name="Format">The shape of this document, so a reader can refuse one it does not know.</param>
 /// <param name="Series">The name the caller gave the series, or null for a run that named none.</param>
 /// <param name="Identity">What a later run must share with this one to continue it.</param>
-/// <param name="Mutants">Every mutant selected, in generation order, in the report's own field names.</param>
+/// <param name="Mutants">
+/// Every mutant selected, in generation order, in the report's own field names - or null while the
+/// series has not selected them yet.
+/// </param>
 /// <param name="Runs">One entry per run of the series, oldest first, the run that wrote this last.</param>
 /// <remarks>
+/// <para>
 /// A plan is written whole and rewritten whole, so that what is on disk is always a document that
 /// describes itself. The verdicts themselves are not here: they are the log's, one line each, as
 /// DEC0014 settled, and a line joins a row of <see cref="Mutants"/> on its key.
+/// </para>
+/// <para>
+/// The first plan of a series is written before discovery, with <see cref="Mutants"/> null and the
+/// identity's late half unknown, because a run can be stopped - a deadline, a signal - while it is
+/// still discovering, building or generating, and such a run writes a report. A report with no plan
+/// beside it would break the one promise DEC0016 makes to whoever reads what a stopped run left; a
+/// plan that says the run never got as far as selecting is the truth about it. The plan is
+/// rewritten whole at selection, and from then on <see cref="Mutants"/> is the population.
+/// </para>
 /// </remarks>
 public sealed record RunPlan(
     int Format,
     string? Series,
     RunIdentity Identity,
-    IReadOnlyList<PlannedMutant> Mutants,
+    IReadOnlyList<PlannedMutant>? Mutants,
     IReadOnlyList<PlannedRun> Runs)
 {
     /// <summary>The format this version of KillMutants writes and reads.</summary>
@@ -79,10 +92,12 @@ public sealed record RunIdentity(
     /// </summary>
     /// <remarks>
     /// The code state comes first and is the strictest: a tree with uncommitted changes, on either
-    /// side, is a tree nothing can prove identical to anything, so a series lives on commits only.
-    /// Runtime, operating system and processor count are deliberately absent - they are recorded for
-    /// every run and compared by nobody, because a runner image that rolls forward between two nights
-    /// of a pinned series would otherwise leave it stuck under a name nobody can change by committing.
+    /// side, is a tree nothing can prove identical to anything, so a series lives on commits only -
+    /// and on one directory of the commit, since the keys and the graph are relative to it (see
+    /// <see cref="CodeState.Directory"/>). Runtime, operating system and processor count are
+    /// deliberately absent - they are recorded for every run and compared by nobody, because a runner
+    /// image that rolls forward between two nights of a pinned series would otherwise leave it stuck
+    /// under a name nobody can change by committing.
     /// </remarks>
     public string? WhyNotContinuedBy(RunIdentity earlier)
     {
@@ -111,6 +126,12 @@ public sealed record RunIdentity(
         if (!string.Equals(Code.Name, earlier.Code.Name, StringComparison.Ordinal))
         {
             return $"the earlier run measured {earlier.Code.Name} and this one {Code.Name}";
+        }
+
+        if (!string.Equals(Code.Directory, earlier.Code.Directory, StringComparison.Ordinal))
+        {
+            return $"the earlier run was pointed at {Describe(earlier.Code.Directory)} of the working " +
+                $"copy and this one at {Describe(Code.Directory)}";
         }
 
         if (!string.Equals(ToolVersion, earlier.ToolVersion, StringComparison.Ordinal))
@@ -189,6 +210,9 @@ public sealed record RunIdentity(
 
     private static bool SameSet(IReadOnlyList<string> left, IReadOnlyList<string> right) =>
         left.ToHashSet(StringComparer.Ordinal).SetEquals(right);
+
+    private static string Describe(string directory) =>
+        directory.Length == 0 ? "the top" : $"'{directory}'";
 }
 
 /// <summary>What population a run inspected, as the report records it.</summary>
@@ -228,13 +252,27 @@ public sealed record PlannedMutant(
 /// <param name="OperatingSystem">The operating system it ran on.</param>
 /// <param name="ProcessorCount">Logical processors the machine offered.</param>
 /// <param name="WorkerCount">How many mutants it tested at once.</param>
+/// <param name="LogLinesBefore">
+/// How many lines the log held when it started, so the lines from there to the next run's start
+/// are the ones it wrote.
+/// </param>
 /// <param name="Verdicts">How many verdicts it reached itself, inherited ones excluded.</param>
 /// <param name="KillsReVerified">How many kills it tested a second time, alone.</param>
 /// <param name="Disagreements">The verdicts whose re-test did not agree, so the series keeps them.</param>
 /// <remarks>
+/// <para>
 /// Runtime, operating system and processors are recorded and never compared - see
 /// <see cref="RunIdentity"/>. Disagreements live here because the log holds verdicts and nothing
 /// else, and a disagreement is a qualification of one, recorded without being announced.
+/// </para>
+/// <para>
+/// <see cref="Verdicts"/> is the count the run had written when it last rewrote the plan, and a run
+/// that is killed - the case a series exists for - last rewrote it at the end of the previous
+/// project, while the log went on taking verdicts after that. The log is the authority, so each run
+/// records where in the log it began, and a later run of the series recomputes every earlier run's
+/// count from the log's lines between one start and the next, rather than trusting the figure the
+/// killed run never got to update.
+/// </para>
 /// </remarks>
 public sealed record PlannedRun(
     string Started,
@@ -243,6 +281,7 @@ public sealed record PlannedRun(
     string OperatingSystem,
     int ProcessorCount,
     int WorkerCount,
+    int LogLinesBefore,
     int Verdicts,
     int KillsReVerified,
     IReadOnlyList<PlannedDisagreement> Disagreements);

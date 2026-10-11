@@ -257,7 +257,17 @@ internal sealed class GitRepository
     {
         ArgumentNullException.ThrowIfNull(leaveAlone);
 
-        List<string> arguments = ["status", "--porcelain", "-z", "--", "."];
+        // The two readings a repository's configuration can switch off are switched back on: with
+        // status.showUntrackedFiles=no an untracked source file is not listed, and with
+        // submodule.<name>.ignore=all a submodule at another revision is not either, and a tree
+        // read as clean would then name a commit it is not. "normal" rather than "all", so an
+        // untracked directory is one entry and not every file in it, which is what the pathspecs
+        // below are written against.
+        List<string> arguments =
+        [
+            "status", "--porcelain", "-z", "--untracked-files=normal", "--ignore-submodules=none",
+            "--", ".",
+        ];
 
         foreach (IGrouping<string, string> inDirectory in leaveAlone
                      .Select(Path.GetFullPath)
@@ -289,8 +299,15 @@ internal sealed class GitRepository
     /// Where <paramref name="directory"/> sits under the top of this working copy, as a pathspec
     /// prefix ending in <c>/</c> - empty at the top - or null when it is not in this working copy.
     /// </summary>
-    private async Task<string?> PrefixOfAsync(string directory, CancellationToken cancellationToken)
+    /// <remarks>
+    /// Asked of git rather than computed from the two paths, for the reason given on
+    /// <see cref="HasUncommittedChangesAsync(IEnumerable{string}, CancellationToken)"/>: the two may
+    /// spell one place two ways, and git reports the real one.
+    /// </remarks>
+    public async Task<string?> PrefixOfAsync(string directory, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(directory);
+
         if (directory.Length == 0 || !Directory.Exists(directory))
         {
             return null;

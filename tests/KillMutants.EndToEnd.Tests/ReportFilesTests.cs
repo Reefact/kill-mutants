@@ -1,4 +1,6 @@
 using KillMutants.Cli;
+using KillMutants.Execution;
+using KillMutants.Reporting;
 
 namespace KillMutants.EndToEnd.Tests;
 
@@ -53,6 +55,51 @@ public sealed class ReportFilesTests : IDisposable
             Assert.Null(files.Continuation.Earlier);
             Assert.Null(files.Continuation.Identity.Code);
         }
+    }
+
+    [Fact]
+    public async Task A_run_that_starts_a_series_keeps_no_report_to_put_back()
+    {
+        string report = Path.Combine(_directory, "report.json");
+
+        File.WriteAllText(report, "{\"complete\":true}");
+
+        Program.ReportFiles files = await Program.OpenReportFilesAsync(Settings(report), report);
+
+        using (files.Log)
+        {
+            Assert.Null(files.EarlierReport);
+
+            files.RestoreEarlierReport();
+
+            Assert.False(File.Exists(report));
+        }
+    }
+
+    /// <summary>
+    /// A run that continues a series clears the report like any other, and may yet be refused once
+    /// its mutants are generated; the refusal promises the files as they were, so the report comes back
+    /// byte for byte.
+    /// </summary>
+    [Fact]
+    public void The_report_a_continuing_run_cleared_is_put_back_on_a_late_refusal()
+    {
+        string report = Path.Combine(_directory, "report.json");
+        var store = new RunPlanStore(report);
+        var identity = new RunIdentity(new CodeState("0123abcd", IsExact: true), "test-tool", "Release", false, [], [], []);
+        byte[] earlier = "{\"complete\":true}"u8.ToArray();
+
+        var files = new Program.ReportFiles(
+            VerdictLog.Create(store.LogPath),
+            new RunContinuation("one", identity, Earlier: null, [], store),
+            earlier);
+
+        using (files.Log)
+        {
+            files.RestoreEarlierReport();
+        }
+
+        Assert.Equal(earlier, File.ReadAllBytes(report));
     }
 
     /// <summary>

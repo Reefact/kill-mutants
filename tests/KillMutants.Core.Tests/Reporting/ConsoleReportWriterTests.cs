@@ -300,7 +300,7 @@ public class ConsoleReportWriterTests
     }
 
     private static PlannedRun Run(int verdicts) =>
-        new("2026-10-11T20:00:00.0000000+00:00", "test", ".NET 10", "Linux", 4, 2, verdicts, 0, []);
+        new("2026-10-11T20:00:00.0000000+00:00", "test", ".NET 10", "Linux", 4, 2, 0, verdicts, 0, []);
 
     /// <summary>
     /// A run that inherited everything writes a complete report in minutes; a reader has to know its

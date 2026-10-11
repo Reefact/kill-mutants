@@ -89,9 +89,19 @@ public sealed class VerdictLog : IProgress<MutantResult>, IDisposable
 
     /// <summary>Reads back every verdict a log holds.</summary>
     /// <remarks>
+    /// <para>
     /// A run that is killed can leave a last line cut short, and a torn line is not a verdict - it
     /// is skipped, and the mutant it was about is judged again. Any other line that is not a verdict
     /// is something else entirely, and refusing is safer than guessing which lines to believe.
+    /// </para>
+    /// <para>
+    /// Torn means physically unfinished: the last line is skipped only when the file does not end
+    /// in a line feed, because that is the one thing a kill mid-write leaves and a complete line
+    /// cannot be. A complete last line that is not a verdict is refused now, at the first read,
+    /// rather than tolerated once: <see cref="Append"/> would keep it, since it ends in a line feed,
+    /// the next verdict would land after it, and the run after that would find it in the middle of
+    /// the file and refuse the whole log - two resumes in, with nothing to say which line did it.
+    /// </para>
     /// </remarks>
     /// <returns>The verdicts, in the order they landed; empty when there is no file.</returns>
     /// <exception cref="IOException">The file holds a line that is not a verdict.</exception>
@@ -104,18 +114,39 @@ public sealed class VerdictLog : IProgress<MutantResult>, IDisposable
             return [];
         }
 
-        string[] lines = [.. File.ReadAllLines(path).Where(line => !string.IsNullOrWhiteSpace(line))];
+        // Shared with a writer, as the writer shares with readers: the log is read while a run holds
+        // it open - a step following a run, a test reading what a run left - and on Windows a read
+        // that does not allow the writer's handle is refused as "in use by another process".
+        string text;
+
+        using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+        using (var reader = new StreamReader(stream, Encoding.UTF8))
+        {
+            text = reader.ReadToEnd();
+        }
+
+        string[] lines = text.Split('\n');
+
+        // After the last line feed there is either nothing, or the fragment a kill left.
+        int torn = text.Length > 0 && text[^1] != '\n' ? lines.Length - 1 : -1;
         List<LoggedVerdict> verdicts = [];
 
         for (int index = 0; index < lines.Length; index++)
         {
+            string line = lines[index].TrimEnd('\r');
+
+            if (string.IsNullOrWhiteSpace(line))
+            {
+                continue;
+            }
+
             try
             {
-                verdicts.Add(LoggedVerdict.Parse(lines[index]));
+                verdicts.Add(LoggedVerdict.Parse(line));
             }
             catch (Exception exception) when (exception is System.Text.Json.JsonException or FormatException)
             {
-                if (index == lines.Length - 1)
+                if (index == torn)
                 {
                     break;
                 }

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace KillMutants.EndToEnd.Tests;
 
@@ -232,6 +233,152 @@ public class ResumeCommandLineTests
         finally
         {
             File.Delete(link);
+        }
+    }
+
+    /// <summary>
+    /// The commit alone does not say what was measured. Two services of one repository with the same
+    /// layout and the same mutation sites - and different tests - describe themselves identically from
+    /// the commit down, because the keys and the project graph are relative to the directory the run
+    /// was pointed at; continued from the other one, a series would inherit verdicts no test of it
+    /// reached. The directory is part of the identity, and compared before the log is opened.
+    /// </summary>
+    [Fact]
+    public async Task A_series_is_not_continued_from_another_directory_of_the_same_commit()
+    {
+        using var fixture = FixtureCopy.Create();
+
+        // Two copies of the same two projects, side by side under one working copy, with the shared
+        // build files left at the top where MSBuild finds them from either.
+        string first = Path.Combine(fixture.Root, "services", "first");
+        string second = Path.Combine(fixture.Root, "services", "second");
+
+        foreach (string project in (string[])["Sample.Library", "Sample.Library.Tests"])
+        {
+            Directory.CreateDirectory(first);
+            Directory.Move(Path.Combine(fixture.Root, project), Path.Combine(first, project));
+            CopyDirectory(Path.Combine(first, project), Path.Combine(second, project));
+        }
+
+        await MakeWorkingCopyAsync(fixture);
+
+        string reportPath = Path.Combine(fixture.Root, "out", "report.json");
+        string logPath = Path.ChangeExtension(reportPath, ".jsonl");
+        string planPath = Path.ChangeExtension(reportPath, ".plan.json");
+
+        (int exitCode, _, string error) = await RunAsync(
+            first, "--mutators", "Comparison", "--report-json", reportPath, "--resume", "one");
+
+        Assert.True(exitCode == Success, error);
+
+        using (JsonDocument plan = await ReadAsync(planPath))
+        {
+            Assert.Equal(
+                "services/first",
+                plan.RootElement.GetProperty("identity").GetProperty("code").GetProperty("directory").GetString());
+        }
+
+        string reportBefore = await File.ReadAllTextAsync(reportPath, TestContext.Current.CancellationToken);
+        string planBefore = await File.ReadAllTextAsync(planPath, TestContext.Current.CancellationToken);
+        int linesBefore = (await File.ReadAllLinesAsync(logPath, TestContext.Current.CancellationToken)).Length;
+
+        (exitCode, _, error) = await RunAsync(
+            second, "--mutators", "Comparison", "--report-json", reportPath, "--resume", "one");
+
+        Assert.Equal(CouldNotRun, exitCode);
+        Assert.Contains("cannot be continued", error, StringComparison.Ordinal);
+        Assert.Contains("'services/first'", error, StringComparison.Ordinal);
+        Assert.Contains("'services/second'", error, StringComparison.Ordinal);
+        Assert.Contains("Nothing was changed", error, StringComparison.Ordinal);
+        Assert.Equal(reportBefore, await File.ReadAllTextAsync(reportPath, TestContext.Current.CancellationToken));
+        Assert.Equal(planBefore, await File.ReadAllTextAsync(planPath, TestContext.Current.CancellationToken));
+        Assert.Equal(linesBefore, (await File.ReadAllLinesAsync(logPath, TestContext.Current.CancellationToken)).Length);
+    }
+
+    /// <summary>
+    /// The half of the identity only a run knows is compared once the mutants are generated, and a
+    /// refusal there promises the series' files as they were. The report was cleared when the run
+    /// started - a killed run must not leave an old report beside a new log - so it has to be put
+    /// back, or the refusal would cost a completed series its report.
+    /// </summary>
+    [Fact]
+    public async Task A_series_refused_once_the_mutants_are_generated_leaves_the_report_as_it_was()
+    {
+        using var fixture = FixtureCopy.Create();
+        await MakeWorkingCopyAsync(fixture);
+
+        string reportPath = Path.Combine(fixture.Root, "out", "report.json");
+        string logPath = Path.ChangeExtension(reportPath, ".jsonl");
+        string planPath = Path.ChangeExtension(reportPath, ".plan.json");
+
+        (int exitCode, _, string error) = await RunAsync(
+            fixture.Root, "--mutators", "Comparison", "--report-json", reportPath, "--resume", "one");
+
+        Assert.True(exitCode == Success, error);
+
+        // Everything the command line compares before the run still matches; what it will find
+        // different is the population, which only the run can generate.
+        JsonNode plan = JsonNode.Parse(await File.ReadAllTextAsync(planPath, TestContext.Current.CancellationToken))!;
+
+        plan["identity"]!["fingerprint"] = "not-these";
+
+        string tampered = plan.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+
+        await File.WriteAllTextAsync(planPath, tampered, TestContext.Current.CancellationToken);
+
+        string reportBefore = await File.ReadAllTextAsync(reportPath, TestContext.Current.CancellationToken);
+        int linesBefore = (await File.ReadAllLinesAsync(logPath, TestContext.Current.CancellationToken)).Length;
+
+        (exitCode, _, error) = await RunAsync(
+            fixture.Root, "--mutators", "Comparison", "--report-json", reportPath, "--resume", "one");
+
+        Assert.Equal(CouldNotRun, exitCode);
+        Assert.Contains("not the ones the earlier run selected", error, StringComparison.Ordinal);
+        Assert.Contains("left as they were", error, StringComparison.Ordinal);
+        Assert.Equal(reportBefore, await File.ReadAllTextAsync(reportPath, TestContext.Current.CancellationToken));
+        Assert.Equal(tampered, await File.ReadAllTextAsync(planPath, TestContext.Current.CancellationToken));
+        Assert.Equal(linesBefore, (await File.ReadAllLinesAsync(logPath, TestContext.Current.CancellationToken)).Length);
+    }
+
+    /// <summary>
+    /// A repository can be configured to show no untracked files, and a tree read through that
+    /// configuration would be called exactly its commit with a new source file in it. The dirtiness
+    /// read asks for them whatever the configuration says.
+    /// </summary>
+    [Fact]
+    public async Task An_untracked_file_is_a_change_even_where_the_repository_hides_untracked_files()
+    {
+        using var fixture = FixtureCopy.Create();
+        await MakeWorkingCopyAsync(fixture);
+        await GitAsync(fixture.Root, "config", "status.showUntrackedFiles", "no");
+        await File.WriteAllTextAsync(
+            Path.Combine(fixture.Root, "notes.txt"), "not committed\n", TestContext.Current.CancellationToken);
+
+        string reportPath = Path.Combine(fixture.Root, "out", "report.json");
+
+        (int exitCode, _, string error) = await RunAsync(
+            fixture.Root, "--mutators", "Comparison", "--report-json", reportPath, "--resume", "one");
+
+        Assert.True(exitCode == Success, error);
+        Assert.Contains("uncommitted changes", error, StringComparison.Ordinal);
+
+        using JsonDocument plan = await ReadAsync(Path.ChangeExtension(reportPath, ".plan.json"));
+
+        Assert.False(plan.RootElement.GetProperty("identity").GetProperty("code").GetProperty("isExact").GetBoolean());
+    }
+
+    private static void CopyDirectory(string source, string destination)
+    {
+        Directory.CreateDirectory(destination);
+
+        foreach (string file in Directory.EnumerateFiles(source))
+        {
+            File.Copy(file, Path.Combine(destination, Path.GetFileName(file)));
+        }
+
+        foreach (string directory in Directory.EnumerateDirectories(source))
+        {
+            CopyDirectory(directory, Path.Combine(destination, Path.GetFileName(directory)));
         }
     }
 

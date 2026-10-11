@@ -15,12 +15,17 @@ namespace KillMutants.Git;
 /// working copy before the run, untracked, and a CI job restores them there; counted as edits, they
 /// would make every series unable to continue in the one deployment it exists for.
 /// </para>
+/// <para>
+/// The directory the run was pointed at is read as git names it, relative to the top of the working
+/// copy, so that two checkouts of one commit agree on it and two directories of one commit do not.
+/// </para>
 /// </remarks>
 public static class GitCodeState
 {
     /// <summary>
-    /// The commit <c>HEAD</c> names and whether the tree is exactly it, or null when
-    /// <paramref name="directory"/> is not inside a git working copy that can be read.
+    /// The commit <c>HEAD</c> names, whether the tree is exactly it, and where in it
+    /// <paramref name="directory"/> sits - or null when it is not inside a git working copy that can
+    /// be read.
     /// </summary>
     /// <param name="directory">A directory inside the working copy.</param>
     /// <param name="leaveAlone">
@@ -52,7 +57,17 @@ public static class GitCodeState
                 .HasUncommittedChangesAsync(leaveAlone, cancellationToken)
                 .ConfigureAwait(false);
 
-            return new CodeState(head, !dirty);
+            // The commit alone does not say which directory of it was measured, and a series must
+            // not continue from another one - see CodeState. Git's prefix ends in '/', which the
+            // identity does without; the top is the empty string either way.
+            string? prefix = await repository.PrefixOfAsync(directory, cancellationToken).ConfigureAwait(false);
+
+            if (prefix is null)
+            {
+                return null;
+            }
+
+            return new CodeState(head, !dirty, prefix.TrimEnd('/'));
         }
         catch (Selection.ChangeSelectionException)
         {

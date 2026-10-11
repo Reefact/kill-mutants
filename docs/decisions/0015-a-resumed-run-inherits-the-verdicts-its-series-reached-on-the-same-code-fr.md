@@ -14,8 +14,8 @@ de s'arrêter à une échéance ou sur un signal et de rapporter les verdicts qu
 et sans qu'aucune barrière soit passée.
 [DEC0014](0014-each-verdict-is-appended-to-a-log-beside-the-report-fr.md) ajoute chaque verdict
 définitif, dès qu'il tombe, à un journal JSON Lines placé à côté du rapport JSON, si bien qu'une
-exécution tuée net laisse tout de même ce qu'elle a jugé. L'une et l'autre s'arrêtent à la fin d'une
-seule exécution. DEC0013 consigne la conséquence en toutes lettres : *« Comme l'ordre est fixe, une
+exécution interrompue brutalement laisse tout de même ce qu'elle a jugé. L'une et l'autre s'arrêtent
+à la fin d'une seule exécution. DEC0013 consigne la conséquence en toutes lettres : *« Comme l'ordre est fixe, une
 exécution qui s'arrête à chaque fois juge toujours les mêmes premiers mutants, et les projets trouvés
 en dernier ne sont jamais atteints, quel que soit le nombre d'exécutions. »* Sur `Reefact/slugger`
 ([issue #24](https://github.com/Reefact/kill-mutants/issues/24)), le moteur à lui seul compte
@@ -83,15 +83,15 @@ Ce que le code offre pour bâtir cela, et ce qu'il n'offre pas :
   tests inchangés, une fonctionnalité distincte. Une exécution arrêtée n'a pas de score parce que les
   mutants qu'elle a jugés sont le début de l'exécution, pas un échantillon.
 * Sur GitHub Actions, chaque job part d'un espace de travail vierge, si bien que tout ce qui doit
-  survivre à un job voyage sous forme d'artefact ou d'entrée de cache. Une exécution planifiée extrait
-  la tête de sa branche, qui bouge d'une nuit à l'autre. Une exécution de pull request extrait un
-  commit de merge synthétique dont le hash change chaque fois que la branche de base bouge, même sans
-  nouveau commit sur la pull request. Les images des runners hébergés sont mises à jour entre deux
+  survivre à un job voyage sous forme d'artefact ou d'entrée de cache. Une exécution planifiée
+  récupère le dernier commit de sa branche, qui bouge d'une nuit à l'autre. Une exécution de pull
+  request extrait un commit de merge synthétique dont le hash change chaque fois que la branche de
+  base bouge, même sans nouveau commit sur la pull request. Les images des runners hébergés sont mises à jour entre deux
   exécutions planifiées.
 
-Trois conceptions ont été confrontées avant la rédaction de cet enregistrement — le plan-et-reprise
-décrit par le mainteneur, un découpage sans état de la population en shards fusionnés ensuite, et une
-reprise pilotée par le seul journal —, chacune soumise à une revue contradictoire. Les shards
+Trois approches ont été étudiées et comparées avant la rédaction de cet enregistrement — le
+plan-et-reprise décrit par le mainteneur, un découpage sans état de la population en shards fusionnés
+ensuite, et une reprise pilotée par le seul journal —, chacune soumise à une revue contradictoire. Les shards
 n'écrivent aucun plan et répètent le défaut de l'ordre fixe à l'intérieur de chaque shard ; le journal
 seul n'a nulle part où écrire le plan que le mainteneur a demandé, et une ligne d'en-tête y
 enfreindrait la règle de DEC0014 selon laquelle chaque ligne du journal est un verdict. Les revues ont
@@ -139,9 +139,9 @@ L'arbre est lu comme propre en laissant de côté les trois fichiers de l'outil 
 sont écrits à côté du rapport avant l'exécution et qu'un job de CI les restaure à cet endroit ;
 comptés comme des modifications, ils rendraient la série incapable de continuer dans le seul
 déploiement pour lequel elle existe. Le runtime, le système d'exploitation et le nombre de processeurs
-sont consignés pour chaque exécution et comparés par personne : une image de runner avance entre deux
-nuits d'une série épinglée, et bloquer là-dessus laisserait la série coincée sous un nom que personne
-ne peut changer par un commit.
+sont consignés pour chaque exécution et comparés par personne : l'image du runner peut évoluer d'une
+nuit à l'autre au cours d'une série épinglée, et bloquer là-dessus laisserait la série coincée sous un
+nom que personne ne peut changer par un commit.
 
 Un dépassement de délai est jugé de nouveau plutôt qu'hérité parce qu'il n'est définitif que sous le
 budget de l'exécution qui l'a confirmé, et que le rapport ne peut publier que les budgets que cette
@@ -230,8 +230,8 @@ bouge, si bien que le cas demande ses propres faits plutôt qu'une note en bas d
   projets trouvés en dernier sont atteints.
 * Une série terminée a un score et répond à une barrière, sur chaque mutant sélectionné de la base de
   code à un état nommé.
-* Une exécution tuée net laisse son plan et son journal, si bien que ce qui reste peut être lu sans
-  l'outil.
+* Une exécution interrompue brutalement laisse son plan et son journal, si bien que ce qui reste peut
+  être lu sans l'outil.
 
 ### Négatives
 
