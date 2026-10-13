@@ -82,6 +82,29 @@ public class TestRunOutcomeTests
             new TestRunOutcome(0, 0, 0, TimeSpan.Zero, TimedOut: false).WhyNotGreen());
     }
 
+    /// <summary>
+    /// Regression test (RB-028). An error is the host saying something did not run cleanly, and a
+    /// mutant run that reads it as an empty one moves on to the next test project instead of
+    /// counting the kill - which is how a run cancelled by its first failure produced survivors.
+    /// </summary>
+    [Fact]
+    public void A_run_that_reported_an_error_did_not_run_nothing()
+    {
+        TestRunOutcome outcome = Ran(total: 0, failed: 0, errors: 1);
+
+        Assert.False(outcome.NoTestsRan);
+        Assert.True(outcome.AnyFailed);
+        Assert.False(outcome.AllPassed);
+    }
+
+    [Fact]
+    public void An_error_without_a_test_is_reported_as_one()
+    {
+        Assert.Equal(
+            "it reported 1 error(s) without running a test",
+            new TestRunOutcome(0, 0, 1, TimeSpan.Zero, TimedOut: false).WhyNotGreen());
+    }
+
     [Fact]
     public void A_failure_is_reported_with_its_counts()
     {

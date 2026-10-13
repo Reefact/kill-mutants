@@ -89,6 +89,46 @@ public class XUnitTestRunnerTests
             outcome.FailedTests.Select(name => name.ToString()));
     }
 
+    /// <summary>
+    /// Regression test (RB-028). The shape xUnit 4 writes when <c>-stopOnFail</c> cancels a run: the
+    /// assembly's totals are never filled in, the cancellation is reported as an assembly-cleanup
+    /// error, and the collections still record the tests they finished - the failure among them.
+    /// Read from the totals, this was a run in which nothing ran, and the mutant behind it survived.
+    /// </summary>
+    [Fact]
+    public void A_run_cancelled_by_its_first_failure_is_counted_from_the_tests_it_recorded()
+    {
+        TestRunOutcome outcome = Read(
+            """
+            <?xml version="1.0" encoding="utf-8"?>
+            <assemblies>
+              <assembly total="0" passed="0" failed="0" errors="1" not-run="0" skipped="0">
+                <errors>
+                  <error type="assembly-cleanup" name="Sample.Library.Tests.dll">
+                    <failure exception-type="System.OperationCanceledException">
+                      <message>System.OperationCanceledException : The operation was canceled.</message>
+                    </failure>
+                  </error>
+                </errors>
+                <collection total="2" passed="1" failed="1">
+                  <test name="Sample.Library.Tests.AgesTests.Adult"
+                        type="Sample.Library.Tests.AgesTests" method="Adult" result="Pass" />
+                  <test name="Sample.Library.Tests.AgesTests.Minor"
+                        type="Sample.Library.Tests.AgesTests" method="Minor" result="Fail" />
+                </collection>
+              </assembly>
+            </assemblies>
+            """);
+
+        Assert.Equal(2, outcome.Total);
+        Assert.Equal(1, outcome.Failed);
+        Assert.False(outcome.NoTestsRan);
+        Assert.True(outcome.AnyFailed);
+        Assert.Equal(
+            ["Sample.Library.Tests.AgesTests.Minor"],
+            outcome.FailedTests.Select(name => name.ToString()));
+    }
+
     private static TestRunOutcome Read(string content)
     {
         string path = Path.Combine(Path.GetTempPath(), $"killmutants-test-{Guid.NewGuid():N}.xml");

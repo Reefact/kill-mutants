@@ -3,7 +3,10 @@ namespace KillMutants.Testing;
 /// <summary>What one run of a test suite produced.</summary>
 /// <param name="Total">Tests that ran.</param>
 /// <param name="Failed">Tests that failed an assertion.</param>
-/// <param name="Errors">Tests that could not run to completion.</param>
+/// <param name="Errors">
+/// Failures the host reported outside a test's assertions: a test that could not run to completion,
+/// or a fixture or cleanup that failed - which is where a cancelled run reports its cancellation.
+/// </param>
 /// <param name="Duration">How long the run took.</param>
 /// <param name="TimedOut">True when the run exceeded its budget and was killed.</param>
 /// <param name="CrashDetail">Why the host died without reporting, or null when it reported normally.</param>
@@ -50,11 +53,20 @@ public sealed record TestRunOutcome(
     /// True when the run completed but executed no test at all.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// This must never be mistaken for success. The xUnit console runner exits with code 0 when a
     /// filter matches nothing, so a tool trusting the exit code alone would record such a run as a
     /// surviving mutant - reporting a gap in the tests that does not exist.
+    /// </para>
+    /// <para>
+    /// Nor for an empty run when the host reported an error. A mutant's run that sees one counts
+    /// it as a failure; reading it as "no test here" instead moves on to the next test project and
+    /// can end in a survivor. That is what a run cancelled by <c>-stopOnFail</c> looked like before
+    /// its tests were counted - no test, one error - and the most destructive mutants were the ones
+    /// it happened to (RB-028).
+    /// </para>
     /// </remarks>
-    public bool NoTestsRan => !TimedOut && !Crashed && Total == 0;
+    public bool NoTestsRan => !TimedOut && !Crashed && Total == 0 && Errors == 0;
 
     /// <summary>
     /// Why this run is not a clean pass, phrased for a message, or null when it is one.
@@ -80,6 +92,13 @@ public sealed record TestRunOutcome(
         if (NoTestsRan)
         {
             return "it ran no tests at all";
+        }
+
+        // An error with no test behind it is the host failing outside any test - a fixture, an
+        // assembly cleanup - and "1 of its 0 tests" would describe a run that cannot exist.
+        if (Total == 0)
+        {
+            return $"it reported {Errors} error(s) without running a test";
         }
 
         return AnyFailed

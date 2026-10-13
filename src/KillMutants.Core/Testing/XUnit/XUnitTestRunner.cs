@@ -214,9 +214,22 @@ internal sealed class XUnitTestRunner : ITestRunner
             return Unreadable(process, "names no assembly");
         }
 
+        // Counted from the tests as well as from the totals, because the totals are written when the
+        // assembly finishes and a run that -stopOnFail cancels never does. xUnit 4 then writes
+        // total="0" failed="0" above collections that recorded the tests they finished, the failure
+        // that stopped the run among them - measured on a mutant of Reefact/slugger: errors="1", the
+        // cancellation raised in assembly cleanup, over 176 recorded tests and one failure. Read from
+        // the totals alone that is a run in which no test ran, which the session takes for a test
+        // project holding none of the mutant's tests: it moved on, and a mutant that failed a test
+        // was reported as survived (RB-028). Each source can only under-count - the totals on a
+        // cancelled run, the tests in a file whose writer leaves them out - so the larger is kept.
+        IReadOnlyList<XElement> recorded = [.. assembly.Descendants("test")];
+
         return new TestRunOutcome(
-            Total: ReadCount(assembly, "total"),
-            Failed: ReadCount(assembly, "failed"),
+            Total: Math.Max(ReadCount(assembly, "total"), recorded.Count),
+            Failed: Math.Max(
+                ReadCount(assembly, "failed"),
+                recorded.Count(test => test.Attribute("result")?.Value == "Fail")),
             Errors: ReadCount(assembly, "errors"),
             Duration: process.Duration,
             TimedOut: false,

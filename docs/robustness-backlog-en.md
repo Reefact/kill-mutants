@@ -996,3 +996,55 @@ loaded by the test host exactly like any other.
 **What it would cost to close.** One line, and a fixture with a test project referencing another.
 Left open rather than folded into RB-025's change: this was found during a review round, and widening
 a change under review is how a two-round review becomes a five-round one.
+
+
+## RB-028 — A run cancelled by its first failure reads as a run that ran nothing · COVERED
+
+**How it was found.** Reading a full run of `Reefact/slugger`'s suite for tests worth adding. Two
+mutants share `TokenLength.cs:31`: `value <= 1` was killed by
+`TokenMouldTests.Draws_one_character_at_the_position_the_source_gives`, and `value >= 1` - which
+refuses every length that same test asks for - was reported survived, with the same covering tests.
+Applied by hand, three of the report's survivors made 9, 25 and 55 of slugger's unit tests fail.
+Re-run with one worker on those mutants alone, the tool reported six survivors out of seven again: a
+verdict, not a race between workers.
+
+**What happens.** A mutant's run passes `-stopOnFail`, and xUnit 4 cancels the rest of the suite at
+the first failure. An assembly's totals are written when the assembly finishes, which a cancelled run
+never does, so the result file says:
+
+```xml
+<assembly total="0" passed="0" failed="0" errors="1" not-run="0" skipped="0" ...>
+  <errors>
+    <error type="assembly-cleanup" ...>
+      <failure exception-type="System.OperationCanceledException"> ...
+  </errors>
+  <collection total="12" passed="12" failed="0" ...> ...
+```
+
+while its collections still record the tests they finished - measured on the slugger mutant, 176
+tests in 19 collections, one of them failed and named. The runner read its counts from the assembly's
+attributes alone, so the outcome was "no test ran, one error", and the session asks whether no test
+ran before it asks whether one failed. It took the run for a test project holding none of the
+mutant's tests, moved on to the next one, whose tests passed, and recorded a survivor.
+
+**Why it matters.** It invented gaps in the tests where there were none, and it chose the wrong
+mutants to invent them for: the more a mutant broke, the sooner its first failure came and the likelier
+the cancellation was to land before the assembly finished. The mutants most obviously killed were
+the ones it reported as survived. On a pull request, a survivor invented this way fails the gate.
+Because it depends on timing, it is also a likely source of verdicts that change between two runs of
+the same code: across four runs of slugger's suite on one revision of its source, 8 to 19 of the 909
+mutants every run judged changed verdict, almost all of them between killed and survived.
+
+**The fix, in two halves.** The counts are read from the tests the file records as well as from the
+assembly's attributes, and the larger is kept: each can only under-count - the attributes on a
+cancelled run, the tests in a file whose writer leaves them out. And a run that reports an error is
+no longer an empty one, which covers a cancellation that lands before any collection has finished:
+a mutant's run that sees an error counts it as a kill, as it counts a failed test. Re-run on the
+same seven slugger mutants after the fix, with one worker: seven killed, each with the test that
+killed it named.
+
+**Our tests.** `XUnitTestRunnerTests.A_run_cancelled_by_its_first_failure_is_counted_from_the_tests_it_recorded`
+reads the measured shape. `TestRunOutcomeTests.A_run_that_reported_an_error_did_not_run_nothing`
+pins the second half. `CancelledRunTests.A_run_cancelled_before_it_counted_a_test_still_kills_the_mutant`
+runs the fixture with every failing mutant run turned into "nothing counted, one error"; without the
+fix, all four of the fixture's mutants come out survived.
