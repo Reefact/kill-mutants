@@ -1071,3 +1071,58 @@ par l'hôte de test exactement comme les autres.
 **Ce que coûterait sa fermeture.** Une ligne, et une fixture où un projet de test en référence un
 autre. Laissée ouverte plutôt que fondue dans le changement de RB-025 : elle a été trouvée pendant une
 passe de revue, et élargir un changement en cours de revue est ce qui transforme deux passes en cinq.
+
+
+## RB-028 — Une exécution annulée par son premier échec se lit comme une exécution qui n'a rien lancé · COUVERT
+
+**Comment elle a été trouvée.** En lisant une exécution complète sur la suite de `Reefact/slugger`
+pour y chercher des tests à ajouter. Deux mutants partagent `TokenLength.cs:31` : `value <= 1` a été
+tué par `TokenMouldTests.Draws_one_character_at_the_position_the_source_gives`, et `value >= 1` — qui
+refuse toutes les longueurs que ce même test demande — a été déclaré survivant, avec les mêmes tests
+couvrants. Appliqués à la main, trois des survivants du rapport faisaient échouer 9, 25 et 55 tests
+unitaires de slugger. Relancé avec un seul worker sur ces seuls mutants, l'outil a de nouveau déclaré
+six survivants sur sept : un verdict, et non une concurrence entre workers.
+
+**Ce qui se passe.** L'exécution d'un mutant passe `-stopOnFail`, et xUnit 4 annule le reste de la
+suite au premier échec. Les totaux d'un assemblage sont écrits quand l'assemblage se termine, ce
+qu'une exécution annulée ne fait jamais ; le fichier de résultat dit donc :
+
+```xml
+<assembly total="0" passed="0" failed="0" errors="1" not-run="0" skipped="0" ...>
+  <errors>
+    <error type="assembly-cleanup" ...>
+      <failure exception-type="System.OperationCanceledException"> ...
+  </errors>
+  <collection total="12" passed="12" failed="0" ...> ...
+```
+
+alors que ses collections enregistrent encore les tests qu'elles ont terminés — mesuré sur le mutant
+de slugger : 176 tests dans 19 collections, dont un en échec, et nommé. Le runner lisait ses comptes
+dans les seuls attributs de l'assemblage ; le résultat était donc « aucun test lancé, une erreur », et
+la session se demande si aucun test n'a tourné avant de se demander si l'un d'eux a échoué. Elle a pris
+l'exécution pour un projet de test ne contenant aucun des tests du mutant, est passée au suivant, dont
+les tests réussissaient, et a enregistré un survivant.
+
+**Pourquoi cela compte.** Elle inventait des trous dans les tests là où il n'y en avait pas, et elle
+choisissait les mauvais mutants pour cela : plus un mutant cassait de choses, plus son premier échec
+arrivait tôt et plus l'annulation risquait de tomber avant la fin de l'assemblage. Les mutants les
+plus évidemment tués étaient ceux qu'elle déclarait survivants. Sur une pull request, un survivant
+inventé de cette façon fait échouer la barrière. Comme cela dépend du moment, c'est aussi une source
+probable des verdicts qui changent entre deux exécutions du même code : sur quatre exécutions de la
+suite de slugger sur une même révision de son code, 8 à 19 des 909 mutants jugés par toutes ont changé
+de verdict, presque tous entre tué et survivant.
+
+**Le correctif, en deux moitiés.** Les comptes sont lus dans les tests que le fichier enregistre aussi
+bien que dans les attributs de l'assemblage, et le plus grand est retenu : chacun ne peut que
+sous-compter — les attributs sur une exécution annulée, les tests dans un fichier dont l'auteur les
+omet. Et une exécution qui signale une erreur n'est plus une exécution vide, ce qui couvre une
+annulation tombée avant qu'aucune collection ne soit terminée : quand l'exécution d'un mutant voit une
+erreur, le mutant compte comme tué, au même titre que pour un test en échec. Relancé sur les mêmes
+sept mutants de slugger après le correctif, avec un seul worker : sept tués, chacun avec le nom du
+test qui l'a tué.
+
+**Nos tests.** `XUnitTestRunnerTests.A_run_cancelled_by_its_first_failure_is_counted_from_the_tests_it_recorded`
+lit la forme mesurée. `TestRunOutcomeTests.A_run_that_reported_an_error_did_not_run_nothing` épingle
+la seconde moitié. `CancelledRunTests.A_run_cancelled_before_it_counted_a_test_still_kills_the_mutant`
+exécute la fixture en transformant chaque exécution de mutant en échec en « rien de compté, une
+erreur » ; sans le correctif, les quatre mutants de la fixture sortent survivants.
