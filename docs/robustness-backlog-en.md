@@ -1035,16 +1035,18 @@ Because it depends on timing, it is also a likely source of verdicts that change
 the same code: across four runs of slugger's suite on one revision of its source, 8 to 19 of the 909
 mutants every run judged changed verdict, almost all of them between killed and survived.
 
-**The fix, in two halves.** The counts are read from the tests the file records as well as from the
-assembly's attributes, and the larger is kept: each can only under-count - the attributes on a
-cancelled run, the tests in a file whose writer leaves them out. And a run that reports an error is
-no longer an empty one, which covers a cancellation that lands before any collection has finished:
-a mutant's run that sees an error counts it as a kill, as it counts a failed test. Re-run on the
-same seven slugger mutants after the fix, with one worker: seven killed, each with the test that
-killed it named.
+**The fix, in two halves.** The counts are read from the tests the file records as run as well as
+from the assembly's attributes, and the larger is kept: each can only under-count - the attributes
+on a cancelled run, the tests in a file whose writer leaves them out. A test written as not run,
+such as an explicit test nobody asked for, is left out of both, or a baseline that executed nothing
+would pass. And a run that reports an error is no longer an empty one, which covers a cancellation
+that lands before any collection has finished: a mutant's run that sees an error counts it as a
+kill, as it counts a failed test. Re-run on the same seven slugger mutants after the fix, with one
+worker: seven killed, each with the test that killed it named.
 
 **Our tests.** `XUnitTestRunnerTests.A_run_cancelled_by_its_first_failure_is_counted_from_the_tests_it_recorded`
-reads the measured shape. `TestRunOutcomeTests.A_run_that_reported_an_error_did_not_run_nothing`
+reads the measured shape, and `A_test_the_runner_did_not_run_does_not_count_as_one_that_ran` its
+counterweight. `TestRunOutcomeTests.A_run_that_reported_an_error_did_not_run_nothing`
 pins the second half. `CancelledRunTests.A_run_cancelled_before_it_counted_a_test_still_kills_the_mutant`
 runs the fixture with every failing mutant run turned into "nothing counted, one error"; without the
 fix, all four of the fixture's mutants come out survived.

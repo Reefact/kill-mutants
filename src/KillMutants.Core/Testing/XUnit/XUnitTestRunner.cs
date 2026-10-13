@@ -222,8 +222,16 @@ internal sealed class XUnitTestRunner : ITestRunner
         // the totals alone that is a run in which no test ran, which the session takes for a test
         // project holding none of the mutant's tests: it moved on, and a mutant that failed a test
         // was reported as survived (RB-028). Each source can only under-count - the totals on a
-        // cancelled run, the tests in a file whose writer leaves them out - so the larger is kept.
-        IReadOnlyList<XElement> recorded = [.. assembly.Descendants("test")];
+        // cancelled run, the tests in a file whose writer leaves them out - so the larger is kept. A
+        // test written as not run - an explicit test nobody asked for - is left out of the total, and
+        // out of this count too: taken for a run test, it would let a baseline that executed nothing
+        // pass for a green one.
+        IReadOnlyList<XElement> recorded =
+        [
+            .. assembly
+                .Descendants("test")
+                .Where(test => test.Attribute("result")?.Value != "NotRun"),
+        ];
 
         return new TestRunOutcome(
             Total: Math.Max(ReadCount(assembly, "total"), recorded.Count),

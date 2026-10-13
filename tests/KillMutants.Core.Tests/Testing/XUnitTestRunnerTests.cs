@@ -129,6 +129,32 @@ public class XUnitTestRunnerTests
             outcome.FailedTests.Select(name => name.ToString()));
     }
 
+    /// <summary>
+    /// The counterweight to the test above. An explicit test nobody asked for is written into the
+    /// file as not run, and the assembly's total leaves it out: counting it as run would let a
+    /// baseline that executed nothing pass for a green one.
+    /// </summary>
+    [Fact]
+    public void A_test_the_runner_did_not_run_does_not_count_as_one_that_ran()
+    {
+        TestRunOutcome outcome = Read(
+            """
+            <?xml version="1.0" encoding="utf-8"?>
+            <assemblies>
+              <assembly total="0" passed="0" failed="0" errors="0" not-run="1" skipped="0">
+                <collection total="0" passed="0" failed="0" not-run="1">
+                  <test name="Sample.Library.Tests.AgesTests.Slow"
+                        type="Sample.Library.Tests.AgesTests" method="Slow" result="NotRun" />
+                </collection>
+              </assembly>
+            </assemblies>
+            """);
+
+        Assert.Equal(0, outcome.Total);
+        Assert.True(outcome.NoTestsRan);
+        Assert.False(outcome.AllPassed);
+    }
+
     private static TestRunOutcome Read(string content)
     {
         string path = Path.Combine(Path.GetTempPath(), $"killmutants-test-{Guid.NewGuid():N}.xml");

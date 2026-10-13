@@ -1112,17 +1112,20 @@ probable des verdicts qui changent entre deux exécutions du même code : sur qu
 suite de slugger sur une même révision de son code, 8 à 19 des 909 mutants jugés par toutes ont changé
 de verdict, presque tous entre tué et survivant.
 
-**Le correctif, en deux moitiés.** Les comptes sont lus dans les tests que le fichier enregistre aussi
-bien que dans les attributs de l'assemblage, et le plus grand est retenu : chacun ne peut que
-sous-compter — les attributs sur une exécution annulée, les tests dans un fichier dont l'auteur les
-omet. Et une exécution qui signale une erreur n'est plus une exécution vide, ce qui couvre une
-annulation tombée avant qu'aucune collection ne soit terminée : quand l'exécution d'un mutant voit une
-erreur, le mutant compte comme tué, au même titre que pour un test en échec. Relancé sur les mêmes
-sept mutants de slugger après le correctif, avec un seul worker : sept tués, chacun avec le nom du
-test qui l'a tué.
+**Le correctif, en deux moitiés.** Les comptes sont lus dans les tests que le fichier enregistre
+comme exécutés aussi bien que dans les attributs de l'assemblage, et le plus grand est retenu :
+chacun ne peut que sous-compter — les attributs sur une exécution annulée, les tests dans un fichier
+dont l'auteur les omet. Un test inscrit comme non exécuté, tel un test explicite que personne n'a
+demandé, est écarté des deux, sans quoi une baseline qui n'a rien exécuté passerait. Et une
+exécution qui signale une erreur n'est plus une exécution vide, ce qui couvre une annulation tombée
+avant qu'aucune collection ne soit terminée : quand l'exécution d'un mutant voit une erreur, le
+mutant compte comme tué, au même titre que pour un test en échec. Relancé sur les mêmes sept mutants
+de slugger après le correctif, avec un seul worker : sept tués, chacun avec le nom du test qui l'a
+tué.
 
 **Nos tests.** `XUnitTestRunnerTests.A_run_cancelled_by_its_first_failure_is_counted_from_the_tests_it_recorded`
-lit la forme mesurée. `TestRunOutcomeTests.A_run_that_reported_an_error_did_not_run_nothing` épingle
+lit la forme mesurée, et `A_test_the_runner_did_not_run_does_not_count_as_one_that_ran` son
+contrepoids. `TestRunOutcomeTests.A_run_that_reported_an_error_did_not_run_nothing` épingle
 la seconde moitié. `CancelledRunTests.A_run_cancelled_before_it_counted_a_test_still_kills_the_mutant`
 exécute la fixture en transformant chaque exécution de mutant en échec en « rien de compté, une
 erreur » ; sans le correctif, les quatre mutants de la fixture sortent survivants.
