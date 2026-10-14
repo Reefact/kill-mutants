@@ -176,6 +176,13 @@ test project widens nothing — a new test cannot have removed an edge that pred
 added fixture, case list or settings file widens like any other change, because that argument was
 never about those.
 
+**A widened run says so.** One edited test can put a whole solution in scope, so the report names
+every project it took whole and the changes that made it, and counts how many of the undetected
+mutants sit in files the change did not touch — the first thing a reviewer wants to know about a red
+gate. Those mutants still count, and still fail the verdict: a change to a test can stop a mutant
+being killed without touching the file it sits in. In `--report-json` they are `widened` and
+`undetectedFromWidening`.
+
 **A partial run prints no mutation score, and that is deliberate.** Its population is the change
 itself, chosen against a base revision that differs every run, so a percentage over it answers
 nothing that spans two runs. It prints the status counts, the findings by name, and a binary verdict:

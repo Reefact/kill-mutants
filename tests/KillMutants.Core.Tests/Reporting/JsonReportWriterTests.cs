@@ -177,4 +177,51 @@ public class JsonReportWriterTests
         Assert.DoesNotContain('\n', line);
         Assert.True(JsonElement.DeepEquals(json.RootElement.GetProperty("mutants")[0], parsed.RootElement));
     }
+
+    /// <summary>
+    /// Regression test (#22). What DEC0011 took whole is in the file, with what made it, so a CI
+    /// summary built on the report can say a red gate was the widening's and not the change's.
+    /// </summary>
+    [Fact]
+    public void A_widened_run_carries_what_it_took_whole_and_why()
+    {
+        IReadOnlyList<Mutant> mutants = MutantsFor("class C { bool M(int a) => a >= 18; }");
+        var writer = new StringWriter();
+
+        JsonReportWriter.Write(
+            writer,
+            new MutationTestReport(
+                [new MutantResult(mutants[0], MutantStatus.Survived)],
+                scope: new RunScope("0123456789abcdef", "fedcba9876543210", true, 1),
+                widened:
+                [
+                    new WidenedProject("src/Core/Core.csproj", ["tests/Core.Tests/AgesTests.cs"]),
+                ],
+                inTheChange: _ => false));
+
+        using JsonDocument json = JsonDocument.Parse(writer.ToString());
+        JsonElement widened = json.RootElement.GetProperty("widened")[0];
+
+        Assert.Equal("src/Core/Core.csproj", widened.GetProperty("project").GetString());
+        Assert.Equal(
+            ["tests/Core.Tests/AgesTests.cs"],
+            widened.GetProperty("because").EnumerateArray().Select(cause => cause.GetString()));
+        Assert.Equal(1, json.RootElement.GetProperty("undetectedFromWidening").GetInt32());
+    }
+
+    /// <summary>
+    /// A full run has no change for a mutant to be outside of, and a zero there would say every
+    /// undetected mutant was the change's own.
+    /// </summary>
+    [Fact]
+    public void A_full_run_has_no_share_from_widening()
+    {
+        Mutant mutant = MutantsFor("class C { bool M(int a) => a >= 18; }")[0];
+
+        using JsonDocument json = Render(new MutantResult(mutant, MutantStatus.Survived));
+
+        Assert.Empty(json.RootElement.GetProperty("widened").EnumerateArray());
+        Assert.Equal(
+            JsonValueKind.Null, json.RootElement.GetProperty("undetectedFromWidening").ValueKind);
+    }
 }
