@@ -170,6 +170,16 @@ public static class ConsoleReportWriter
               $"{Plural(report.Scope.ChangedFiles, "file")} changed)"
             : $"Scope: {report.Scope}");
 
+        // Straight after the scope line, because that line describes the diff alone: read without
+        // this, a run DEC0011 took over most of a codebase says it was a run over a few files (#22).
+        if (report.Widened.Count > 0)
+        {
+            foreach (string line in Wrap(Widening(report), width: 88))
+            {
+                writer.WriteLine(line);
+            }
+        }
+
         foreach (string line in Wrap(
                      "No mutation score: a partial run's population is the change itself, chosen " +
                      "against an earlier state, per run, so a percentage over it cannot be compared " +
@@ -382,6 +392,61 @@ public static class ConsoleReportWriter
         {
             yield return line.ToString();
         }
+    }
+
+    /// <summary>Which projects a partial run took whole, what made it, and what that added.</summary>
+    private static string Widening(MutationTestReport report)
+    {
+        // By name, which is how a reader knows a project, and by path where two share one: review
+        // found "Core and Core were mutated whole" naming nothing at all.
+        string[] paths = [.. report.Widened.Select(project => project.Project)];
+        string[] projects =
+        [
+            .. paths.Select(path => paths.Count(other => SameName(other, path)) > 1
+                ? path
+                : Path.GetFileNameWithoutExtension(path)),
+        ];
+        string[] causes =
+        [
+            .. report.Widened
+                .SelectMany(project => project.Because)
+                .Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal),
+        ];
+
+        string because = causes.Length == 0
+            ? string.Empty
+            : $", because the change touches {Listed(causes, named: 3)}";
+        string widened =
+            $"Widened: {Listed(projects, named: 5)} {(projects.Length == 1 ? "was" : "were")} " +
+            $"mutated whole rather than file by file{because} (DEC0011).";
+
+        // Left out when nothing went undetected: "0 of the 0" would be a sentence about nothing.
+        return report.Undetected == 0
+            ? widened
+            : $"{widened} {Format(report.UndetectedFromWidening)} of the {Format(report.Undetected)} " +
+              "undetected mutant(s) are in files the change did not touch.";
+    }
+
+    private static bool SameName(string one, string other) =>
+        string.Equals(
+            Path.GetFileNameWithoutExtension(one),
+            Path.GetFileNameWithoutExtension(other),
+            StringComparison.Ordinal);
+
+    /// <summary>
+    /// Names in a sentence, the first <paramref name="named"/> of them, and how many more there are.
+    /// </summary>
+    private static string Listed(string[] names, int named)
+    {
+        if (names.Length > named)
+        {
+            return $"{string.Join(", ", names.Take(named))} and {Format(names.Length - named)} more";
+        }
+
+        return names.Length == 1
+            ? names[0]
+            : $"{string.Join(", ", names.Take(names.Length - 1))} and {names[^1]}";
     }
 
     private static string Plural(int count, string noun) => count == 1 ? noun : noun + "s";

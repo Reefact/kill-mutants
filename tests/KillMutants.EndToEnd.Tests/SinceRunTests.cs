@@ -46,6 +46,7 @@ public class SinceRunTests
 
         Assert.Equal(["Money.cs"], MutatedFiles(report));
         Assert.NotEmpty(report.Results);
+        Assert.Empty(report.Widened);
     }
 
     /// <summary>
@@ -96,6 +97,49 @@ public class SinceRunTests
 
         Assert.Contains("Basket.cs", MutatedFiles(report));
         Assert.Contains("Money.cs", MutatedFiles(report));
+
+        // And it says so, naming the change that did it (#22). No production file changed, so
+        // every undetected mutant here is one only the widening brought in.
+        Assert.Equal(["Core/Core.csproj", "Domain/Domain.csproj"], WidenedProjects(report));
+        Assert.All(
+            report.Widened,
+            project => Assert.Equal(["Domain.Tests/BasketTests.cs"], project.Because));
+        Assert.Equal(report.Undetected, report.UndetectedFromWidening);
+    }
+
+    /// <summary>
+    /// Regression test (#22). Of the undetected mutants a widened run reports, those in files the
+    /// change touched and those only the widening brought in are told apart.
+    /// </summary>
+    /// <remarks>
+    /// Both count, in the verdict as in the totals, because DEC0011 widens for a reason: a change to
+    /// a test can stop a mutant being killed without touching the file the mutant sits in. What the
+    /// split answers is the reviewer's first question on a red gate - is this my change, or the
+    /// codebase's existing gaps? Measured on a pull request to Reefact/slugger, it was 0 of 181.
+    /// </remarks>
+    [Fact]
+    public async Task A_widened_run_tells_the_changes_own_findings_from_the_widenings()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+
+        // Untested before the change, in a file the change leaves alone: only the widening can bring
+        // these mutants into the run.
+        AppendUntestedComparison(fixture, "Domain", "Basket.cs", "Shelves");
+        FixtureRepository.InitialiseAt(fixture.Root);
+
+        // Untested code the change adds, in a file it does touch, beside the test it edits.
+        AppendUntestedComparison(fixture, "Core", "Money.cs", "Discounts");
+        Touch(fixture, "Domain.Tests", "BasketTests.cs");
+
+        MutationTestReport report = await RunSinceHeadAsync(fixture);
+
+        int inBasket = report.Results.Count(result =>
+            result.Outcome == MutantOutcome.Undetected &&
+            Path.GetFileName(result.Mutant.Location.FilePath) == "Basket.cs");
+
+        Assert.True(inBasket > 0, "the untouched file carried no undetected mutant to tell apart");
+        Assert.True(report.Undetected > inBasket, "the changed file carried none either");
+        Assert.Equal(inBasket, report.UndetectedFromWidening);
     }
 
     /// <summary>
@@ -156,6 +200,12 @@ public class SinceRunTests
         Assert.Contains(
             report.CoverageLost,
             path => path.EndsWith("Domain.csproj", StringComparison.Ordinal));
+
+        // Widened from the earlier state's graph, and still for the changes that touched the suite.
+        Assert.Equal(["Core/Core.csproj"], WidenedProjects(report));
+        Assert.Equal(
+            ["Domain.Tests/BasketTests.cs", "Domain.Tests/Domain.Tests.csproj"],
+            report.Widened[0].Because);
     }
 
     /// <summary>
@@ -271,6 +321,12 @@ public class SinceRunTests
         MutationTestReport report = await RunSinceHeadAsync(fixture);
 
         Assert.Contains("Basket.cs", MutatedFiles(report));
+
+        // Named as the reason, though it belongs to no project: it is what changed.
+        Assert.NotEmpty(report.Widened);
+        Assert.All(
+            report.Widened,
+            project => Assert.Equal(["tests/Directory.Build.props"], project.Because));
     }
 
     /// <summary>
@@ -783,10 +839,9 @@ public class SinceRunTests
         FixtureRepository.AddSubmodule(outer.Root, inner.Root, "libs/Sample");
 
         // The bump: the submodule's own history moves on, and the outer repository records the new
-        // commit. Nothing inside libs/Sample appears in the outer diff.
-        File.AppendAllText(
-            Path.Combine(inner.Root, "Sample.Library", "Ages.cs"),
-            $"{Environment.NewLine}// moved on{Environment.NewLine}");
+        // commit. Nothing inside libs/Sample appears in the outer diff. What it moves on with is
+        // code nothing tests, so that the split below has a finding to place.
+        AppendUntestedComparison(inner, "Sample.Library", "Ages.cs", "Shelves");
 
         FixtureRepository.CommitAll(inner.Root, "the submodule moves on");
         FixtureRepository.BumpSubmodule(outer.Root, "libs/Sample");
@@ -794,6 +849,13 @@ public class SinceRunTests
         MutationTestReport report = await RunSinceHeadAsync(outer);
 
         Assert.Contains("Ages.cs", MutatedFiles(report));
+
+        // The source can name nothing finer than the component, so everything beneath it counts
+        // as touched by the change. Review found the other reading: every file in the component
+        // answered "not touched", and the code the bump brought in was put down to the widening.
+        Assert.Contains(report.Widened, project => project.Because.SequenceEqual(["libs/Sample"]));
+        Assert.True(report.Undetected > 0, "the bump carried no undetected mutant to place");
+        Assert.Equal(0, report.UndetectedFromWidening);
     }
 
     /// <summary>
@@ -2520,6 +2582,29 @@ public class SinceRunTests
                 $"  <ItemGroup>{added}</ItemGroup>{Environment.NewLine}</Project>",
                 StringComparison.Ordinal));
     }
+
+    /// <summary>A comparison in a class of its own, which no test in the fixture reaches.</summary>
+    private static void AppendUntestedComparison(
+        FixtureCopy fixture,
+        string project,
+        string file,
+        string type)
+    {
+        string path = Path.Combine(fixture.Root, project, file);
+
+        File.AppendAllText(
+            path,
+            $$"""
+
+            public static class {{type}}
+            {
+                public static bool IsFull(int count, int capacity) => count >= capacity;
+            }
+            """);
+    }
+
+    private static string[] WidenedProjects(MutationTestReport report) =>
+        [.. report.Widened.Select(project => project.Project)];
 
     private static void Touch(FixtureCopy fixture, params string[] parts)
     {

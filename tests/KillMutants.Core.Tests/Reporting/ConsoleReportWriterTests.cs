@@ -352,4 +352,117 @@ public class ConsoleReportWriterTests
 
         Assert.DoesNotContain("Series", writer.ToString(), StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// Regression test (#22). A partial run that DEC0011 widened says so beside its scope line, and
+    /// says which change made it: that line describes the diff alone, and a run over most of a
+    /// codebase announced itself as a run over a few files.
+    /// </summary>
+    [Fact]
+    public void A_widened_run_names_what_it_took_whole_and_the_change_that_made_it()
+    {
+        Mutant changed = MutantsFor("class C { bool M(int a) => a >= 18; }")[0];
+        Mutant untouched = MutantsFor("class D { bool M(int a) => a >= 18; }", "/src/Other.cs")[0];
+        var writer = new StringWriter();
+
+        ConsoleReportWriter.Write(
+            writer,
+            new MutationTestReport(
+                [
+                    new MutantResult(changed, MutantStatus.Survived),
+                    new MutantResult(untouched, MutantStatus.Survived),
+                ],
+                scope: Partial,
+                widened:
+                [
+                    new WidenedProject("src/Core/Core.csproj", ["tests/Core.Tests/AgesTests.cs"]),
+                ],
+                inTheChange: path => path == "/src/Ages.cs"));
+
+        string output = OneLine(writer.ToString());
+
+        Assert.Contains(
+            "Widened: Core was mutated whole rather than file by file, because the change " +
+            "touches tests/Core.Tests/AgesTests.cs (DEC0011). 1 of the 2 undetected mutant(s) " +
+            "are in files the change did not touch.",
+            output,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The counterweight. A run that stayed precise has nothing to add to its scope, and a line
+    /// saying "nothing was widened" on every pull request would be read by nobody.
+    /// </summary>
+    [Fact]
+    public void A_partial_run_that_stayed_precise_says_nothing_about_widening()
+    {
+        Mutant mutant = MutantsFor("class C { bool M(int a) => a >= 18; }")[0];
+        var writer = new StringWriter();
+
+        ConsoleReportWriter.Write(
+            writer,
+            new MutationTestReport(
+                [new MutantResult(mutant, MutantStatus.Survived)], scope: Partial));
+
+        Assert.DoesNotContain("Widened", writer.ToString(), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A change to a shared build file can widen every project there is, and a sentence naming all
+    /// of them is a sentence nobody finishes. The report file keeps them all.
+    /// </summary>
+    [Fact]
+    public void A_long_widening_names_the_first_few_and_counts_the_rest()
+    {
+        var writer = new StringWriter();
+        string[] because = ["a/One.cs", "b/Two.cs", "c/Three.cs", "d/Four.cs", "e/Five.cs"];
+
+        ConsoleReportWriter.Write(
+            writer,
+            new MutationTestReport(
+                [],
+                scope: Partial,
+                widened: [new WidenedProject("src/Core/Core.csproj", because)]));
+
+        Assert.Contains(
+            "because the change touches a/One.cs, b/Two.cs, c/Three.cs and 2 more (DEC0011).",
+            OneLine(writer.ToString()),
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Two projects can share a name in two directories, and naming both by it names neither: review
+    /// found "Core and Core were mutated whole".
+    /// </summary>
+    [Fact]
+    public void Two_widened_projects_that_share_a_name_are_told_apart_by_their_paths()
+    {
+        var writer = new StringWriter();
+
+        ConsoleReportWriter.Write(
+            writer,
+            new MutationTestReport(
+                [],
+                scope: Partial,
+                widened:
+                [
+                    new WidenedProject("src/A/Core.csproj", ["tests/A.Tests/ATests.cs"]),
+                    new WidenedProject("src/B/Core.csproj", ["tests/A.Tests/ATests.cs"]),
+                    new WidenedProject("src/Domain/Domain.csproj", ["tests/A.Tests/ATests.cs"]),
+                ]));
+
+        Assert.Contains(
+            "Widened: src/A/Core.csproj, src/B/Core.csproj and Domain were mutated whole",
+            OneLine(writer.ToString()),
+            StringComparison.Ordinal);
+    }
+
+    private static IReadOnlyList<Mutant> MutantsFor(string source, string path) =>
+        new MutantGenerator(MutatorCatalog.Default).Generate(TestCompilation.From(source, path));
+
+    /// <summary>The console wraps at a terminal's width, so a sentence is asserted whole.</summary>
+    private static string OneLine(string output) =>
+        string.Join(
+            ' ',
+            output.ReplaceLineEndings("\n").Split('\n', StringSplitOptions.RemoveEmptyEntries));
 }

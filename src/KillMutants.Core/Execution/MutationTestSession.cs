@@ -195,7 +195,9 @@ internal sealed class MutationTestSession
             run.Selection?.CoverageLost,
             run.Selection?.UnreadComponents,
             stopped,
-            run.Plan?.Series(run.Verdicts));
+            run.Plan?.Series(run.Verdicts),
+            run.Selection?.Widened,
+            run.Selection is { } selection ? selection.Touches : null);
 
     private async Task<MutationTestReport> RunToTheEndAsync(
         string searchDirectory,
@@ -267,7 +269,7 @@ internal sealed class MutationTestSession
             // the coverage the change took away - which is a verdict, not an empty run.
             return new MutationTestReport(
                 [], stopwatch.Elapsed, RunEnvironment.Describe(_workerCount, null, [], 0), scope,
-                selection.CoverageLost, selection.UnreadComponents);
+                selection.CoverageLost, selection.UnreadComponents, widened: selection.Widened);
         }
 
         // The real build comes first and nothing may run MSBuild after injection, so every
