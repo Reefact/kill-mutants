@@ -67,12 +67,13 @@ internal sealed class ChangeSelection
         "packages.lock.json",
     ];
 
-    private readonly HashSet<string> _widened;
+    private readonly Attribution _widened;
     private readonly MutantSelection _changedFiles;
 
     private ChangeSelection(
         RunScope scope,
-        HashSet<string> widened,
+        Attribution widened,
+        IReadOnlyList<WidenedProject> widenedAsReported,
         MutantSelection changedFiles,
         IReadOnlyList<string> coverageLost,
         bool earlierStateHadSomethingToMutate,
@@ -84,7 +85,30 @@ internal sealed class ChangeSelection
         CoverageLost = coverageLost;
         EarlierStateHadSomethingToMutate = earlierStateHadSomethingToMutate;
         UnreadComponents = unreadComponents;
+        Widened = widenedAsReported;
     }
+
+    /// <summary>
+    /// The projects this run mutates whole rather than file by file, each with the changes that
+    /// made it do so.
+    /// </summary>
+    /// <remarks>
+    /// Carried out to the report because the widening is the difference between a run over the
+    /// change and a run over most of the codebase, and nothing else in the output tells the two
+    /// apart: the file count is the diff's, the mutant count has no baseline, and a long run reads
+    /// as a slow machine. Measured on a pull request to Reefact/slugger (#22): eight files changed,
+    /// two of them existing tests, so the whole solution was mutated - and of the 181 mutants that
+    /// came back undetected, none sat on a line the change wrote. Nothing in the report said so.
+    /// </remarks>
+    public IReadOnlyList<WidenedProject> Widened { get; }
+
+    /// <summary>True when the change touched <paramref name="filePath"/> itself.</summary>
+    /// <remarks>
+    /// The precise half of the selection, asked of a mutant after the fact: a mutant in a widened
+    /// project whose file answers false is in the run only because of the widening.
+    /// </remarks>
+    public bool Touches(string filePath) =>
+        !string.IsNullOrEmpty(filePath) && _changedFiles.Includes(filePath);
 
     /// <summary>
     /// The components the comparison could not read, empty when the earlier state was complete.
@@ -264,6 +288,39 @@ internal sealed class ChangeSelection
         }
     }
 
+    /// <summary>Projects, each with the changes that gave it the role it has here.</summary>
+    /// <remarks>
+    /// A set decided the selection just as well, and was all this held until a partial run on an
+    /// outside repository turned out to be unreadable without the reason (#22). The widening is
+    /// what turns a run over a change into a run over most of a codebase, and a report naming only
+    /// the diff gave no sign that it had happened - so which change put each project here travels
+    /// with the project, from the first rule that claims it to the report.
+    /// </remarks>
+    private sealed class Attribution(StringComparer comparer)
+    {
+        private readonly Dictionary<string, SortedSet<string>> _causes = new(comparer);
+
+        public int Count => _causes.Count;
+
+        public IReadOnlyCollection<string> Projects => _causes.Keys;
+
+        public bool Contains(string project) => _causes.ContainsKey(project);
+
+        public SortedSet<string> CausesOf(string project) => _causes[project];
+
+        public void Add(string project, string because) => Add(project, [because]);
+
+        public void Add(string project, IEnumerable<string> because)
+        {
+            if (!_causes.TryGetValue(project, out SortedSet<string>? causes))
+            {
+                _causes[project] = causes = new SortedSet<string>(StringComparer.Ordinal);
+            }
+
+            causes.UnionWith(because);
+        }
+    }
+
     /// <summary>
     /// Everything the resolution needs to keep in hand while it classifies one change's files.
     /// </summary>
@@ -305,9 +362,9 @@ internal sealed class ChangeSelection
             IReadOnlyList<FileChange> changes,
             CancellationToken cancellationToken)
         {
-            HashSet<string> widened = new(ProjectPaths.Comparer);
+            Attribution widened = new(ProjectPaths.Comparer);
             HashSet<string> changedFiles = new(ProjectPaths.Comparer);
-            HashSet<string> touchedTestProjects = new(ProjectPaths.Comparer);
+            Attribution touchedTestProjects = new(ProjectPaths.Comparer);
             List<FileChange> unattributed = [];
 
             foreach (FileChange change in changes)
@@ -322,7 +379,7 @@ internal sealed class ChangeSelection
                 // passed over a subtree that had gone.
                 if (change.IsWholeComponent)
                 {
-                    WidenBeneath(widened, touchedTestProjects, change.Path);
+                    WidenBeneath(widened, touchedTestProjects, change.Path, because: change.Path);
 
                     continue;
                 }
@@ -352,7 +409,9 @@ internal sealed class ChangeSelection
                 // to its neighbour alone left the rest of the tree unselected.
                 if (IsSharedBuildFile(change.Path))
                 {
-                    WidenBeneath(widened, touchedTestProjects, Path.GetDirectoryName(change.Path)!);
+                    WidenBeneath(
+                        widened, touchedTestProjects, Path.GetDirectoryName(change.Path)!,
+                        because: change.Path);
                     attributed = true;
                 }
 
@@ -372,7 +431,7 @@ internal sealed class ChangeSelection
             IReadOnlyList<string> coverageLost = await WidenForTestsAsync(
                     widened,
                     touchedTestProjects,
-                    SuitesReaching(widened),
+                    SuitesReaching(widened.Projects),
                     unattributed,
                     changes,
                     cancellationToken)
@@ -381,6 +440,7 @@ internal sealed class ChangeSelection
             return new ChangeSelection(
                 scope,
                 widened,
+                Reported(widened),
                 MutantSelection.Of(changedFiles),
                 coverageLost,
                 _earlierStateReachedProduction,
@@ -415,8 +475,8 @@ internal sealed class ChangeSelection
         private bool Attribute(
             FileChange change,
             string project,
-            HashSet<string> widened,
-            HashSet<string> touchedTestProjects)
+            Attribution widened,
+            Attribution touchedTestProjects)
         {
             bool addedSource = change.Kind == ChangeKind.Added && IsCSharp(change.Path);
 
@@ -424,7 +484,7 @@ internal sealed class ChangeSelection
             {
                 if (!addedSource)
                 {
-                    touchedTestProjects.Add(project);
+                    touchedTestProjects.Add(project, change.Path);
                 }
 
                 return true;
@@ -440,7 +500,7 @@ internal sealed class ChangeSelection
             {
                 foreach (string testProject in reachedBy)
                 {
-                    touchedTestProjects.Add(testProject);
+                    touchedTestProjects.Add(testProject, change.Path);
                 }
 
                 return true;
@@ -458,7 +518,8 @@ internal sealed class ChangeSelection
             {
                 foreach (string consumer in consumers)
                 {
-                    attributed |= WidenConsumer(consumer, widened, touchedTestProjects);
+                    attributed |= WidenConsumer(
+                        consumer, widened, touchedTestProjects, because: change.Path);
                 }
             }
 
@@ -473,7 +534,7 @@ internal sealed class ChangeSelection
 
             if (!IsCSharp(change.Path))
             {
-                widened.Add(project);
+                widened.Add(project, change.Path);
             }
 
             return true;
@@ -489,15 +550,16 @@ internal sealed class ChangeSelection
         /// </remarks>
         private bool WidenConsumer(
             string consumer,
-            HashSet<string> widened,
-            HashSet<string> touchedTestProjects)
+            Attribution widened,
+            Attribution touchedTestProjects,
+            string because)
         {
             // No added-file exception on this path, and review was right to separate them. That
             // exception says a new *test* cannot remove an edge that predates it; a generator source
             // the change adds is not a test, and it can change what every existing test compiles to.
             if (discovered.TestProjectPaths.Contains(consumer))
             {
-                touchedTestProjects.Add(consumer);
+                touchedTestProjects.Add(consumer, because);
 
                 return true;
             }
@@ -506,7 +568,7 @@ internal sealed class ChangeSelection
             {
                 foreach (string testProject in reachedBy)
                 {
-                    touchedTestProjects.Add(testProject);
+                    touchedTestProjects.Add(testProject, because);
                 }
 
                 return true;
@@ -517,7 +579,7 @@ internal sealed class ChangeSelection
                 return false;
             }
 
-            widened.Add(consumer);
+            widened.Add(consumer, because);
 
             return true;
         }
@@ -562,20 +624,22 @@ internal sealed class ChangeSelection
         /// <param name="changes">Every change, asked which projects stopped being suites.</param>
         /// <param name="cancellationToken">Cancels the traversal.</param>
         private async Task<IReadOnlyList<string>> WidenForTestsAsync(
-            HashSet<string> widened,
-            HashSet<string> touchedTestProjects,
+            Attribution widened,
+            Attribution touchedTestProjects,
             List<string> tracedAtBase,
             List<FileChange> unattributed,
             IReadOnlyList<FileChange> changes,
             CancellationToken cancellationToken)
         {
-            foreach (string testProject in touchedTestProjects)
+            foreach (string testProject in touchedTestProjects.Projects)
             {
                 foreach (MutationTestTarget target in discovered.Targets.Where(target =>
                              target.TestProjects.Any(test =>
                                  ProjectPaths.Comparer.Equals(test.ProjectPath, testProject))))
                 {
-                    widened.Add(target.ProjectUnderTest.ProjectPath);
+                    widened.Add(
+                        target.ProjectUnderTest.ProjectPath,
+                        touchedTestProjects.CausesOf(testProject));
                 }
             }
 
@@ -619,7 +683,7 @@ internal sealed class ChangeSelection
             // Files that belong to no test project now may belong to one in the earlier state -
             // the coverage edge vanishing one layer further out again. Asked of the graph, which
             // already knows every project that state held, rather than of the source a second time.
-            IReadOnlyList<string> formerTestProjects = FormerTestProjects(changes, graph);
+            Attribution formerTestProjects = FormerTestProjects(changes, graph);
 
             // Two kinds of root, and review found that treating them alike undid the point of
             // separating them in the first place. A suite the change touched, or one that stopped
@@ -627,26 +691,33 @@ internal sealed class ChangeSelection
             // suite read only because a project it reaches had its project file changed widens
             // nothing - the change says nothing about the rest of what that suite exercises, and
             // adding it would fail a change confined to A on an old survivor in B.
-            List<string> widening = [.. touchedTestProjects.Select(RelativePathOf).OfType<string>()];
+            Attribution widening = new(RelativePath.Comparer);
 
-            foreach (string candidate in formerTestProjects)
+            foreach (string testProject in touchedTestProjects.Projects)
             {
-                if (await graph.IsTestProjectAsync(candidate, cancellationToken).ConfigureAwait(false))
+                if (RelativePathOf(testProject) is { } relative)
                 {
-                    widening.Add(candidate);
+                    widening.Add(relative, touchedTestProjects.CausesOf(testProject));
                 }
             }
 
-            HashSet<string> wideningRoots = new(widening, RelativePath.Comparer);
+            foreach (string candidate in formerTestProjects.Projects)
+            {
+                if (await graph.IsTestProjectAsync(candidate, cancellationToken).ConfigureAwait(false))
+                {
+                    widening.Add(candidate, formerTestProjects.CausesOf(candidate));
+                }
+            }
+
             SortedSet<string> coverageLost = new(StringComparer.Ordinal);
 
-            IEnumerable<string> roots = widening
+            IEnumerable<string> roots = widening.Projects
                 .Concat(tracedAtBase.Select(RelativePathOf).OfType<string>())
                 .Distinct(RelativePath.Comparer);
 
             foreach (string testProject in roots)
             {
-                bool widens = wideningRoots.Contains(testProject);
+                bool widens = widening.Contains(testProject);
 
                 foreach (string reached in await graph
                              .ProductionProjectsReachedFromAsync(testProject, cancellationToken)
@@ -661,7 +732,7 @@ internal sealed class ChangeSelection
                     {
                         if (widens)
                         {
-                            widened.Add(target);
+                            widened.Add(target, widening.CausesOf(testProject));
                         }
 
                         continue;
@@ -756,13 +827,15 @@ internal sealed class ChangeSelection
         /// beneath it before it is ever read here.
         /// </para>
         /// </remarks>
-        private IReadOnlyList<string> FormerTestProjects(
+        private Attribution FormerTestProjects(
             IReadOnlyList<FileChange> changes,
             BaseProjectGraph graph)
         {
+            Attribution owning = new(RelativePath.Comparer);
+
             if (changes.Count == 0)
             {
-                return [];
+                return owning;
             }
 
             HashSet<string> testProjectsNow = new(
@@ -786,10 +859,8 @@ internal sealed class ChangeSelection
 
             if (candidates.Length == 0)
             {
-                return [];
+                return owning;
             }
-
-            HashSet<string> owning = new(RelativePath.Comparer);
 
             foreach (FileChange change in changes)
             {
@@ -814,12 +885,12 @@ internal sealed class ChangeSelection
                     if (RelativePath.IsUnder(relative, directory) ||
                         (from is not null && RelativePath.IsUnder(directory, from)))
                     {
-                        owning.Add(project);
+                        owning.Add(project, change.Path);
                     }
                 }
             }
 
-            return [.. owning];
+            return owning;
         }
 
         /// <summary>True when a relative path is under the directory the run was pointed at.</summary>
@@ -837,6 +908,21 @@ internal sealed class ChangeSelection
         }
 
         private string? RelativePathOf(string path) => RelativePath.Of(source.Root, path);
+
+        /// <summary>The widening as the report gives it: paths as the diff names them.</summary>
+        private List<WidenedProject> Reported(Attribution widened) =>
+        [
+            .. widened.Projects
+                .Select(project => new WidenedProject(
+                    Named(project),
+                    [.. widened.CausesOf(project).Select(Named).Order(StringComparer.Ordinal)]))
+                .OrderBy(project => project.Project, StringComparer.Ordinal),
+        ];
+
+        /// <summary>
+        /// A path relative to the root the change was read from, or whole when it lies outside it.
+        /// </summary>
+        private string Named(string path) => RelativePathOf(path) ?? path;
 
         /// <summary>
         /// Every project that consumes <paramref name="path"/>: by what it evaluates, and by where
@@ -932,15 +1018,16 @@ internal sealed class ChangeSelection
 
         /// <summary>Gives every project beneath a directory the role it holds, wherever from.</summary>
         private void WidenBeneath(
-            HashSet<string> widened,
-            HashSet<string> touchedTestProjects,
-            string directory)
+            Attribution widened,
+            Attribution touchedTestProjects,
+            string directory,
+            string because)
         {
             foreach (MutationTestTarget target in discovered.Targets)
             {
                 if (IsUnder(target.ProjectUnderTest.ProjectDirectory, directory))
                 {
-                    widened.Add(target.ProjectUnderTest.ProjectPath);
+                    widened.Add(target.ProjectUnderTest.ProjectPath, because);
                 }
             }
 
@@ -951,7 +1038,7 @@ internal sealed class ChangeSelection
             {
                 if (IsUnder(Path.GetDirectoryName(testProject), directory))
                 {
-                    touchedTestProjects.Add(testProject);
+                    touchedTestProjects.Add(testProject, because);
                 }
             }
 
@@ -969,7 +1056,7 @@ internal sealed class ChangeSelection
 
                 foreach (string consumer in consumers)
                 {
-                    WidenConsumer(consumer, widened, touchedTestProjects);
+                    WidenConsumer(consumer, widened, touchedTestProjects, because);
                 }
             }
 
@@ -985,7 +1072,7 @@ internal sealed class ChangeSelection
                 {
                     foreach (string testProject in reachedBy)
                     {
-                        touchedTestProjects.Add(testProject);
+                        touchedTestProjects.Add(testProject, because);
                     }
                 }
             }
@@ -996,7 +1083,7 @@ internal sealed class ChangeSelection
                 {
                     foreach (string consumer in consumers)
                     {
-                        WidenConsumer(consumer, widened, touchedTestProjects);
+                        WidenConsumer(consumer, widened, touchedTestProjects, because);
                     }
                 }
             }

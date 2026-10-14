@@ -24,6 +24,13 @@ public sealed class MutationTestReport
     /// <param name="series">
     /// The series this run belongs to and what it inherited from it, or null for a run that named none.
     /// </param>
+    /// <param name="widened">
+    /// The projects a partial run mutated whole rather than file by file, and why.
+    /// </param>
+    /// <param name="inTheChange">
+    /// Whether the change touched a source file itself, asked of each undetected mutant when a
+    /// project was widened. Null when nothing was.
+    /// </param>
     public MutationTestReport(
         IReadOnlyList<MutantResult> results,
         TimeSpan duration = default,
@@ -32,7 +39,9 @@ public sealed class MutationTestReport
         IReadOnlyList<string>? coverageLost = null,
         IReadOnlyList<string>? unreadComponents = null,
         EarlyStop? stopped = null,
-        RunSeries? series = null)
+        RunSeries? series = null,
+        IReadOnlyList<WidenedProject>? widened = null,
+        Func<string, bool>? inTheChange = null)
     {
         ArgumentNullException.ThrowIfNull(results);
 
@@ -44,6 +53,7 @@ public sealed class MutationTestReport
         UnreadComponents = unreadComponents ?? [];
         Stopped = stopped;
         Series = series;
+        Widened = widened ?? [];
         Killed = Count(MutantStatus.Killed);
         Survived = Count(MutantStatus.Survived);
         TimedOut = Count(MutantStatus.Timeout);
@@ -53,6 +63,11 @@ public sealed class MutationTestReport
         Undetected = CountOutcome(MutantOutcome.Undetected);
         Untestable = CountOutcome(MutantOutcome.Untestable);
         Score = MutationScore.FromCounts(Detected, Undetected);
+        UndetectedFromWidening = Widened.Count == 0 || inTheChange is null
+            ? 0
+            : results.Count(result =>
+                result.Outcome == MutantOutcome.Undetected &&
+                !inTheChange(result.Mutant.Location.FilePath));
 
         // Ordered by what each family cost, because that is the order a reader acts on: the
         // expensive families with little to show are the ones worth reconsidering.
@@ -171,6 +186,37 @@ public sealed class MutationTestReport
 
     /// <summary>True when the change left a project with no tests reaching it at all.</summary>
     public bool LostCoverage => CoverageLost.Count > 0;
+
+    /// <summary>
+    /// The projects a partial run mutated whole rather than file by file, each with the changes that
+    /// made it do so. Empty for a full run, and for a partial run that stayed precise.
+    /// </summary>
+    /// <remarks>
+    /// DEC0011 widens on purpose, and a run that did is a different run from one that did not: a
+    /// change to one existing test can put a whole solution in scope. Before this was reported, the
+    /// only scope line described the diff, and a run over most of a codebase announced itself as a
+    /// run over eight files (#22).
+    /// </remarks>
+    public IReadOnlyList<WidenedProject> Widened { get; }
+
+    /// <summary>
+    /// Undetected mutants in files the change did not touch, in the run only because a project was
+    /// widened.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The number a reviewer wants first and the one the verdict cannot give: on a widened run, a red
+    /// gate may be reporting the codebase's existing gaps rather than anything the change did. These
+    /// mutants still count, in <see cref="Undetected"/> and in the verdict - DEC0011 widens because a
+    /// change to a test can stop a mutant being killed without touching the file it sits in - so
+    /// this splits the finding and does not discount it.
+    /// </para>
+    /// <para>
+    /// A file, not a line. A mutant in a changed file on a line the change did not write is counted
+    /// as in the change, because the selection itself knows no finer unit than the file.
+    /// </para>
+    /// </remarks>
+    public int UndetectedFromWidening { get; }
 
     /// <summary>The components the comparison could not read, empty when it was complete.</summary>
     public IReadOnlyList<string> UnreadComponents { get; }

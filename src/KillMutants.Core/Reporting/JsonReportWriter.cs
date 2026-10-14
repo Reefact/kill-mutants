@@ -113,6 +113,20 @@ public static class JsonReportWriter
         // tests entirely.
         coverageLost = report.CoverageLost,
 
+        // What DEC0011 took whole, and which changes made it. Without it a partial run over most of
+        // a codebase and one over a handful of files write the same scope, and a CI summary built
+        // on this file cannot tell its reader which it was (#22).
+        widened = report.Widened.Select(project => new
+        {
+            project = project.Project,
+            because = project.Because,
+        }).ToArray(),
+
+        // The share of the undetected mutants in files the change did not touch. Still counted
+        // above and still failing the verdict; null on a full run, which has no change to be
+        // outside of.
+        undetectedFromWidening = report.Scope.IsPartial ? (int?)report.UndetectedFromWidening : null,
+
         // Components the earlier state was rebuilt without. Published beside the verdict rather
         // than among the warnings because it is not advice: a consumer that reads hasUndetected
         // without reading this can act on a comparison the run itself does not stand behind.
