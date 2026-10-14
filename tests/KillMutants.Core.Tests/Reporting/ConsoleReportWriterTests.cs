@@ -430,6 +430,33 @@ public class ConsoleReportWriterTests
             StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Two projects can share a name in two directories, and naming both by it names neither: review
+    /// found "Core and Core were mutated whole".
+    /// </summary>
+    [Fact]
+    public void Two_widened_projects_that_share_a_name_are_told_apart_by_their_paths()
+    {
+        var writer = new StringWriter();
+
+        ConsoleReportWriter.Write(
+            writer,
+            new MutationTestReport(
+                [],
+                scope: Partial,
+                widened:
+                [
+                    new WidenedProject("src/A/Core.csproj", ["tests/A.Tests/ATests.cs"]),
+                    new WidenedProject("src/B/Core.csproj", ["tests/A.Tests/ATests.cs"]),
+                    new WidenedProject("src/Domain/Domain.csproj", ["tests/A.Tests/ATests.cs"]),
+                ]));
+
+        Assert.Contains(
+            "Widened: src/A/Core.csproj, src/B/Core.csproj and Domain were mutated whole",
+            OneLine(writer.ToString()),
+            StringComparison.Ordinal);
+    }
+
     private static IReadOnlyList<Mutant> MutantsFor(string source, string path) =>
         new MutantGenerator(MutatorCatalog.Default).Generate(TestCompilation.From(source, path));
 
