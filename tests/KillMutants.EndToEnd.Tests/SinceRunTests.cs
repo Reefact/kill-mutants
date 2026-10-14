@@ -839,10 +839,9 @@ public class SinceRunTests
         FixtureRepository.AddSubmodule(outer.Root, inner.Root, "libs/Sample");
 
         // The bump: the submodule's own history moves on, and the outer repository records the new
-        // commit. Nothing inside libs/Sample appears in the outer diff.
-        File.AppendAllText(
-            Path.Combine(inner.Root, "Sample.Library", "Ages.cs"),
-            $"{Environment.NewLine}// moved on{Environment.NewLine}");
+        // commit. Nothing inside libs/Sample appears in the outer diff. What it moves on with is
+        // code nothing tests, so that the split below has a finding to place.
+        AppendUntestedComparison(inner, "Sample.Library", "Ages.cs", "Shelves");
 
         FixtureRepository.CommitAll(inner.Root, "the submodule moves on");
         FixtureRepository.BumpSubmodule(outer.Root, "libs/Sample");
@@ -850,6 +849,13 @@ public class SinceRunTests
         MutationTestReport report = await RunSinceHeadAsync(outer);
 
         Assert.Contains("Ages.cs", MutatedFiles(report));
+
+        // The source can name nothing finer than the component, so everything beneath it counts
+        // as touched by the change. Review found the other reading: every file in the component
+        // answered "not touched", and the code the bump brought in was put down to the widening.
+        Assert.Contains(report.Widened, project => project.Because.SequenceEqual(["libs/Sample"]));
+        Assert.True(report.Undetected > 0, "the bump carried no undetected mutant to place");
+        Assert.Equal(0, report.UndetectedFromWidening);
     }
 
     /// <summary>

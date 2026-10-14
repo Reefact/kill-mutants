@@ -69,12 +69,14 @@ internal sealed class ChangeSelection
 
     private readonly Attribution _widened;
     private readonly MutantSelection _changedFiles;
+    private readonly IReadOnlyList<string> _wholeComponents;
 
     private ChangeSelection(
         RunScope scope,
         Attribution widened,
         IReadOnlyList<WidenedProject> widenedAsReported,
         MutantSelection changedFiles,
+        IReadOnlyList<string> wholeComponents,
         IReadOnlyList<string> coverageLost,
         bool earlierStateHadSomethingToMutate,
         IReadOnlyList<string> unreadComponents)
@@ -82,6 +84,7 @@ internal sealed class ChangeSelection
         Scope = scope;
         _widened = widened;
         _changedFiles = changedFiles;
+        _wholeComponents = wholeComponents;
         CoverageLost = coverageLost;
         EarlierStateHadSomethingToMutate = earlierStateHadSomethingToMutate;
         UnreadComponents = unreadComponents;
@@ -104,11 +107,30 @@ internal sealed class ChangeSelection
 
     /// <summary>True when the change touched <paramref name="filePath"/> itself.</summary>
     /// <remarks>
+    /// <para>
     /// The precise half of the selection, asked of a mutant after the fact: a mutant in a widened
     /// project whose file answers false is in the run only because of the widening.
+    /// </para>
+    /// <para>
+    /// A component the source could only name whole counts as touched throughout, and review found
+    /// why it has to. A submodule bump names the component and nothing beneath it, so every file in
+    /// it answered false - and every finding in the files that did change was put down to the
+    /// widening. What changed inside is not known here, and the split has to lean towards the
+    /// change rather than excuse it.
+    /// </para>
     /// </remarks>
-    public bool Touches(string filePath) =>
-        !string.IsNullOrEmpty(filePath) && _changedFiles.Includes(filePath);
+    public bool Touches(string filePath)
+    {
+        if (string.IsNullOrEmpty(filePath))
+        {
+            return false;
+        }
+
+        string? directory = Path.GetDirectoryName(Path.GetFullPath(filePath));
+
+        return _changedFiles.Includes(filePath) ||
+               _wholeComponents.Any(component => Resolver.IsUnder(directory, component));
+    }
 
     /// <summary>
     /// The components the comparison could not read, empty when the earlier state was complete.
@@ -365,6 +387,7 @@ internal sealed class ChangeSelection
             Attribution widened = new(ProjectPaths.Comparer);
             HashSet<string> changedFiles = new(ProjectPaths.Comparer);
             Attribution touchedTestProjects = new(ProjectPaths.Comparer);
+            List<string> wholeComponents = [];
             List<FileChange> unattributed = [];
 
             foreach (FileChange change in changes)
@@ -379,6 +402,7 @@ internal sealed class ChangeSelection
                 // passed over a subtree that had gone.
                 if (change.IsWholeComponent)
                 {
+                    wholeComponents.Add(Path.GetFullPath(change.Path));
                     WidenBeneath(widened, touchedTestProjects, change.Path, because: change.Path);
 
                     continue;
@@ -442,6 +466,7 @@ internal sealed class ChangeSelection
                 widened,
                 Reported(widened),
                 MutantSelection.Of(changedFiles),
+                wholeComponents,
                 coverageLost,
                 _earlierStateReachedProduction,
                 _unreadComponents);
@@ -1097,7 +1122,7 @@ internal sealed class ChangeSelection
         /// would put <c>src/CoreTests</c> inside <c>src/Core</c>, which is how a change to one
         /// project comes to be attributed to another.
         /// </remarks>
-        private static bool IsUnder(string? directory, string ancestor)
+        internal static bool IsUnder(string? directory, string ancestor)
         {
             if (directory is null)
             {

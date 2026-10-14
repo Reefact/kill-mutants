@@ -397,9 +397,14 @@ public static class ConsoleReportWriter
     /// <summary>Which projects a partial run took whole, what made it, and what that added.</summary>
     private static string Widening(MutationTestReport report)
     {
+        // By name, which is how a reader knows a project, and by path where two share one: review
+        // found "Core and Core were mutated whole" naming nothing at all.
+        string[] paths = [.. report.Widened.Select(project => project.Project)];
         string[] projects =
         [
-            .. report.Widened.Select(project => Path.GetFileNameWithoutExtension(project.Project)),
+            .. paths.Select(path => paths.Count(other => SameName(other, path)) > 1
+                ? path
+                : Path.GetFileNameWithoutExtension(path)),
         ];
         string[] causes =
         [
@@ -422,6 +427,12 @@ public static class ConsoleReportWriter
             : $"{widened} {Format(report.UndetectedFromWidening)} of the {Format(report.Undetected)} " +
               "undetected mutant(s) are in files the change did not touch.";
     }
+
+    private static bool SameName(string one, string other) =>
+        string.Equals(
+            Path.GetFileNameWithoutExtension(one),
+            Path.GetFileNameWithoutExtension(other),
+            StringComparison.Ordinal);
 
     /// <summary>
     /// Names in a sentence, the first <paramref name="named"/> of them, and how many more there are.
