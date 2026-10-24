@@ -60,7 +60,7 @@ public class ResumedRunTests
         RunPlan plan = Assert.IsType<RunPlan>(store.ReadPlan());
 
         Assert.Equal("nightly", plan.Series);
-        Assert.Equal(17, plan.Mutants!.Count);
+        Assert.Equal(18, plan.Mutants!.Count);
         Assert.Equal(2, Assert.Single(plan.Runs).Verdicts);
         Assert.Equal(2, VerdictLog.Read(store.LogPath).Count);
 
@@ -73,14 +73,14 @@ public class ResumedRunTests
         }
 
         Assert.True(completed.IsComplete);
-        Assert.Equal(17, completed.Total);
+        Assert.Equal(18, completed.Total);
         Assert.False(completed.Score.IsUndefined);
 
         RunSeries series = Assert.IsType<RunSeries>(completed.Series);
 
         Assert.Equal(2, series.Inherited);
         Assert.Equal(2, series.Runs.Count);
-        Assert.Equal(15, series.Runs[^1].Verdicts);
+        Assert.Equal(16, series.Runs[^1].Verdicts);
 
         // The two inherited verdicts are the two the first run reached, in their place, as they were:
         // same status, same tests named.
@@ -91,8 +91,8 @@ public class ResumedRunTests
 
         IReadOnlyList<LoggedVerdict> logged = VerdictLog.Read(store.LogPath);
 
-        Assert.Equal(17, logged.Count);
-        Assert.Equal(17, logged.Select(verdict => verdict.Key).Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(18, logged.Count);
+        Assert.Equal(18, logged.Select(verdict => verdict.Key).Distinct(StringComparer.Ordinal).Count());
         Assert.Equal(2, store.ReadPlan()!.Runs.Count);
 
         var json = new StringWriter();
@@ -137,10 +137,10 @@ public class ResumedRunTests
 
         Assert.Equal(0, counting.Runs);
         Assert.True(again.IsComplete);
-        Assert.Equal(17, again.Total);
-        Assert.Equal(17, again.Series!.Inherited);
+        Assert.Equal(18, again.Total);
+        Assert.Equal(18, again.Series!.Inherited);
         Assert.Equal(0, again.Series.Runs[^1].Verdicts);
-        Assert.Equal(17, VerdictLog.Read(store.LogPath).Count);
+        Assert.Equal(18, VerdictLog.Read(store.LogPath).Count);
         Assert.Equal(first.Score.ToString(), again.Score.ToString());
 
         // Inherited as reached: the same verdict, with the same tests named, for every mutant.
@@ -232,12 +232,12 @@ public class ResumedRunTests
         }
 
         Assert.True(again.IsComplete);
-        Assert.Equal(15, again.Series!.Inherited);
+        Assert.Equal(16, again.Series!.Inherited);
         Assert.Equal(2, again.Series.Runs[^1].Verdicts);
 
         IReadOnlyList<LoggedVerdict> logged = VerdictLog.Read(store.LogPath);
 
-        Assert.Equal(19, logged.Count);
+        Assert.Equal(20, logged.Count);
 
         LoggedVerdict lastTimedOut = logged.Last(verdict => verdict.Key == timedOut);
         LoggedVerdict lastCrashed = logged.Last(verdict => verdict.Key == crashed);
@@ -257,7 +257,7 @@ public class ResumedRunTests
         }
 
         Assert.Equal(0, counting.Runs);
-        Assert.Equal(17, third.Series!.Inherited);
+        Assert.Equal(18, third.Series!.Inherited);
         Assert.Equal(3, third.Series.Runs.Count);
     }
 
@@ -272,7 +272,7 @@ public class ResumedRunTests
         RunPlanStore store = StoreIn(fixture);
 
         // Every re-test passes, so every sampled kill disagrees with itself.
-        var disagreeing = new PassesOnReTestRunner(new XUnitTestRunner(), mutantRunsBeforePassing: 17);
+        var disagreeing = new PassesOnReTestRunner(new XUnitTestRunner(), mutantRunsBeforePassing: 18);
         MutationTestReport first;
 
         using (VerdictLog log = VerdictLog.Create(store.LogPath))
@@ -351,13 +351,13 @@ public class ResumedRunTests
         using (VerdictLog log = VerdictLog.Create(store.LogPath))
         {
             await Session(
-                    new StopsOnMutantRunner(new XUnitTestRunner(), stop, stopOnMutantRun: 16),
+                    new StopsOnMutantRunner(new XUnitTestRunner(), stop, stopOnMutantRun: 17),
                     log,
                     Start("nightly", store))
                 .RunAsync(fixture.Root, TestContext.Current.CancellationToken, stop.Token);
         }
 
-        Assert.Equal(15, VerdictLog.Read(store.LogPath).Count);
+        Assert.Equal(16, VerdictLog.Read(store.LogPath).Count);
 
         var counting = new CountingRunner(new XUnitTestRunner());
         MutationTestReport again;
@@ -369,7 +369,7 @@ public class ResumedRunTests
         }
 
         Assert.True(again.IsComplete);
-        Assert.Equal(15, again.Series!.Inherited);
+        Assert.Equal(16, again.Series!.Inherited);
         Assert.Equal(5, again.Environment!.KillsReVerified);
 
         // The baseline, the two mutants left, and five re-tests: more than the two fresh kills alone
@@ -452,8 +452,8 @@ public class ResumedRunTests
         Assert.True(completed.IsComplete);
         Assert.Equal(0, completed.Series!.Inherited);
         Assert.Equal(2, completed.Series.Runs.Count);
-        Assert.Equal(17, completed.Series.Runs[^1].Verdicts);
-        Assert.Equal(17, store.ReadPlan()!.Mutants!.Count);
+        Assert.Equal(18, completed.Series.Runs[^1].Verdicts);
+        Assert.Equal(18, store.ReadPlan()!.Mutants!.Count);
     }
 
     /// <summary>
@@ -489,10 +489,10 @@ public class ResumedRunTests
 
         RunPlan plan = Assert.IsType<RunPlan>(store.ReadPlan());
 
-        Assert.Equal(17, plan.Mutants!.Count);
+        Assert.Equal(18, plan.Mutants!.Count);
         Assert.NotNull(plan.Identity.Fingerprint);
-        Assert.Equal([17, 0], plan.Runs.Select(run => run.Verdicts));
-        Assert.Equal([0, 17], plan.Runs.Select(run => run.LogLinesBefore));
+        Assert.Equal([18, 0], plan.Runs.Select(run => run.Verdicts));
+        Assert.Equal([0, 18], plan.Runs.Select(run => run.LogLinesBefore));
 
         var counting = new CountingRunner(new XUnitTestRunner());
         MutationTestReport third;
@@ -504,7 +504,7 @@ public class ResumedRunTests
         }
 
         Assert.Equal(0, counting.Runs);
-        Assert.Equal(17, third.Series!.Inherited);
+        Assert.Equal(18, third.Series!.Inherited);
         Assert.Equal(3, third.Series.Runs.Count);
     }
 
@@ -545,10 +545,10 @@ public class ResumedRunTests
                 .RunAsync(fixture.Root, TestContext.Current.CancellationToken);
         }
 
-        Assert.Equal([2, 15], completed.Series!.Runs.Select(run => run.Verdicts));
+        Assert.Equal([2, 16], completed.Series!.Runs.Select(run => run.Verdicts));
         Assert.Equal([0, 2], completed.Series.Runs.Select(run => run.LogLinesBefore));
         Assert.Equal(completed.Total, completed.Series.Runs.Sum(run => run.Verdicts));
-        Assert.Equal([2, 15], store.ReadPlan()!.Runs.Select(run => run.Verdicts));
+        Assert.Equal([2, 16], store.ReadPlan()!.Runs.Select(run => run.Verdicts));
     }
 
     /// <summary>
