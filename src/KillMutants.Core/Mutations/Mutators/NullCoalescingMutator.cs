@@ -99,15 +99,26 @@ internal sealed class NullCoalescingMutator : IMutator
     /// left as it is: <c>x ?? y ?? a</c> reads back as <c>x ?? (y ?? a)</c>, so the report would
     /// show a mutant that is not the one compiled.
     /// </para>
+    /// <para>
+    /// Nothing on the left is refused too, and review found why: <c>null ?? s</c> and
+    /// <c>s ?? null</c> are both <c>s</c>, null or not, so the swap is a mutant no test could kill.
+    /// It compiles to different instructions all the same, which is why the corpus that compares
+    /// emitted programs cannot see it and the rule has to.
+    /// </para>
     /// </remarks>
     private static bool CanBeSwapped(BinaryExpressionSyntax coalesce) =>
         OnlyReads(coalesce.Left) &&
+        !IsNothing(coalesce.Left) &&
+        !IsNothing(coalesce.Right) &&
         !coalesce.Right.IsKind(SyntaxKind.CoalesceExpression) &&
         !coalesce.Right.IsKind(SyntaxKind.ThrowExpression) &&
-        !coalesce.Right.IsKind(SyntaxKind.NullLiteralExpression) &&
-        !coalesce.Right.IsKind(SyntaxKind.DefaultLiteralExpression) &&
-        !coalesce.Right.IsKind(SyntaxKind.DefaultExpression) &&
         !SyntaxFactory.AreEquivalent(coalesce.Left, coalesce.Right);
+
+    /// <summary>True for an operand that can only be null: <c>null</c> or a default.</summary>
+    private static bool IsNothing(ExpressionSyntax operand) =>
+        operand.IsKind(SyntaxKind.NullLiteralExpression) ||
+        operand.IsKind(SyntaxKind.DefaultLiteralExpression) ||
+        operand.IsKind(SyntaxKind.DefaultExpression);
 
     /// <summary>True when evaluating the expression can only read a value.</summary>
     private static bool OnlyReads(ExpressionSyntax expression) => expression switch
