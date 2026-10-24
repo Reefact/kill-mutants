@@ -383,9 +383,36 @@ public class ConsoleReportWriterTests
 
         Assert.Contains(
             "Widened: Core was mutated whole rather than file by file, because the change " +
-            "touches tests/Core.Tests/AgesTests.cs (DEC0011). 1 of the 2 undetected mutant(s) " +
+            "touches tests/Core.Tests/AgesTests.cs (DEC0011). 1 of the 2 undetected mutants " +
             "are in files the change did not touch.",
             output,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The same sentence with one undetected mutant agrees with it, rather than printing "mutant(s)
+    /// are" whatever the count - which review found reading wrong at exactly the count of one.
+    /// </summary>
+    [Fact]
+    public void A_widened_run_with_one_undetected_mutant_says_so_in_the_singular()
+    {
+        Mutant untouched = MutantsFor("class D { bool M(int a) => a >= 18; }", "/src/Other.cs")[0];
+        var writer = new StringWriter();
+
+        ConsoleReportWriter.Write(
+            writer,
+            new MutationTestReport(
+                [new MutantResult(untouched, MutantStatus.Survived)],
+                scope: Partial,
+                widened:
+                [
+                    new WidenedProject("src/Core/Core.csproj", ["tests/Core.Tests/AgesTests.cs"]),
+                ],
+                inTheChange: path => path == "/src/Ages.cs"));
+
+        Assert.Contains(
+            "(DEC0011). 1 of the 1 undetected mutant is in a file the change did not touch.",
+            OneLine(writer.ToString()),
             StringComparison.Ordinal);
     }
 

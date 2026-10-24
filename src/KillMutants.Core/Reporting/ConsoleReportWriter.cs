@@ -422,10 +422,22 @@ public static class ConsoleReportWriter
             $"mutated whole rather than file by file{because} (DEC0011).";
 
         // Left out when nothing went undetected: "0 of the 0" would be a sentence about nothing.
-        return report.Undetected == 0
-            ? widened
-            : $"{widened} {Format(report.UndetectedFromWidening)} of the {Format(report.Undetected)} " +
-              "undetected mutant(s) are in files the change did not touch.";
+        if (report.Undetected == 0)
+        {
+            return widened;
+        }
+
+        // Agreed with the total, which is what the sentence is about: "1 of the 1 undetected mutant
+        // is in a file", "1 of the 2 undetected mutants are in files".
+        string where = report.Undetected == 1
+            ? "is in a file the change did not touch"
+            : "are in files the change did not touch";
+
+        string share =
+            $"{Format(report.UndetectedFromWidening)} of the {Format(report.Undetected)} " +
+            Plural(report.Undetected, "undetected mutant");
+
+        return $"{widened} {share} {where}.";
     }
 
     private static bool SameName(string one, string other) =>
