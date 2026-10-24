@@ -40,7 +40,7 @@ public class StoppedRunTests
             fixture.Root, TestContext.Current.CancellationToken, stop.Token);
 
         Assert.False(report.IsComplete);
-        Assert.Equal(18, report.Stopped!.Selected);
+        Assert.Equal(20, report.Stopped!.Selected);
         Assert.Equal(2, report.Total);
         Assert.All(report.Results, result => Assert.Equal(MutantStatus.Killed, result.Status));
         Assert.Equal(["M1", "M2"], report.Results.Select(result => result.Mutant.Id.ToString()));
@@ -62,9 +62,9 @@ public class StoppedRunTests
         using var fixture = FixtureCopy.Create();
         using var stop = new CancellationTokenSource();
 
-        // Eighteen mutant runs, then the re-verifications: the first re-test completes and the
+        // Twenty mutant runs, then the re-verifications: the first re-test completes and the
         // second is the one the stop lands on.
-        var runner = new StopsOnMutantRunner(new XUnitTestRunner(), stop, stopOnMutantRun: 20);
+        var runner = new StopsOnMutantRunner(new XUnitTestRunner(), stop, stopOnMutantRun: 22);
 
         var session = new MutationTestSession(
             runner, "Release", timeoutPolicy: null, workerCount: 1, measureCoverage: false,
@@ -75,7 +75,7 @@ public class StoppedRunTests
 
         Assert.True(report.IsComplete);
         Assert.Null(report.Stopped);
-        Assert.Equal(18, report.Total);
+        Assert.Equal(20, report.Total);
         Assert.False(report.Score.IsUndefined);
         Assert.Equal(1, report.Environment!.KillsReVerified);
     }

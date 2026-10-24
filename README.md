@@ -12,7 +12,7 @@ they miss **survives**.
 Early, but working end to end. Milestone 1 was a deliberately tiny vertical slice — one project
 pair, one mutator, one mutant, executed for real — and every milestone since has widened it on that
 same foundation: multi-project solutions, coverage-driven test selection, mutants tested in
-parallel, console and JSON reports, a `--break-at` quality gate, and a catalogue of eleven mutator
+parallel, console and JSON reports, a `--break-at` quality gate, and a catalogue of twelve mutator
 families. It is now packaged as a `dotnet` tool and has been run against its own source. The intent
 throughout is a foundation that has been shown to work, rather than a large catalog resting on an
 engine that has never run.

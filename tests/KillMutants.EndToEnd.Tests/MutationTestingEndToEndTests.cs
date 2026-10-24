@@ -63,7 +63,8 @@ public class MutationTestingEndToEndTests
         Assert.Equal(
             [
                 "Arithmetic", "Assignment", "Bitwise", "BooleanLiteral", "Comparison", "Conditional",
-                "Increment", "LogicalOperator", "Negation", "NullCoalescing", "StringLiteral",
+                "Increment", "LogicalOperator", "NegatedDecision", "Negation", "NullCoalescing",
+                "StringLiteral",
             ],
             families);
         Assert.All(report.Results, result => Assert.Equal(MutantStatus.Killed, result.Status));
@@ -274,9 +275,10 @@ public class MutationTestingEndToEndTests
             report.Results,
             result => Assert.Equal("Ages.cs", Path.GetFileName(result.Mutant.Location.FilePath)));
 
-        // The mutants come from the hand-written expression: a comparison and a logical operator.
+        // The mutants come from the hand-written expression: a comparison, a logical operator, and
+        // the returned decision negated whole (#18).
         Assert.Equal(
-            ["Comparison", "LogicalOperator"],
+            ["Comparison", "LogicalOperator", "NegatedDecision"],
             report.Results.Select(r => r.Mutant.Mutator.ToString()).Distinct().Order(StringComparer.Ordinal));
     }
 

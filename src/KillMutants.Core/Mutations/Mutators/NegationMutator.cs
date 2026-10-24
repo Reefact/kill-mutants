@@ -6,8 +6,10 @@ namespace KillMutants.Mutations.Mutators;
 
 /// <summary>Removes a logical negation, turning <c>!condition</c> into <c>condition</c>.</summary>
 /// <remarks>
-/// Deleting the operator rather than adding one keeps the mutant readable and avoids the double
-/// negations that an insert-based rule produces.
+/// Deleting the operator keeps the mutant readable and never doubles a negation. Inserting one
+/// where none is written is <see cref="NegatedDecisionMutator"/>, a family of its own so that a
+/// project can keep this cheap one and drop that one: measured on Reefact/slugger (#18), this
+/// family made 44 mutants, the insertion 150 more.
 /// </remarks>
 internal sealed class NegationMutator : IMutator
 {

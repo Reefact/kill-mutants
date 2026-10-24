@@ -106,8 +106,8 @@ la composition. Voir DEC0011 pour ce à quoi sert ce contrat.
 | Résultats | `KillMutants.Reporting` | `MutationTestReport`, écritures console et JSON, progression |
 | CLI | `KillMutants.Cli` | `dotnet killmutants`, seuils et codes de sortie (DEC0009) |
 
-**Le catalogue, à M9.** Onze familles, chacune un `IMutator` distinct, chacune avec ses propres
-tests et chacune exercée de bout en bout contre un vrai projet de fixture.
+**Le catalogue.** Douze familles, chacune un `IMutator` distinct, chacune avec ses propres tests et
+chacune exercée de bout en bout contre un vrai projet de fixture.
 
 | Famille | Réécrit | En |
 |---|---|---|
@@ -122,6 +122,7 @@ tests et chacune exercée de bout en bout contre un vrai projet de fixture.
 | `NullCoalescing` | `a ?? b` | `a`, et `b ?? a` quand `a` se limite à lire une variable, un champ ou une propriété automatique |
 | `BooleanLiteral` | `true` `false` | l'un l'autre |
 | `Negation` | `!x` | `x` |
+| `NegatedDecision` | la condition d'un branchement ou d'une boucle, ou un `bool` renvoyé | la décision niée, sauf s'il s'agit d'une négation, d'une comparaison, d'un littéral ou de la condition d'un ternaire, dont d'autres familles produisent déjà le mutant |
 | `StringLiteral` | `"texte"` | `""`, et `""` en une chaîne non vide |
 
 **Ce qu'il ne mute délibérément pas.** Le catalogue est sélectif et non exhaustif : chaque mutant
@@ -148,8 +149,8 @@ se lierait avant de le proposer : un mutant qui ne compile pas n'est jamais enge
 comportement identique à l'original s'en abstient : `NullCoalescing` ne conserve que l'opérande de
 gauche, jamais celui de droite, et n'échange les deux que si l'opérande de gauche se limite à lire
 une variable, un champ ou une propriété automatique, de sorte qu'aucun effet de bord n'est
-silencieusement supprimé ; et `Conditional` laisse tranquille un ternaire dont les deux branches
-sont la même expression.
+silencieusement supprimé ; `Conditional` laisse tranquille un ternaire dont les deux branches sont la
+même expression ; et `NegatedDecision` ne place jamais de `!` devant un `!` déjà écrit.
 
 **L'instrumentation n'a aucun code propre, et c'est voulu.** Parce que chaque mutant reçoit sa propre
 compilation ([DEC0002](decisions/0002-one-compilation-per-mutant-fr.md)), « instrumenter » un mutant se
@@ -289,7 +290,7 @@ qu'un vrai projet ne l'atteint pas, l'attribution exacte qu'achète une exécuti
 que le temps qu'un schéma plus malin ferait gagner. Voir
 [DEC0007](decisions/0007-measure-coverage-with-a-type-preserving-probe-fr.md).
 
-**Quelles familles valent leur temps, et qui en décide.** Les onze familles ne portent pas un signal
+**Quelles familles valent leur temps, et qui en décide.** Les familles ne portent pas un signal
 équivalent, et exécuter l'outil sur lui-même a mesuré l'écart : `Comparison`, `LogicalOperator` et
 `Arithmetic` détectent 45 % à 55 % des mutants qu'elles produisent, tandis que `StringLiteral` et
 `BooleanLiteral` représentent à elles deux la moitié des mutants engendrés et en détectent 10 % à
