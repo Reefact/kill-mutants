@@ -41,6 +41,8 @@ public class CatalogueCorpusTests
             { "coalesce onto a constant", "string? a", "string M({0}) => a ?? \"x\";" },
             { "chained coalesce", "string? a, string? b, string c", "string M({0}) => a ?? b ?? c;" },
             { "coalesce with nothing on the left", "string? s", "string? M({0}) => null ?? s;" },
+            { "decisions with no negation written", "bool a, bool b, System.Func<bool> f", "bool M({0}) { while (a) { a = f(); } if (a || b) { return f(); } return a && b; }" },
+            { "a negated decision and a lambda's", "bool a, System.Func<bool> f", "object M({0}) => !a ? System.Linq.Enumerable.Where(new[] { 1 }, x => f()) : null!;" },
             { "target-typed conditional", "bool f, int x", "int? M({0}) => f ? x : null;" },
             { "conditional over a common base", "bool f, string s", "object M({0}) => f ? s : (object)1;" },
             { "date plus span, which does have one", "System.DateTime a, System.TimeSpan b", "object M({0}) => a + b;" },

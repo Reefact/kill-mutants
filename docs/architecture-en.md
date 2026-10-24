@@ -95,8 +95,8 @@ what the contract is for.
 | Results | `KillMutants.Reporting` | `MutationTestReport`, console and JSON writers, progress |
 | CLI | `KillMutants.Cli` | `dotnet killmutants`, thresholds and exit codes (DEC0009) |
 
-**The catalogue, as of M9.** Eleven families, each a separate `IMutator`, each with its own tests
-and each exercised end to end against a real fixture project.
+**The catalogue.** Twelve families, each a separate `IMutator`, each with its own tests and each
+exercised end to end against a real fixture project.
 
 | Family | Rewrites | Into |
 |---|---|---|
@@ -111,6 +111,7 @@ and each exercised end to end against a real fixture project.
 | `NullCoalescing` | `a ?? b` | `a`, and `b ?? a` when `a` only reads a variable, a field or an auto-implemented property |
 | `BooleanLiteral` | `true` `false` | each other |
 | `Negation` | `!x` | `x` |
+| `NegatedDecision` | the condition of a branch or a loop, or a returned `bool` | the decision negated, unless it is a negation, a comparison, a literal or a ternary's condition, which other families already make the mutant of |
 | `StringLiteral` | `"text"` | `""`, and `""` into a non-empty string |
 
 **What it deliberately does not mutate.** The catalogue is selective rather than exhaustive: every
@@ -136,8 +137,9 @@ would bind before proposing it, so a mutant that cannot compile is never generat
 ([RB-011](robustness-backlog-en.md)). And each family that could produce a mutant identical in
 behaviour to the original declines to: `NullCoalescing` keeps only the left operand, never the right
 one, and swaps the two only when the left operand only reads a variable, a field or an
-auto-implemented property, so no side effect is silently dropped; and `Conditional` skips a ternary
-whose branches are the same expression.
+auto-implemented property, so no side effect is silently dropped; `Conditional` skips a ternary
+whose branches are the same expression; and `NegatedDecision` never puts a `!` in front of one
+already written.
 
 **Instrumentation has no code of its own, by design.** Because each mutant gets its own compilation
 ([DEC0002](decisions/0002-one-compilation-per-mutant-en.md)), "instrumenting" a mutant is one call to
@@ -268,7 +270,7 @@ watch, and until a real project reaches it the exact attribution one run per tes
 than the time a cleverer scheme would save. See
 [DEC0007](decisions/0007-measure-coverage-with-a-type-preserving-probe-en.md).
 
-**Which families are worth their time, and who decides.** The eleven families do not carry equal
+**Which families are worth their time, and who decides.** The families do not carry equal
 signal, and running the tool on itself measured the gap: `Comparison`, `LogicalOperator` and
 `Arithmetic` detect 45% to 55% of the mutants they produce, while `StringLiteral` and
 `BooleanLiteral` together account for half of all mutants generated and detect 10% to 15% of them —

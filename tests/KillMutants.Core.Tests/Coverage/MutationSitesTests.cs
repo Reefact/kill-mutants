@@ -2,6 +2,7 @@ using KillMutants.Coverage;
 using KillMutants.Mutations;
 using KillMutants.Mutations.Mutators;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace KillMutants.Core.Tests.Coverage;
 
@@ -64,6 +65,11 @@ public class MutationSitesTests
     /// <c>s is "abc"</c> fails with CS9135. Found by reading Stryker.NET, which blocks injection in
     /// the same place, and then measuring. The mutation itself is fine and must survive the rule.
     /// </summary>
+    /// <remarks>
+    /// Asserted of the sites inside the pattern, not of every site in the snippet. The two were
+    /// the same while the literal was the snippet's only site; negating the whole <c>is</c>
+    /// expression (#18) added one outside the pattern, which carries a recorder as it should.
+    /// </remarks>
     [Theory]
     [InlineData("class C { bool M(string s) => s is \"abc\"; }")]
     [InlineData("class C { int M(string s) => s switch { \"abc\" => 1, _ => 0 }; }")]
@@ -72,7 +78,9 @@ public class MutationSitesTests
         MutationSites sites = SitesOf(source);
 
         Assert.NotEmpty(sites.RepresentativeOf);
-        Assert.Empty(sites.IdentifierByNode);
+        Assert.DoesNotContain(
+            sites.IdentifierByNode.Keys,
+            node => node.Ancestors().Any(ancestor => ancestor is PatternSyntax));
         Assert.NotEmpty(sites.Unmeasurable);
     }
 

@@ -89,7 +89,7 @@ public class ConsoleReportWriterTests
 
         string output = Render([.. mutants.Select(m => new MutantResult(m, MutantStatus.Survived))]);
 
-        Assert.Contains("Survived (5)", output, StringComparison.Ordinal);
+        Assert.Contains("Survived (6)", output, StringComparison.Ordinal);
         Assert.Contains("  Ages.cs", output, StringComparison.Ordinal);
         Assert.Contains("[LogicalOperator]", output, StringComparison.Ordinal);
 
@@ -100,7 +100,7 @@ public class ConsoleReportWriterTests
             .Where(line => line.Contains(" -> ", StringComparison.Ordinal))
             .Select(line => line.IndexOf(" -> ", StringComparison.Ordinal))];
 
-        Assert.Equal(5, arrowColumns.Length);
+        Assert.Equal(6, arrowColumns.Length);
         Assert.Single(arrowColumns.Distinct());
     }
 

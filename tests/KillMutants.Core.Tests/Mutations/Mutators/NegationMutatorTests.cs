@@ -29,4 +29,14 @@ public class NegationMutatorTests
         // leaving the space that sat between the operator and its operand.
         Assert.Equal(["a"], MutatorTestBase.MutatedTexts(Mutator, "! a"));
     }
+
+    /// <summary>
+    /// Removal stays this family's whole job: negating a decision that has no <c>!</c> is
+    /// <c>NegatedDecision</c>'s (#18), so that a project can drop one without the other.
+    /// </summary>
+    [Fact]
+    public void A_decision_without_a_negation_is_left_to_its_own_family()
+    {
+        Assert.Empty(MutatorTestBase.MutateAll(Mutator, "bool a", "void M({0}) { if (a) { } }"));
+    }
 }
