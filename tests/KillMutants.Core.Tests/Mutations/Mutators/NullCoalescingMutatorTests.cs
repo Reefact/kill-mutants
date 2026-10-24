@@ -118,6 +118,22 @@ public class NullCoalescingMutatorTests
     }
 
     /// <summary>
+    /// Regression test, found in review. <c>null ?? s</c> and <c>s ?? null</c> both answer
+    /// <c>s</c>, null or not, so the swap would be a mutant no test could kill. Dropping the
+    /// fallback still applies: <c>null</c> alone is a different answer.
+    /// </summary>
+    [Theory]
+    [InlineData("null ?? s", "null")]
+    [InlineData("default(string) ?? s", "default(string)")]
+    public void Nothing_on_the_left_is_not_swapped(string expression, string dropped)
+    {
+        IReadOnlyList<string> mutated = MutatorTestBase.MutatedTexts(
+            Mutator, "string? s", $"string? M({{0}}) => {expression};");
+
+        Assert.Equal([dropped], mutated);
+    }
+
+    /// <summary>
     /// The same expression on both sides swaps into the original, and can never be killed.
     /// </summary>
     [Fact]
