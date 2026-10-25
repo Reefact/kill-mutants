@@ -108,7 +108,7 @@ and each exercised end to end against a real fixture project.
 | `Assignment` | `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `<<=` `>>=` | its counterpart |
 | `Increment` | `++` `--` | each other, prefix and postfix alike |
 | `Conditional` | `c ? a : b` | `c ? b : a` |
-| `NullCoalescing` | `a ?? b` | `a`, and `b ?? a` when `a` only reads a value |
+| `NullCoalescing` | `a ?? b` | `a`, and `b ?? a` when `a` only reads a variable, a field or an auto-implemented property |
 | `BooleanLiteral` | `true` `false` | each other |
 | `Negation` | `!x` | `x` |
 | `StringLiteral` | `"text"` | `""`, and `""` into a non-empty string |
@@ -134,9 +134,10 @@ Three properties hold across all of them. Each replacement is a **new node of th
 a swapped token ([RB-001](robustness-backlog-en.md)). Each asks the compiler whether the replacement
 would bind before proposing it, so a mutant that cannot compile is never generated
 ([RB-011](robustness-backlog-en.md)). And each family that could produce a mutant identical in
-behaviour to the original declines to: `NullCoalescing` keeps only the left operand, never the right,
-and swaps the two only when the left can do nothing but read, so no side effect is silently dropped,
-and `Conditional` skips a ternary whose branches are the same expression.
+behaviour to the original declines to: `NullCoalescing` keeps only the left operand, never the right
+one, and swaps the two only when the left operand only reads a variable, a field or an
+auto-implemented property, so no side effect is silently dropped; and `Conditional` skips a ternary
+whose branches are the same expression.
 
 **Instrumentation has no code of its own, by design.** Because each mutant gets its own compilation
 ([DEC0002](decisions/0002-one-compilation-per-mutant-en.md)), "instrumenting" a mutant is one call to
