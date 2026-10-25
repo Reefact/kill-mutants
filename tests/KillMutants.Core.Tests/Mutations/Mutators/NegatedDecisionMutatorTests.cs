@@ -9,6 +9,9 @@ public class NegatedDecisionMutatorTests
 {
     private static readonly NegatedDecisionMutator Mutator = new();
 
+    private const string ThrownAwayOrHandedBack =
+        "System.Collections.Generic.HashSet<int> s, System.Func<System.Threading.Tasks.Task<bool>> f";
+
     /// <summary>
     /// Regression test (#18). Every decision the code acts on can be negated, not only one that was
     /// written with a <c>!</c>: the condition of each kind of branch and loop.
@@ -32,6 +35,48 @@ public class NegatedDecisionMutatorTests
     {
         Assert.Equal(
             [expected], MutatorTestBase.MutatedTexts(Mutator, "System.Func<bool> f", member));
+    }
+
+    /// <summary>
+    /// Regression test (#31 review). An expression body whose <c>bool</c> is thrown away hands
+    /// back no decision: the member or the lambda returns nothing, and <c>!s.Add(1)</c> is not a
+    /// statement C# accepts.
+    /// </summary>
+    [Theory]
+    [InlineData("void M({0}) => s.Add(1);")]
+    [InlineData("System.Action M({0}) => () => s.Add(1);")]
+    [InlineData("async System.Threading.Tasks.Task M({0}) => await f();")]
+    public void A_bool_an_expression_body_throws_away_is_left_alone(string member)
+    {
+        Assert.Empty(MutatorTestBase.MutateAll(Mutator, ThrownAwayOrHandedBack, member));
+    }
+
+    /// <summary>
+    /// The same three shapes, where the value is handed back, are decisions - which is what fails
+    /// if telling a returned body from a discarded one starts refusing both.
+    /// </summary>
+    [Theory]
+    [InlineData("bool M({0}) => s.Add(1);", "!s.Add(1)")]
+    [InlineData("System.Func<bool> M({0}) => () => s.Add(1);", "!s.Add(1)")]
+    [InlineData("async System.Threading.Tasks.Task<bool> M({0}) => await f();", "!(await f())")]
+    public void The_same_bool_handed_back_is_negated(string member, string expected)
+    {
+        Assert.Equal(
+            [expected], MutatorTestBase.MutatedTexts(Mutator, ThrownAwayOrHandedBack, member));
+    }
+
+    /// <summary>
+    /// Regression test (#31 review). A constant is settled when the code is compiled, and the
+    /// compiler reads it to decide what is reachable: these loops end only by a <c>return</c>, so
+    /// the methods need none after them. Negating the condition - or merely recording that it was
+    /// reached, which turns it into a call - makes that end reachable, and the build fails.
+    /// </summary>
+    [Theory]
+    [InlineData("int M({0}) { const bool Forever = true; while (Forever) { if (a == 1) { return a; } } }")]
+    [InlineData("int M({0}) { const bool On = true, Ready = true; while (On && Ready) { if (a == 1) { return a; } } }")]
+    public void A_constant_decision_is_left_alone(string member)
+    {
+        Assert.Empty(MutatorTestBase.MutateAll(Mutator, "int a", member));
     }
 
     /// <summary>

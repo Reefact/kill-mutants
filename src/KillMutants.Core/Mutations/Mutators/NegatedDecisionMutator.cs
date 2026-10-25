@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace KillMutants.Mutations.Mutators;
 
@@ -35,9 +36,10 @@ internal sealed class NegatedDecisionMutator : IMutator
         ArgumentNullException.ThrowIfNull(semanticModel);
 
         if (node is ExpressionSyntax decision &&
-            IsADecision(decision) &&
+            IsADecision(decision, semanticModel) &&
             AsksSomethingNoOtherFamilyAsks(decision) &&
-            IsBoolean(decision, semanticModel))
+            IsBoolean(decision, semanticModel) &&
+            IsDecidedAtRunTime(decision, semanticModel))
         {
             yield return new MutationCandidate(Name, decision, Negated(decision));
         }
@@ -52,17 +54,35 @@ internal sealed class NegatedDecisionMutator : IMutator
     /// <c>!c ? a : b</c>, which is <c>c ? b : a</c> - the branch swap the <c>Conditional</c> family
     /// already makes, so negating it would judge the same mutant twice under two names.
     /// </remarks>
-    private static bool IsADecision(ExpressionSyntax expression) => expression.Parent switch
-    {
-        IfStatementSyntax branch => branch.Condition == expression,
-        WhileStatementSyntax loop => loop.Condition == expression,
-        DoStatementSyntax loop => loop.Condition == expression,
-        ForStatementSyntax loop => loop.Condition == expression,
-        ReturnStatementSyntax returned => returned.Expression == expression,
-        ArrowExpressionClauseSyntax body => body.Expression == expression,
-        LambdaExpressionSyntax lambda => lambda.Body == expression,
-        _ => false,
-    };
+    private static bool IsADecision(ExpressionSyntax expression, SemanticModel semanticModel) =>
+        expression.Parent switch
+        {
+            IfStatementSyntax branch => branch.Condition == expression,
+            WhileStatementSyntax loop => loop.Condition == expression,
+            DoStatementSyntax loop => loop.Condition == expression,
+            ForStatementSyntax loop => loop.Condition == expression,
+            ReturnStatementSyntax returned => returned.Expression == expression,
+            ArrowExpressionClauseSyntax body =>
+                body.Expression == expression && IsHandedBack(expression, semanticModel),
+            LambdaExpressionSyntax lambda =>
+                lambda.Body == expression && IsHandedBack(expression, semanticModel),
+            _ => false,
+        };
+
+    /// <summary>
+    /// True when the value of an expression body is returned rather than thrown away.
+    /// </summary>
+    /// <remarks>
+    /// <c>void Register(string name) =&gt; names.Add(name);</c> reads exactly like a member that
+    /// returns the <c>bool</c>, but the call is a statement and its result is dropped, so there is
+    /// no decision to negate - and <c>!names.Add(name)</c> is not a statement C# accepts. The
+    /// compiler's own reading of the body is asked rather than the member's declared type, because
+    /// the same thing happens in an <c>Action</c> lambda and in an <c>async Task</c> member whose
+    /// awaited <c>bool</c> is never handed back, and the operation tree tells all three apart from
+    /// a real return without a rule for each.
+    /// </remarks>
+    private static bool IsHandedBack(ExpressionSyntax body, SemanticModel semanticModel) =>
+        semanticModel.GetOperation(body)?.Parent is IReturnOperation;
 
     /// <summary>
     /// True unless negating the expression would repeat a mutant another family already makes.
@@ -110,6 +130,26 @@ internal sealed class NegatedDecisionMutator : IMutator
         return type.Type?.SpecialType == SpecialType.System_Boolean &&
                type.ConvertedType?.SpecialType == SpecialType.System_Boolean;
     }
+
+    /// <summary>
+    /// True unless the compiler already knows the answer, as it does for a constant.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The compiler reads a constant condition to decide which code is reachable.
+    /// <c>while (Forever)</c> over <c>const bool Forever = true</c> tells it the loop only ends by
+    /// a <c>return</c>, so the method needs none after it. Negating the condition makes that end
+    /// reachable, and the mutant does not compile.
+    /// </para>
+    /// <para>
+    /// Worse, merely recording that the site was reached breaks the build too: the probe turns the
+    /// condition into a call, the instrumented build fails the same way, and a run whose coverage
+    /// cannot be measured stops before a single mutant is tested. Nothing here is decided at run
+    /// time anyway: the branch was settled when the code was compiled.
+    /// </para>
+    /// </remarks>
+    private static bool IsDecidedAtRunTime(ExpressionSyntax expression, SemanticModel semanticModel) =>
+        !semanticModel.GetConstantValue(expression).HasValue;
 
     /// <summary>
     /// The decision with a <c>!</c> in front, as a new node of that kind - the RB-001 rule - and in
