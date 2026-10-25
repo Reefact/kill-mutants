@@ -111,7 +111,7 @@ exercised end to end against a real fixture project.
 | `NullCoalescing` | `a ?? b` | `a`, and `b ?? a` when `a` only reads a variable, a field or an auto-implemented property |
 | `BooleanLiteral` | `true` `false` | each other |
 | `Negation` | `!x` | `x` |
-| `NegatedDecision` | the condition of a branch or a loop, or a returned `bool` | the decision negated, unless it is a negation, a comparison, a literal or a ternary's condition, which other families already make the mutant of |
+| `NegatedDecision` | the condition of a branch or a loop, or a returned `bool`, when it is not a constant | the decision negated, unless it is a negation, a comparison, a literal or a ternary's condition, which other families already make the mutant of |
 | `StringLiteral` | `"text"` | `""`, and `""` into a non-empty string |
 
 **What it deliberately does not mutate.** The catalogue is selective rather than exhaustive: every

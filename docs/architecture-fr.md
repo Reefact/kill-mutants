@@ -122,7 +122,7 @@ chacune exercée de bout en bout contre un vrai projet de fixture.
 | `NullCoalescing` | `a ?? b` | `a`, et `b ?? a` quand `a` se limite à lire une variable, un champ ou une propriété automatique |
 | `BooleanLiteral` | `true` `false` | l'un l'autre |
 | `Negation` | `!x` | `x` |
-| `NegatedDecision` | la condition d'un branchement ou d'une boucle, ou un `bool` renvoyé | la décision niée, sauf s'il s'agit d'une négation, d'une comparaison, d'un littéral ou de la condition d'un ternaire, dont d'autres familles produisent déjà le mutant |
+| `NegatedDecision` | la condition d'un branchement ou d'une boucle, ou un `bool` renvoyé, quand ce n'est pas une constante | la décision niée, sauf s'il s'agit d'une négation, d'une comparaison, d'un littéral ou de la condition d'un ternaire, dont d'autres familles produisent déjà le mutant |
 | `StringLiteral` | `"texte"` | `""`, et `""` en une chaîne non vide |
 
 **Ce qu'il ne mute délibérément pas.** Le catalogue est sélectif et non exhaustif : chaque mutant

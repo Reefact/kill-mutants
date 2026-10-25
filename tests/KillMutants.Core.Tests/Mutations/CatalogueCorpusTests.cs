@@ -43,6 +43,7 @@ public class CatalogueCorpusTests
             { "coalesce with nothing on the left", "string? s", "string? M({0}) => null ?? s;" },
             { "decisions with no negation written", "bool a, bool b, System.Func<bool> f", "bool M({0}) { while (a) { a = f(); } if (a || b) { return f(); } return a && b; }" },
             { "a negated decision and a lambda's", "bool a, System.Func<bool> f", "object M({0}) => !a ? System.Linq.Enumerable.Where(new[] { 1 }, x => f()) : null!;" },
+            { "an awaited decision handed back", "System.Func<System.Threading.Tasks.Task<bool>> f", "async System.Threading.Tasks.Task<bool> M({0}) => await f();" },
             { "target-typed conditional", "bool f, int x", "int? M({0}) => f ? x : null;" },
             { "conditional over a common base", "bool f, string s", "object M({0}) => f ? s : (object)1;" },
             { "date plus span, which does have one", "System.DateTime a, System.TimeSpan b", "object M({0}) => a + b;" },
@@ -86,6 +87,15 @@ public class CatalogueCorpusTests
 
             // The ternary declares `first`, and swapping its branches would orphan it (RB-016).
             { "a conditional over a list pattern", "int[] xs", "int M({0}) => xs is [var first, ..] ? first : xs[^1];" },
+
+            // The bool is thrown away: there is no decision, and `!s.Add(1)` is no statement.
+            { "a void member that drops a bool", "System.Collections.Generic.HashSet<int> s", "void M({0}) => s.Add(1);" },
+            { "an action lambda that drops a bool", "System.Collections.Generic.HashSet<int> s", "System.Action M({0}) => () => s.Add(1);" },
+            { "an async member that drops an awaited bool", "System.Func<System.Threading.Tasks.Task<bool>> f", "async System.Threading.Tasks.Task M({0}) => await f();" },
+
+            // A constant condition settles reachability: the method needs no return after a loop
+            // that only ends by one, and negating or instrumenting the condition breaks that.
+            { "a loop on a named constant", "System.Func<int> f", "int M({0}) { const bool Forever = true; while (Forever) { f(); } }" },
 
             // Numeric literals are not in the catalogue, so a case label offers nothing to mutate.
             { "a switch case label", "int a", "int M({0}) { switch (a) { case 3: return 1; default: return 0; } }" },
