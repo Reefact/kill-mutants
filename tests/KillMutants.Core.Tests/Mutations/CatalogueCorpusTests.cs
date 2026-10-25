@@ -37,7 +37,7 @@ public class CatalogueCorpusTests
             { "coalesce widening to object", "string a, object b", "object M({0}) => a ?? b;" },
             { "coalesce with side effects", "string? a", "string M({0}) => a ?? System.Guid.NewGuid().ToString();" },
             { "coalesce of two nullable values", "int? a, int? b", "int? M({0}) => a ?? b;" },
-            { "coalesce of two settings, as an option chain reads", "System.Tuple<string?> a, System.Tuple<string?> b", "string? M({0}) => a.Item1 ?? b.Item1;" },
+            { "coalesce of two settings, as an option chain reads", "Settings a, Settings b", "record Settings(string? Value); public string? M({0}) => a.Value ?? b.Value;" },
             { "coalesce onto a constant", "string? a", "string M({0}) => a ?? \"x\";" },
             { "chained coalesce", "string? a, string? b, string c", "string M({0}) => a ?? b ?? c;" },
             { "coalesce with nothing on the left", "string? s", "string? M({0}) => null ?? s;" },

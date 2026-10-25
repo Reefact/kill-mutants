@@ -119,7 +119,7 @@ tests et chacune exercée de bout en bout contre un vrai projet de fixture.
 | `Assignment` | `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `<<=` `>>=` | son homologue |
 | `Increment` | `++` `--` | l'un l'autre, en préfixe comme en suffixe |
 | `Conditional` | `c ? a : b` | `c ? b : a` |
-| `NullCoalescing` | `a ?? b` | `a`, et `b ?? a` quand `a` ne fait que lire une valeur |
+| `NullCoalescing` | `a ?? b` | `a`, et `b ?? a` quand `a` se limite à lire une variable, un champ ou une propriété automatique |
 | `BooleanLiteral` | `true` `false` | l'un l'autre |
 | `Negation` | `!x` | `x` |
 | `StringLiteral` | `"texte"` | `""`, et `""` en une chaîne non vide |
@@ -145,10 +145,11 @@ Trois propriétés valent pour toutes. Chaque remplacement est un **nouveau nœu
 jeton échangé ([RB-001](robustness-backlog-fr.md)). Chacune demande au compilateur si le remplacement
 se lierait avant de le proposer : un mutant qui ne compile pas n'est jamais engendré
 ([RB-011](robustness-backlog-fr.md)). Et chaque famille qui pourrait produire un mutant au
-comportement identique à l'original s'en abstient : `NullCoalescing` ne garde que l'opérande gauche,
-jamais le droit, et n'échange les deux que si le gauche ne fait que lire, de sorte qu'aucun effet
-de bord n'est silencieusement supprimé, et `Conditional` laisse tranquille un ternaire dont les deux
-branches sont la même expression.
+comportement identique à l'original s'en abstient : `NullCoalescing` ne conserve que l'opérande de
+gauche, jamais celui de droite, et n'échange les deux que si l'opérande de gauche se limite à lire
+une variable, un champ ou une propriété automatique, de sorte qu'aucun effet de bord n'est
+silencieusement supprimé ; et `Conditional` laisse tranquille un ternaire dont les deux branches
+sont la même expression.
 
 **L'instrumentation n'a aucun code propre, et c'est voulu.** Parce que chaque mutant reçoit sa propre
 compilation ([DEC0002](decisions/0002-one-compilation-per-mutant-fr.md)), « instrumenter » un mutant se

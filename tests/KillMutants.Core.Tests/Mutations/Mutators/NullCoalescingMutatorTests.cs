@@ -63,10 +63,67 @@ public class NullCoalescingMutatorTests
     {
         IReadOnlyList<string> mutated = MutatorTestBase.MutatedTexts(
             Mutator,
-            "System.Tuple<string?> commandLine, System.Tuple<string?> saved",
-            "string? M({0}) => commandLine.Item1 ?? saved.Item1;");
+            "Settings commandLine, Settings saved",
+            "record Settings(string? Separator); " +
+            "public string? M({0}) => commandLine.Separator ?? saved.Separator;");
 
-        Assert.Equal(["commandLine.Item1", "saved.Item1 ?? commandLine.Item1"], mutated);
+        Assert.Equal(
+            ["commandLine.Separator", "saved.Separator ?? commandLine.Separator"], mutated);
+    }
+
+    /// <summary>
+    /// Regression test, found in review. A getter is code: this one counts its reads, and
+    /// <c>fallback ?? reader.Next</c> would skip it whenever the fallback is set, so the swap could
+    /// be killed by the read it dropped rather than by the precedence it asks about.
+    /// </summary>
+    [Fact]
+    public void A_property_whose_getter_runs_code_is_not_swapped()
+    {
+        IReadOnlyList<string> mutated = MutatorTestBase.MutatedTexts(
+            Mutator,
+            "Reader reader, string fallback",
+            "class Reader { int _reads; public string? Next { get { _reads++; return null; } } } " +
+            "public string M({0}) => reader.Next ?? fallback;");
+
+        Assert.Equal(["reader.Next"], mutated);
+    }
+
+    /// <summary>
+    /// What the compiler stores itself reads without running anything: a property it implements as
+    /// a field, and a field.
+    /// </summary>
+    [Theory]
+    [InlineData("class Holder { public string? Value { get; init; } }")]
+    [InlineData("class Holder { public static int Unused; public string? Value; }")]
+    public void A_value_the_compiler_stores_is_swapped(string holder)
+    {
+        IReadOnlyList<string> mutated = MutatorTestBase.MutatedTexts(
+            Mutator,
+            "Holder a, Holder b",
+            holder + " public string? M({0}) => a.Value ?? b.Value;");
+
+        Assert.Equal(["a.Value", "b.Value ?? a.Value"], mutated);
+    }
+
+    /// <summary>
+    /// A property whose getter cannot be read from here, or can be replaced, may run anything: one
+    /// with an expression body, a virtual one whose override is elsewhere, and one from another
+    /// assembly.
+    /// </summary>
+    [Theory]
+    [InlineData("class Holder { public string? Value => null; }", "Holder")]
+    [InlineData("class Holder { public virtual string? Value { get; init; } }", "Holder")]
+    [InlineData("", "System.Tuple<string?>")]
+    public void A_property_that_may_run_code_is_not_swapped(string holder, string type)
+    {
+        string read = type == "Holder" ? "Value" : "Item1";
+
+        IReadOnlyList<string> mutated = MutatorTestBase.MutatedTexts(
+            Mutator,
+            $"{type} a, {type} b",
+            $"{holder} public string? M({{0}}) => a.{read} ?? b.{read};");
+
+        Assert.Equal([$"a.{read}"], mutated);
     }
 
     [Fact]

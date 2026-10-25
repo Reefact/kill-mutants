@@ -49,7 +49,7 @@ internal sealed class NullCoalescingMutator : IMutator
                 Name, coalesce, coalesce.Left.WithTriviaFrom(coalesce));
         }
 
-        if (!CanBeSwapped(coalesce))
+        if (!CanBeSwapped(coalesce, semanticModel))
         {
             yield break;
         }
@@ -88,8 +88,8 @@ internal sealed class NullCoalescingMutator : IMutator
     /// The left operand has to be one that can do nothing but read. <c>b ?? a</c> evaluates
     /// <c>a</c> only when <c>b</c> is null, so swapping <c>Advance() ?? fallback</c> would skip the
     /// call whenever the fallback is set - the side effect the first mutation refuses to drop,
-    /// dropped by the second. A property is taken at its word as a read; a call, an index or an
-    /// assignment is not.
+    /// dropped by the second. A call, an index or an assignment is therefore refused, and so is
+    /// any property whose getter is code: see <see cref="OnlyReads"/>.
     /// </para>
     /// <para>
     /// Three right operands are refused for what they would make of the mutant. The same expression
@@ -106,8 +106,10 @@ internal sealed class NullCoalescingMutator : IMutator
     /// emitted programs cannot see it and the rule has to.
     /// </para>
     /// </remarks>
-    private static bool CanBeSwapped(BinaryExpressionSyntax coalesce) =>
-        OnlyReads(coalesce.Left) &&
+    private static bool CanBeSwapped(
+        BinaryExpressionSyntax coalesce,
+        SemanticModel semanticModel) =>
+        OnlyReads(coalesce.Left, semanticModel) &&
         !IsNothing(coalesce.Left) &&
         !IsNothing(coalesce.Right) &&
         !coalesce.Right.IsKind(SyntaxKind.CoalesceExpression) &&
@@ -120,16 +122,70 @@ internal sealed class NullCoalescingMutator : IMutator
         operand.IsKind(SyntaxKind.DefaultLiteralExpression) ||
         operand.IsKind(SyntaxKind.DefaultExpression);
 
-    /// <summary>True when evaluating the expression can only read a value.</summary>
-    private static bool OnlyReads(ExpressionSyntax expression) => expression switch
+    /// <summary>True when evaluating the expression can only read a value already stored.</summary>
+    /// <remarks>
+    /// Review found the hole in taking a property at its word: a getter is code, and can count,
+    /// consume or load whatever it returns, so <c>obj.Property ?? fallback</c> swapped would skip
+    /// that code whenever the fallback is set. What is accepted is only what the compiler itself
+    /// stores - a local, a parameter, a field, and a property the compiler implements as one - each
+    /// link of a member access included.
+    /// </remarks>
+    private static bool OnlyReads(ExpressionSyntax expression, SemanticModel semanticModel) =>
+        expression switch
+        {
+            ThisExpressionSyntax or LiteralExpressionSyntax => true,
+            IdentifierNameSyntax name => IsStored(semanticModel.GetSymbolInfo(name).Symbol),
+            MemberAccessExpressionSyntax member
+                when member.IsKind(SyntaxKind.SimpleMemberAccessExpression) =>
+                IsStored(semanticModel.GetSymbolInfo(member).Symbol) &&
+                OnlyReads(member.Expression, semanticModel),
+            ParenthesizedExpressionSyntax parenthesized =>
+                OnlyReads(parenthesized.Expression, semanticModel),
+            _ => false,
+        };
+
+    /// <summary>True when reading the symbol runs no code.</summary>
+    /// <remarks>
+    /// A type or a namespace only appears as the receiver of a static member, and evaluates
+    /// nothing at all.
+    /// </remarks>
+    private static bool IsStored(ISymbol? symbol) => symbol switch
     {
-        IdentifierNameSyntax or ThisExpressionSyntax or LiteralExpressionSyntax => true,
-        MemberAccessExpressionSyntax member
-            when member.IsKind(SyntaxKind.SimpleMemberAccessExpression) =>
-            OnlyReads(member.Expression),
-        ParenthesizedExpressionSyntax parenthesized => OnlyReads(parenthesized.Expression),
+        ILocalSymbol or IParameterSymbol or IFieldSymbol or INamespaceOrTypeSymbol => true,
+        IPropertySymbol property => IsImplementedByTheCompiler(property),
         _ => false,
     };
+
+    /// <summary>
+    /// True for a property the compiler implements as a field: declared in this compilation with no
+    /// accessor body, and nothing able to put code behind it.
+    /// </summary>
+    /// <remarks>
+    /// <c>{ get; init; }</c> and a record's positional parameter qualify; a getter with a body, an
+    /// expression body or the <c>field</c> keyword does not. Neither does a property that is
+    /// virtual, abstract, an override or partial, since another declaration decides what its
+    /// getter runs - nor one from another assembly, whose declaration cannot be read here at all.
+    /// </remarks>
+    private static bool IsImplementedByTheCompiler(IPropertySymbol property)
+    {
+        if (property.IsAbstract || property.IsVirtual || property.IsOverride || property.IsExtern ||
+            property.IsPartialDefinition || property.PartialDefinitionPart is not null ||
+            property.DeclaringSyntaxReferences.IsEmpty)
+        {
+            return false;
+        }
+
+        return property.DeclaringSyntaxReferences.All(reference => reference.GetSyntax() switch
+        {
+            PropertyDeclarationSyntax declared =>
+                declared.ExpressionBody is null &&
+                declared.AccessorList is { } accessors &&
+                accessors.Accessors.All(accessor =>
+                    accessor.Body is null && accessor.ExpressionBody is null),
+            ParameterSyntax => true,
+            _ => false,
+        });
+    }
 
     /// <summary>
     /// The two operands exchanged, as a new coalesce node - the RB-001 rule, for a family that
