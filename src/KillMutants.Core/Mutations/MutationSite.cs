@@ -91,6 +91,67 @@ internal static class MutationSite
     }
 
     /// <summary>
+    /// True when the expression assigns a variable on some of its paths only, which makes replacing
+    /// it unsafe for the same reason as a declaration.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// RB-016's rule looks for a declaration, and a variable declared on a line of its own escapes
+    /// it: <c>int y; if (s != null &amp;&amp; int.TryParse(s, out y)) { return y; }</c> declares
+    /// nothing in the condition, yet <c>y</c> is assigned only when the condition is true. Turning
+    /// the <c>&amp;&amp;</c> into an <c>||</c>, or negating the condition, leaves <c>y</c> unassigned
+    /// where it is used; wrapping the condition in the probe loses "assigned when true" the same
+    /// way, the instrumented build fails with CS0165, and the run stops before a single mutant is
+    /// tested - RB-030.
+    /// </para>
+    /// <para>
+    /// Only the parts C# may skip count: the right operand of <c>&amp;&amp;</c>, <c>||</c> or
+    /// <c>??</c>, a branch of a ternary, what follows a <c>?.</c>, and a <c>switch</c> arm. An
+    /// <c>out</c> in a left operand runs every time, so <c>int.TryParse(s, out y) &amp;&amp; a</c>
+    /// is still mutated, and so is a comparison that holds an assignment without skipping it.
+    /// </para>
+    /// </remarks>
+    public static bool AssignsOnSomePathsOnly(SyntaxNode node)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+
+        return node.DescendantNodesAndSelf().Any(inner => IsAnAssignment(inner) && MayBeSkipped(inner, node));
+    }
+
+    private static bool IsAnAssignment(SyntaxNode node) =>
+        node is AssignmentExpressionSyntax ||
+        (node is ArgumentSyntax argument && argument.RefKindKeyword.IsKind(SyntaxKind.OutKeyword));
+
+    /// <summary>
+    /// True when, between <paramref name="assignment"/> and <paramref name="within"/>, it sits in a
+    /// part of an expression C# evaluates only on some paths.
+    /// </summary>
+    private static bool MayBeSkipped(SyntaxNode assignment, SyntaxNode within)
+    {
+        for (SyntaxNode current = assignment; current != within && current.Parent is not null; current = current.Parent)
+        {
+            bool skippable = current.Parent switch
+            {
+                BinaryExpressionSyntax binary => binary.Right == current &&
+                                                 (binary.IsKind(SyntaxKind.LogicalAndExpression) ||
+                                                  binary.IsKind(SyntaxKind.LogicalOrExpression) ||
+                                                  binary.IsKind(SyntaxKind.CoalesceExpression)),
+                ConditionalExpressionSyntax ternary => ternary.Condition != current,
+                ConditionalAccessExpressionSyntax access => access.WhenNotNull == current,
+                SwitchExpressionArmSyntax => true,
+                _ => false,
+            };
+
+            if (skippable)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// True when the developer has marked this code as not measured, with
     /// <c>[ExcludeFromCodeCoverage]</c>.
     /// </summary>
