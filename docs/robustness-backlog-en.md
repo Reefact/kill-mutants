@@ -1100,10 +1100,12 @@ after it.
 **How it was found.** Probing the neighbours of RB-029. `if (s != null && int.TryParse(s, out y))`,
 with `int y;` declared on a line of its own, broke the instrumented build on `main`.
 
-**What happens.** It is RB-016's failure exactly. `y` is assigned only when the condition is true,
-because `&&` skips its right operand otherwise. Turning the `&&` into an `||`, or negating the
-condition, leaves `y` unassigned where it is read: `CS0165`, a compile error. Wrapping the condition
-in the probe loses "assigned when true" the same way, the instrumented build fails, and the run
+**What happens.** It is RB-016's failure exactly. `y` is assigned only when the left operand is
+true, because otherwise `&&` skips its right operand; `TryParse` assigns it even when parsing fails.
+So the compiler knows `y` is assigned whenever the whole condition is true, which is all the
+`return y` needs. Turning the `&&` into an `||`, or negating the condition, breaks that: `y` is read
+where it may be unassigned, `CS0165`, a compile error. Wrapping the condition in the probe loses
+what the compiler knew about the true case the same way, the instrumented build fails, and the run
 stops before a single mutant is tested. RB-016's rule did not see it because it looks for a
 declaration, and there is none in the condition: the variable was declared earlier. An assignment,
 `a && (y = f()) > 0`, does the same.
