@@ -61,8 +61,9 @@ public class MutationSiteTests
 
     /// <summary>
     /// Regression test (RB-030). A variable declared on a line of its own escapes RB-016's rule, yet
-    /// an <c>out</c> behind <c>&amp;&amp;</c> assigns it only when the condition is true: every
-    /// mutation of the condition, and the probe around it, leaves it unassigned where it is read.
+    /// an <c>out</c> behind <c>&amp;&amp;</c> assigns it only when the left operand is true. The
+    /// whole condition being true is what guarantees it is assigned where it is read, and every
+    /// mutation of the condition, and the probe around it, takes that guarantee away.
     /// </summary>
     [Theory]
     [InlineData("class C { int M(string? s) { int y; if (s != null && int.TryParse(s, out y)) { return y; } return 0; } }",

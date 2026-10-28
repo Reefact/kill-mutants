@@ -98,11 +98,13 @@ internal static class MutationSite
     /// <para>
     /// RB-016's rule looks for a declaration, and a variable declared on a line of its own escapes
     /// it: <c>int y; if (s != null &amp;&amp; int.TryParse(s, out y)) { return y; }</c> declares
-    /// nothing in the condition, yet <c>y</c> is assigned only when the condition is true. Turning
-    /// the <c>&amp;&amp;</c> into an <c>||</c>, or negating the condition, leaves <c>y</c> unassigned
-    /// where it is used; wrapping the condition in the probe loses "assigned when true" the same
-    /// way, the instrumented build fails with CS0165, and the run stops before a single mutant is
-    /// tested - RB-030.
+    /// nothing in the condition, yet <c>y</c> is assigned only when the left operand is true,
+    /// because otherwise <c>&amp;&amp;</c> skips its right operand. The compiler therefore knows
+    /// <c>y</c> is assigned whenever the whole condition is true, and the <c>return y</c> relies on
+    /// it. Turning the <c>&amp;&amp;</c> into an <c>||</c>, or negating the condition, reads
+    /// <c>y</c> where it may be unassigned; wrapping the condition in the probe loses what the
+    /// compiler knew about the true case the same way, the instrumented build fails with CS0165,
+    /// and the run stops before a single mutant is tested - RB-030.
     /// </para>
     /// <para>
     /// Only the parts C# may skip count: the right operand of <c>&amp;&amp;</c>, <c>||</c> or

@@ -1189,13 +1189,16 @@ constante opérande de `||`. Chacune cassait le build instrumenté avant la règ
 `if (s != null && int.TryParse(s, out y))`, avec `int y;` déclaré sur une ligne à part, cassait le
 build instrumenté sur `main`.
 
-**Ce qui se passe.** C'est exactement l'échec de RB-016. `y` n'est affecté que si la condition est
-vraie, puisque `&&` n'évalue pas son opérande droit sinon. Transformer le `&&` en `||`, ou nier la
-condition, laisse `y` non affecté là où on le lit : `CS0165`, une erreur de compilation. Envelopper
-la condition dans la sonde perd de la même façon le « affecté si vrai » : le build instrumenté
-échoue, et le run s'arrête avant d'avoir testé un seul mutant. La règle de RB-016 ne le voyait pas,
-car elle cherche une déclaration, et la condition n'en contient aucune : la variable a été déclarée
-plus haut. Une affectation, `a && (y = f()) > 0`, produit le même effet.
+**Ce qui se passe.** C'est exactement l'échec de RB-016. `y` n'est affecté que si l'opérande gauche
+est vrai, puisque sinon `&&` n'évalue pas son opérande droit ; `TryParse` l'affecte même quand
+l'analyse échoue. Le compilateur sait donc que `y` est affecté chaque fois que la condition entière
+est vraie, et c'est tout ce dont le `return y` a besoin. Transformer le `&&` en `||`, ou nier la
+condition, casse cela : `y` est lu là où il peut ne pas être affecté, `CS0165`, une erreur de
+compilation. Envelopper la condition dans la sonde perd de la même façon ce que le compilateur
+savait du cas vrai : le build instrumenté échoue, et le run s'arrête avant d'avoir testé un seul
+mutant. La règle de RB-016 ne le voyait pas, car elle cherche une déclaration, et la condition n'en
+contient aucune : la variable a été déclarée plus haut. Une affectation, `a && (y = f()) > 0`,
+produit le même effet.
 
 **Pourquoi c'est important.** `int value; if (... && int.TryParse(text, out value))`, c'est ainsi
 qu'on écrivait le C# avant `out var`, et un outil de mutation est précisément pointé sur du code de
