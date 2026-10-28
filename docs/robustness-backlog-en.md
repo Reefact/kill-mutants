@@ -1093,3 +1093,38 @@ counterweight `A_constant_the_compiler_does_not_read_still_carries_one`, and the
 `ReadThroughAConstant`: eleven shapes, from a `while (true)` that only ends by a `return` to a
 constant operand of `||`. Each of them broke the instrumented build before the rule, and builds
 after it.
+
+
+## RB-030 — A variable assigned behind a short-circuit is RB-016 without the declaration · COVERED
+
+**How it was found.** Probing the neighbours of RB-029. `if (s != null && int.TryParse(s, out y))`,
+with `int y;` declared on a line of its own, broke the instrumented build on `main`.
+
+**What happens.** It is RB-016's failure exactly. `y` is assigned only when the condition is true,
+because `&&` skips its right operand otherwise. Turning the `&&` into an `||`, or negating the
+condition, leaves `y` unassigned where it is read: `CS0165`, a compile error. Wrapping the condition
+in the probe loses "assigned when true" the same way, the instrumented build fails, and the run
+stops before a single mutant is tested. RB-016's rule did not see it because it looks for a
+declaration, and there is none in the condition: the variable was declared earlier. An assignment,
+`a && (y = f()) > 0`, does the same.
+
+**Why it matters.** `int value; if (... && int.TryParse(text, out value))` is how C# was written
+before `out var`, and code of that age is exactly what a mutation tool is pointed at.
+
+**The rule.** An expression that assigns a variable in a part C# may skip is not mutated, and so,
+as in RB-016, never instrumented. The parts that may be skipped are the right operand of `&&`, `||`
+or `??`, a branch of a ternary, what follows a `?.`, and a `switch` arm. An assignment is an `out`
+argument or an assignment expression. A part that always runs does not count: in
+`int.TryParse(s, out y) && a` the `out` is in the left operand, `y` is assigned on every path, and
+the `&&` is still mutated. Nor do the operands themselves: `s != null` is still mutated beside the
+`TryParse`, since neither assigns anything it may skip.
+
+**What it costs.** The mutants of a condition that assigns behind a short-circuit: its `&&` swap and
+its negation. The comparisons and calls inside it are kept.
+
+**Our tests.** `MutationSiteTests.An_expression_that_assigns_on_some_paths_only_is_not_mutated`,
+which also asserts that the operands beside it are still mutated, and its counterweight
+`An_expression_that_assigns_on_every_path_is_still_mutated`. The corpus holds five shapes: an `out`
+behind `&&` and behind `||`, an assignment behind `&&`, an `out` in a ternary's condition, and an
+`out` read on every path. The first three broke both the mutants and the instrumented build before
+the rule, and every one of them now compiles both ways.

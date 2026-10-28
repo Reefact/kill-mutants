@@ -87,6 +87,7 @@ internal sealed class MutantGenerator
                 // measured.
                 if (!MutationSite.IsObservable(node) ||
                     MutationSite.DeclaresAVariable(node) ||
+                    MutationSite.AssignsOnSomePathsOnly(node) ||
                     MutationSite.IsExcludedFromCoverage(node, semanticModel))
                 {
                     continue;

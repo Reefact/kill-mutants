@@ -59,6 +59,38 @@ public class MutationSiteTests
         Assert.Contains(mutants, mutant => mutant.OriginalText == stillMutated);
     }
 
+    /// <summary>
+    /// Regression test (RB-030). A variable declared on a line of its own escapes RB-016's rule, yet
+    /// an <c>out</c> behind <c>&amp;&amp;</c> assigns it only when the condition is true: every
+    /// mutation of the condition, and the probe around it, leaves it unassigned where it is read.
+    /// </summary>
+    [Theory]
+    [InlineData("class C { int M(string? s) { int y; if (s != null && int.TryParse(s, out y)) { return y; } return 0; } }",
+                "s != null")]
+    [InlineData("class C { int M(bool a, System.Func<int> f) { int y; if (a && (y = f()) > 0) { return y; } return 0; } }",
+                "(y = f()) > 0")]
+    public void An_expression_that_assigns_on_some_paths_only_is_not_mutated(string source, string stillMutated)
+    {
+        IReadOnlyList<Mutant> mutants = Generate(source);
+
+        Assert.DoesNotContain(mutants, mutant => mutant.OriginalText.Contains("&&", StringComparison.Ordinal));
+
+        // The operands still are: each assigns on every path it runs, or not at all.
+        Assert.Contains(mutants, mutant => mutant.OriginalText == stillMutated);
+    }
+
+    /// <summary>
+    /// An <c>out</c> in a left operand runs every time, so the rule must leave its expression alone.
+    /// </summary>
+    [Fact]
+    public void An_expression_that_assigns_on_every_path_is_still_mutated()
+    {
+        IReadOnlyList<Mutant> mutants = Generate(
+            "class C { int M(string s, bool a) { int y; if (int.TryParse(s, out y) && a) { return y; } return 0; } }");
+
+        Assert.Contains(mutants, mutant => mutant.OriginalText == "int.TryParse(s, out y) && a");
+    }
+
     [Theory]
     // an ordinary expression-bodied member
     [InlineData("class C { bool M(int a) => a >= 2; }")]

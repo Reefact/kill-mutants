@@ -1181,3 +1181,41 @@ vérifie ; distinguer les deux cas obligerait à compiler le mutant, ce que fait
 contrepoids `A_constant_the_compiler_does_not_read_still_carries_one`, et le jeu de corpus
 `ReadThroughAConstant` : onze formes, d'un `while (true)` dont on ne sort que par un `return` à une
 constante opérande de `||`. Chacune cassait le build instrumenté avant la règle, et compile après.
+
+
+## RB-030 — Une variable affectée derrière un court-circuit, c'est RB-016 sans la déclaration · COUVERT
+
+**Comment elle a été trouvée.** En sondant les voisins de RB-029.
+`if (s != null && int.TryParse(s, out y))`, avec `int y;` déclaré sur une ligne à part, cassait le
+build instrumenté sur `main`.
+
+**Ce qui se passe.** C'est exactement l'échec de RB-016. `y` n'est affecté que si la condition est
+vraie, puisque `&&` n'évalue pas son opérande droit sinon. Transformer le `&&` en `||`, ou nier la
+condition, laisse `y` non affecté là où on le lit : `CS0165`, une erreur de compilation. Envelopper
+la condition dans la sonde perd de la même façon le « affecté si vrai » : le build instrumenté
+échoue, et le run s'arrête avant d'avoir testé un seul mutant. La règle de RB-016 ne le voyait pas,
+car elle cherche une déclaration, et la condition n'en contient aucune : la variable a été déclarée
+plus haut. Une affectation, `a && (y = f()) > 0`, produit le même effet.
+
+**Pourquoi c'est important.** `int value; if (... && int.TryParse(text, out value))`, c'est ainsi
+qu'on écrivait le C# avant `out var`, et un outil de mutation est précisément pointé sur du code de
+cet âge-là.
+
+**La règle.** Une expression qui affecte une variable dans une partie que C# peut sauter n'est pas
+mutée, et donc, comme pour RB-016, jamais instrumentée. Les parties qui peuvent être sautées sont
+l'opérande droit de `&&`, `||` ou `??`, une branche d'un ternaire, ce qui suit un `?.`, et un bras de
+`switch`. Une affectation, c'est un argument `out` ou une expression d'affectation. Une partie
+toujours évaluée ne compte pas : dans `int.TryParse(s, out y) && a`, le `out` est dans l'opérande
+gauche, `y` est affecté sur tous les chemins, et le `&&` reste muté. Les opérandes eux-mêmes non
+plus : `s != null` reste muté à côté du `TryParse`, puisqu'aucun des deux n'affecte rien dans une
+partie qu'il peut sauter.
+
+**Ce que ça coûte.** Les mutants d'une condition qui affecte derrière un court-circuit : l'échange
+de son `&&` et sa négation. Les comparaisons et les appels qu'elle contient sont conservés.
+
+**Nos tests.** `MutationSiteTests.An_expression_that_assigns_on_some_paths_only_is_not_mutated`, qui
+vérifie aussi que les opérandes voisins restent mutés, et son contrepoids
+`An_expression_that_assigns_on_every_path_is_still_mutated`. Le corpus contient cinq formes : un
+`out` derrière `&&` et derrière `||`, une affectation derrière `&&`, un `out` dans la condition d'un
+ternaire, et un `out` lu sur tous les chemins. Les trois premières cassaient à la fois les mutants et
+le build instrumenté avant la règle ; toutes compilent désormais dans les deux cas.
