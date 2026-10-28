@@ -68,6 +68,28 @@ public class CatalogueCorpusTests
         };
 
     /// <summary>
+    /// Code the compiler reads through a constant condition: it decides from <c>while (true)</c>
+    /// that the end of the loop is unreachable, and from that what the method still owes. Some of
+    /// these mutants cannot compile - flipping the constant takes the decision back - but the
+    /// instrumented build must, or no mutant in the project is tested at all (RB-029).
+    /// </summary>
+    public static TheoryData<string, string, string> ReadThroughAConstant =>
+        new()
+        {
+            { "a loop that only ends by a return", "bool a", "int M({0}) { while (true) { if (a) { return 1; } } }" },
+            { "a value assigned before the loop's only way out", "System.Func<bool> f", "int M({0}) { int x; while (true) { if (f()) { x = 1; break; } } return x; }" },
+            { "a do loop that only ends by a return", "bool a", "int M({0}) { do { if (a) { return 1; } } while (true); }" },
+            { "a negated constant", "bool a", "int M({0}) { while (!false) { if (a) { return 1; } } }" },
+            { "a constant in parentheses", "bool a", "int M({0}) { while ((true)) { if (a) { return 1; } } }" },
+            { "a comparison of constants", "bool a", "int M({0}) { const int Limit = 3; while (Limit > 0) { if (a) { return 1; } } }" },
+            { "a branch the compiler settles", "bool a", "int M({0}) { if (true) { return a ? 1 : 0; } }" },
+            { "a loop in a lambda", "bool a", "System.Func<int> M({0}) => () => { while (true) { if (a) { return 1; } } };" },
+            { "a constant operand of a short-circuit", "string s", "int M({0}) { int y; if (false || int.TryParse(s, out y)) { return y; } return 0; }" },
+            { "a switch on a constant", "bool a", "int M({0}) { switch (true) { case true: return a ? 1 : 0; } }" },
+            { "a value assigned in a ternary's only branch", "bool a", "int M({0}) { int x; int y = true ? (x = 1) : 0; return a ? x + y : 0; }" },
+        };
+
+    /// <summary>
     /// The other half of the corpus: awkward C# the catalogue is <em>supposed</em> to decline, each
     /// for a reason a family test pins down in detail. They are listed here so that a change which
     /// silently starts proposing them fails something.
@@ -279,6 +301,7 @@ public class CatalogueCorpusTests
     /// </remarks>
     [Theory]
     [MemberData(nameof(Corpus))]
+    [MemberData(nameof(ReadThroughAConstant))]
     public void Instrumenting_every_site_leaves_the_project_compiling(
         string description, string parameters, string member)
     {

@@ -1050,3 +1050,46 @@ counterweight. `TestRunOutcomeTests.A_run_that_reported_an_error_did_not_run_not
 pins the second half. `CancelledRunTests.A_run_cancelled_before_it_counted_a_test_still_kills_the_mutant`
 runs the fixture with every failing mutant run turned into "nothing counted, one error"; without the
 fix, all four of the fixture's mutants come out survived.
+
+
+## RB-029 — A constant the compiler reads cannot be wrapped in a call · COVERED
+
+**How it was found.** Reviewing #31, where an automated review showed that `NegatedDecision` made a
+site of `Forever` in `while (Forever)`, over `const bool Forever = true`, and that the instrumented
+build then failed. The family was taught to leave a constant alone, and the same failure was then
+reproduced on `main` with no new family involved: `BooleanLiteral` already makes a site of the
+`true` in `while (true)`.
+
+**What happens.** C# reads a constant condition to decide what is reachable and which variables are
+assigned. From `while (true)` the compiler concludes that the loop ends only by a `return` or a
+`break`, so a method returning a value owes nothing after it, and a variable assigned before every
+`break` is assigned after the loop. The probe is a call, and a call is never a constant: wrapped,
+the condition settles nothing. Measured against the .NET 10 SDK, the instrumented build fails with
+`CS0161 - not all code paths return a value`, `CS1643` for a lambda, or
+`CS0165 - use of unassigned local variable`, and the run stops before a single mutant is tested.
+
+**Why it matters.** A loop that only ends by a `return` is how a retry or a reader is ordinarily
+written. One such method anywhere in a project was enough to stop every run on it, with an error
+pointing at code the developer never wrote.
+
+**The rule.** A site that is a constant, or part of one, carries no recorder when the compiler reads
+it. C#'s rules for reachability and definite assignment read a constant in five places: the
+condition of a branch, of a loop and of a ternary, the value a `switch` statement matches, and an
+operand of `&&` or `||`, where `false || int.TryParse(s, out y)` leaves `y` assigned whenever it is
+true. The rule climbs through every enclosing constant first, because what the compiler reads is the
+whole of it: `false` inside `while (!false)`, or a literal inside a comparison of two constants,
+breaks the build exactly as `true` does. A constant the compiler does not read keeps its recorder,
+which matters because `return true;` is where most `BooleanLiteral` mutants live.
+
+**What stays.** As in RB-017 and RB-019, this is a rule about recorders: the mutants are kept, and
+tested against the whole suite. Some of them cannot compile - `while (false)` in a method that
+relied on `while (true)` - and cost one compilation each, reported as `CompileError` and left out of
+the score. That cost is accepted rather than removed. In a method that returns nothing the same
+mutant compiles, and asks whether the loop does anything a test checks; telling the two cases apart
+would mean compiling the mutant, which is what the run already does.
+
+**Our tests.** `MutationSitesTests.A_constant_the_compiler_reads_carries_no_recorder`, its
+counterweight `A_constant_the_compiler_does_not_read_still_carries_one`, and the corpus set
+`ReadThroughAConstant`: eleven shapes, from a `while (true)` that only ends by a `return` to a
+constant operand of `||`. Each of them broke the instrumented build before the rule, and builds
+after it.

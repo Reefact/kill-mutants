@@ -1135,3 +1135,49 @@ lit un fichier de la forme mesurée, et
 correctif. `CancelledRunTests.A_run_cancelled_before_it_counted_a_test_still_kills_the_mutant`
 exécute la fixture en remplaçant le résultat de chaque exécution de mutant en échec par « aucun test
 compté, une erreur » ; sans le correctif, les quatre mutants de la fixture sont déclarés survivants.
+
+
+## RB-029 — Une constante que lit le compilateur ne peut pas être enveloppée dans un appel · COUVERT
+
+**Comment elle a été trouvée.** Pendant la revue de #31. Une revue automatique y a montré que
+`NegatedDecision` faisait un site de `Forever` dans `while (Forever)`, avec
+`const bool Forever = true`, et que le build instrumenté échouait alors. La famille a appris à
+laisser les constantes tranquilles, puis le même échec a été reproduit sur `main` sans aucune
+nouvelle famille : `BooleanLiteral` fait déjà un site du `true` de `while (true)`.
+
+**Ce qui se passe.** C# lit une condition constante pour décider de ce qui est atteignable et des
+variables qui sont affectées. Devant `while (true)`, le compilateur conclut que la boucle ne se
+termine que par un `return` ou un `break` : une méthode qui renvoie une valeur ne doit donc rien
+après elle, et une variable affectée avant chaque `break` est affectée après la boucle. La sonde est
+un appel, et un appel n'est jamais une constante : une fois enveloppée, la condition ne tranche plus
+rien. Mesuré sur le SDK .NET 10, le build instrumenté échoue alors avec
+`CS0161 - not all code paths return a value`, `CS1643` dans une lambda, ou
+`CS0165 - use of unassigned local variable`, et le run s'arrête avant d'avoir testé un seul mutant.
+
+**Pourquoi c'est important.** Une boucle dont on ne sort que par un `return`, c'est ainsi qu'on
+écrit couramment une nouvelle tentative ou une lecture. Une seule méthode de ce genre, n'importe où
+dans un projet, suffisait à arrêter chaque run, sur une erreur qui désignait du code que le
+développeur n'a jamais écrit.
+
+**La règle.** Un site qui est une constante, ou une partie d'une constante, ne porte pas
+d'enregistreur quand le compilateur la lit. Les règles de C# sur l'atteignabilité et l'affectation
+certaine lisent une constante à cinq endroits : la condition d'un branchement, d'une boucle et d'un
+ternaire, la valeur qu'examine une instruction `switch`, et un opérande de `&&` ou de `||`, où
+`false || int.TryParse(s, out y)` laisse `y` affecté chaque fois que l'expression est vraie. La
+règle remonte d'abord à travers toutes les constantes englobantes, parce que le compilateur lit la
+constante entière : `false` dans `while (!false)`, ou un littéral dans une comparaison entre deux
+constantes, casse le build exactement comme `true`. Une constante que le compilateur ne lit pas
+garde son enregistreur, ce qui compte, puisque c'est dans `return true;` que vit l'essentiel des
+mutants de `BooleanLiteral`.
+
+**Ce qui demeure.** Comme pour RB-017 et RB-019, c'est une règle sur les enregistreurs : les mutants
+sont conservés et testés contre la suite complète. Certains ne compilent pas - `while (false)` dans
+une méthode qui comptait sur `while (true)` - et coûtent chacun une compilation, rapportés en
+`CompileError` et exclus du score. Ce coût est assumé plutôt qu'éliminé. Dans une méthode qui ne
+renvoie rien, le même mutant compile et demande si la boucle fait quoi que ce soit qu'un test
+vérifie ; distinguer les deux cas obligerait à compiler le mutant, ce que fait déjà le run.
+
+**Nos tests.** `MutationSitesTests.A_constant_the_compiler_reads_carries_no_recorder`, son
+contrepoids `A_constant_the_compiler_does_not_read_still_carries_one`, et le jeu de corpus
+`ReadThroughAConstant` : onze formes, d'un `while (true)` dont on ne sort que par un `return` à une
+constante opérande de `||`. Chacune cassait le build instrumenté avant la règle, et compile après.

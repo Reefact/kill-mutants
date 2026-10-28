@@ -1,5 +1,6 @@
 using KillMutants.Mutations;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace KillMutants.Coverage;
@@ -125,6 +126,11 @@ internal sealed class MutationSites
             return false;
         }
 
+        if (IsAConstantTheCompilerReads(node, semanticModel))
+        {
+            return false;
+        }
+
         TypeInfo info = semanticModel.GetTypeInfo(node);
 
         return info.Type is not null && Accepts(info.Type) && Accepts(info.ConvertedType);
@@ -134,5 +140,63 @@ internal sealed class MutationSites
             (!type.IsRefLikeType &&
              type.TypeKind != TypeKind.Pointer &&
              type.SpecialType != SpecialType.System_Void);
+    }
+
+    /// <summary>
+    /// True when the site is a constant, or part of one, that the compiler reads to decide which
+    /// code is reachable and which variables are assigned.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// From <c>while (true)</c> the compiler concludes that the loop ends only by a <c>return</c>
+    /// or a <c>break</c>: the method then owes no return after it, and a variable assigned before
+    /// every <c>break</c> is assigned after the loop. The probe is a call, and a call is never a
+    /// constant, so the wrapped condition settles nothing and the instrumented build fails with
+    /// CS0161, CS1643 or CS0165. The run then stops before a single mutant is tested. A loop that
+    /// only ends by a <c>return</c> is how a retry or a reader is ordinarily written, so this is
+    /// common code - RB-029.
+    /// </para>
+    /// <para>
+    /// The compiler reads a constant there in five places, which C# lists in its rules for
+    /// reachability and definite assignment: the condition of a branch, of a loop and of a
+    /// ternary, the value a <c>switch</c> statement matches, and an operand of <c>&amp;&amp;</c>
+    /// or <c>||</c>, where <c>false || int.TryParse(s, out y)</c> leaves <c>y</c> assigned
+    /// whenever it is true. The walk climbs through every enclosing constant first, because what
+    /// the compiler reads is the whole of it: <c>false</c> inside <c>while (!false)</c> breaks the
+    /// build exactly as <c>true</c> does.
+    /// </para>
+    /// <para>
+    /// The mutants there are kept, and tested against the whole suite like those of any site
+    /// without a recorder. Some cannot compile - <c>while (false)</c> in a method that relied on
+    /// <c>while (true)</c> - and cost one compilation each, reported as a compile error.
+    /// </para>
+    /// </remarks>
+    private static bool IsAConstantTheCompilerReads(SyntaxNode node, SemanticModel semanticModel)
+    {
+        if (node is not ExpressionSyntax site || !semanticModel.GetConstantValue(site).HasValue)
+        {
+            return false;
+        }
+
+        ExpressionSyntax constant = site;
+
+        while (constant.Parent is ExpressionSyntax enclosing &&
+               semanticModel.GetConstantValue(enclosing).HasValue)
+        {
+            constant = enclosing;
+        }
+
+        return constant.Parent switch
+        {
+            IfStatementSyntax branch => branch.Condition == constant,
+            WhileStatementSyntax loop => loop.Condition == constant,
+            DoStatementSyntax loop => loop.Condition == constant,
+            ForStatementSyntax loop => loop.Condition == constant,
+            ConditionalExpressionSyntax ternary => ternary.Condition == constant,
+            SwitchStatementSyntax switched => switched.Expression == constant,
+            BinaryExpressionSyntax logical => logical.IsKind(SyntaxKind.LogicalAndExpression) ||
+                                              logical.IsKind(SyntaxKind.LogicalOrExpression),
+            _ => false,
+        };
     }
 }
