@@ -142,10 +142,10 @@ internal sealed class NegatedDecisionMutator : IMutator
     /// reachable, and the mutant does not compile.
     /// </para>
     /// <para>
-    /// Worse, merely recording that the site was reached breaks the build too: the probe turns the
-    /// condition into a call, the instrumented build fails the same way, and a run whose coverage
-    /// cannot be measured stops before a single mutant is tested. Nothing here is decided at run
-    /// time anyway: the branch was settled when the code was compiled.
+    /// Nothing here is decided at run time anyway: the branch was settled when the code was
+    /// compiled. And the site could not be measured either, since a constant the compiler reads
+    /// carries no recorder (RB-029), so every such mutant would be paid for with a run of the whole
+    /// suite.
     /// </para>
     /// </remarks>
     private static bool IsDecidedAtRunTime(ExpressionSyntax expression, SemanticModel semanticModel) =>

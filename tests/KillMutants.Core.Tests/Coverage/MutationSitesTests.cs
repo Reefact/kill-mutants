@@ -2,6 +2,7 @@ using KillMutants.Coverage;
 using KillMutants.Mutations;
 using KillMutants.Mutations.Mutators;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace KillMutants.Core.Tests.Coverage;
@@ -92,6 +93,40 @@ public class MutationSitesTests
     {
         MutationSites sites = SitesOf(
             "class C { int M(object o) => o switch { int i when i >= 3 => i, _ => 0 }; }");
+
+        Assert.NotEmpty(sites.IdentifierByNode);
+        Assert.Empty(sites.Unmeasurable);
+    }
+
+    /// <summary>
+    /// Regression test (RB-029). The compiler reads <c>while (true)</c> to conclude that the method
+    /// owes no return after the loop. The probe is a call, so wrapping the constant takes that
+    /// conclusion back and the instrumented build fails with CS0161, stopping the whole run. The
+    /// mutant stays: it is simply not measured.
+    /// </summary>
+    [Fact]
+    public void A_constant_the_compiler_reads_carries_no_recorder()
+    {
+        MutationSites sites = SitesOf(
+            "class C { int M(bool a) { while (true) { if (a) { return 1; } } } }");
+
+        Assert.DoesNotContain(
+            sites.IdentifierByNode.Keys,
+            node => node.IsKind(SyntaxKind.TrueLiteralExpression));
+        Assert.NotEmpty(sites.Unmeasurable);
+    }
+
+    /// <summary>
+    /// The refusal must stay narrow: a constant the compiler does not read keeps its recorder, and
+    /// <c>return true;</c> is where most <c>BooleanLiteral</c> mutants live.
+    /// </summary>
+    [Theory]
+    [InlineData("class C { bool M() { return true; } }")]
+    [InlineData("class C { bool M(bool a) => a ? true : false; }")]
+    [InlineData("class C { void M(System.Action<bool> f) { f(true); } }")]
+    public void A_constant_the_compiler_does_not_read_still_carries_one(string source)
+    {
+        MutationSites sites = SitesOf(source);
 
         Assert.NotEmpty(sites.IdentifierByNode);
         Assert.Empty(sites.Unmeasurable);
