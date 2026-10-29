@@ -476,7 +476,8 @@ deliberately not done: it discards the left operand and any side effect it carri
 missing-coverage signal into an unrelated behaviour change. The surviving mutant would be true but
 uninformative.
 
-**The neighbouring case, same milestone.** `Conditional` swaps the branches of `c ? a : b`, and a
+**The neighbouring case, same milestone.** `Conditional` swapped the branches of `c ? a : b` (it
+forces the condition each way since DEC0017), and a
 ternary whose branches are the same expression would yield a mutant that behaves exactly like the
 original: guaranteed to survive, for a reason that says nothing about the tests. Those are skipped.
 The binding check for this family also had to be *weaker* than the binary one: a conditional need not
@@ -485,7 +486,7 @@ read as a failure the way `BinaryOperatorMutator` reads it.
 
 **Our tests.** `NullCoalescingMutatorTests.A_fallback_that_removes_nullability_is_not_dropped`,
 `A_left_operand_that_widens_to_the_expected_type_is_dropped`,
-`ConditionalExpressionMutatorTests.Identical_branches_are_not_swapped`,
+`ConditionalExpressionMutatorTests.A_ternary_with_identical_branches_is_not_mutated`,
 `A_target_typed_conditional_is_mutated`, and the end-to-end
 `Every_mutator_family_is_exercised_against_the_fixture`, which fails if any family stops producing
 mutants against a real project.

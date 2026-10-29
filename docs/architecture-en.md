@@ -107,7 +107,7 @@ exercised end to end against a real fixture project.
 | `Bitwise` | `&` `\|` `^` `<<` `>>` | its counterpart |
 | `Assignment` | `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `<<=` `>>=` | its counterpart |
 | `Increment` | `++` `--` | each other, prefix and postfix alike |
-| `Conditional` | `c ? a : b` | `c ? b : a` |
+| `Conditional` | `c ? a : b` | `(c \|\| true) ? a : b` and `(c && false) ? a : b`: each branch forced, the condition still evaluated |
 | `NullCoalescing` | `a ?? b` | `a`, and `b ?? a` when `a` only reads a variable, a field or an auto-implemented property |
 | `BooleanLiteral` | `true` `false` | each other |
 | `Negation` | `!x` | `x` |
@@ -138,7 +138,7 @@ would bind before proposing it, so a mutant that cannot compile is never generat
 behaviour to the original declines to: `NullCoalescing` keeps only the left operand, never the right
 one, and swaps the two only when the left operand only reads a variable, a field or an
 auto-implemented property, so no side effect is silently dropped; `Conditional` skips a ternary
-whose branches are the same expression; and `NegatedDecision` never puts a `!` in front of one
+whose branches are the same expression, and still evaluates the condition it forces; and `NegatedDecision` never puts a `!` in front of one
 already written.
 
 **Instrumentation has no code of its own, by design.** Because each mutant gets its own compilation

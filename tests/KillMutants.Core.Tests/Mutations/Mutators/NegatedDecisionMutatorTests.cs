@@ -94,7 +94,7 @@ public class NegatedDecisionMutatorTests
     /// <summary>
     /// Three shapes belong to another family, which already makes the mutant: a comparison to
     /// <c>Comparison</c>, a literal to <c>BooleanLiteral</c>, and a ternary's condition to
-    /// <c>Conditional</c>, whose branch swap is that negation.
+    /// <c>Conditional</c>, whose two forced mutants already decide whatever that negation would.
     /// </summary>
     [Theory]
     [InlineData("bool M({0}) => x > y;")]

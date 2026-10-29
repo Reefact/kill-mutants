@@ -49,6 +49,7 @@ public class CatalogueCorpusTests
             { "an assignment behind &&", "bool a, System.Func<int> f", "int M({0}) { int y; if (a && (y = f()) > 0) { return y; } return 0; }" },
             { "an out in a ternary's condition", "string s, bool a", "int M({0}) { int y; return int.TryParse(s, out y) && a ? y : 0; }" },
             { "an out read on every path", "string s", "int M({0}) { int y; bool ok = int.TryParse(s, out y); return ok ? y : -y; }" },
+            { "a ternary on a call, forced and still evaluated", "System.Func<bool> f, int x, int y", "int M({0}) => f() ? x : y;" },
             { "target-typed conditional", "bool f, int x", "int? M({0}) => f ? x : null;" },
             { "conditional over a common base", "bool f, string s", "object M({0}) => f ? s : (object)1;" },
             { "date plus span, which does have one", "System.DateTime a, System.TimeSpan b", "object M({0}) => a + b;" },
