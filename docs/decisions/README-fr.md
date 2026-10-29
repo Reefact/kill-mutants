@@ -129,4 +129,4 @@ celle qui empêche un agent de merger une pull request.
 | [DEC0016](0016-the-run-writes-its-plan-beside-the-report-fr.md) | L'exécution écrit son plan à côté du rapport, dans un fichier à part | Accepté |
 | [DEC0017](0017-a-ternary-is-forced-each-way-rather-than-swapped-fr.md) | La condition d'un ternaire est forcée dans chaque sens, toujours évaluée, au lieu d'échanger ses branches | Accepté |
 | [DEC0018](0018-patterns-are-mutated-by-a-family-of-their-own-fr.md) | Les motifs d'un `is` sont mutés par une famille dédiée, comme les opérateurs du catalogue | Accepté |
-| [DEC0019](0019-numeric-literals-are-an-opt-in-family-that-reaches-the-constants-its-project-reads-fr.md) | Les littéraux numériques forment une famille sur demande, décalée d'un cran dans chaque sens, qui atteint les constantes que lit leur projet | Proposé |
+| [DEC0019](0019-numeric-literals-are-an-opt-in-family-that-reaches-the-constants-its-project-reads-fr.md) | Les littéraux numériques forment une famille sur demande, décalée d'un cran dans chaque sens, qui atteint les constantes que lit leur projet | Accepté |
