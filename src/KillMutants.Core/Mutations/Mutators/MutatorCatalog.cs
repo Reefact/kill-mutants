@@ -26,6 +26,7 @@ internal sealed class MutatorCatalog
         new BooleanLiteralMutator(),
         new NegationMutator(),
         new NegatedDecisionMutator(),
+        new PatternMutator(),
         new StringLiteralMutator(),
     ]);
 

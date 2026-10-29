@@ -109,7 +109,9 @@ internal sealed class MutationSites
     /// (<c>ConstantPatternSyntaxOrchestrator</c> blocks injection there), and finding it in their
     /// source is what prompted the measurement. The <em>mutation</em> is fine and stays: <c>s is ""</c>
     /// compiles and changes what matches. A <c>when</c> clause is not part of the pattern and is
-    /// instrumented normally.
+    /// instrumented normally. A pattern that is itself a site - the <c>Pattern</c> family mutates
+    /// <c>&lt; 0 or &gt; 100</c> whole - is not an expression at all, and has nothing a call could
+    /// wrap.
     /// </para>
     /// <para>
     /// So is an expression with no natural type. <c>int? x = flag ? a : null</c> only acquires its
@@ -121,7 +123,7 @@ internal sealed class MutationSites
     /// </remarks>
     private static bool CanCarryARecorder(SyntaxNode node, SemanticModel semanticModel)
     {
-        if (node.Ancestors().Any(ancestor => ancestor is PatternSyntax or SwitchLabelSyntax))
+        if (node.AncestorsAndSelf().Any(ancestor => ancestor is PatternSyntax or SwitchLabelSyntax))
         {
             return false;
         }

@@ -106,7 +106,7 @@ la composition. Voir DEC0011 pour ce à quoi sert ce contrat.
 | Résultats | `KillMutants.Reporting` | `MutationTestReport`, écritures console et JSON, progression |
 | CLI | `KillMutants.Cli` | `dotnet killmutants`, seuils et codes de sortie (DEC0009) |
 
-**Le catalogue.** Douze familles, chacune un `IMutator` distinct, chacune avec ses propres tests et
+**Le catalogue.** Treize familles, chacune un `IMutator` distinct, chacune avec ses propres tests et
 chacune exercée de bout en bout contre un vrai projet de fixture.
 
 | Famille | Réécrit | En |
@@ -122,7 +122,8 @@ chacune exercée de bout en bout contre un vrai projet de fixture.
 | `NullCoalescing` | `a ?? b` | `a`, et `b ?? a` quand `a` se limite à lire une variable, un champ ou une propriété automatique |
 | `BooleanLiteral` | `true` `false` | l'un l'autre |
 | `Negation` | `!x` | `x` |
-| `NegatedDecision` | la condition d'un branchement ou d'une boucle, ou un `bool` renvoyé, quand ce n'est pas une constante | la décision niée, sauf s'il s'agit d'une négation, d'une comparaison, d'un littéral ou de la condition d'un ternaire, dont d'autres familles produisent déjà le mutant |
+| `NegatedDecision` | la condition d'un branchement ou d'une boucle, ou un `bool` renvoyé, quand ce n'est pas une constante | la décision niée, sauf s'il s'agit d'une négation, d'une comparaison, d'un `is`, d'un littéral ou de la condition d'un ternaire, dont d'autres familles produisent déjà le mutant |
+| `Pattern` | `x is P`, `x is T`, et les motifs à l'intérieur d'un `is` | le test nié (`x is not P`) ; le décalage de borne et la négation d'un motif relationnel, sans la négation quand il est le motif entier ; chaque bras d'un `or` ou d'un `and` retiré, un `and` gardant son `not null` |
 | `StringLiteral` | `"texte"` | `""`, et `""` en une chaîne non vide |
 
 **Ce qu'il ne mute délibérément pas.** Le catalogue est sélectif et non exhaustif : chaque mutant
@@ -133,13 +134,12 @@ ci-dessous a été mesuré en passant le catalogue sur chaque forme, pas lu dans
 |---|---|
 | `>>>`, `>>>=` | **Candidat futur.** Fort signal : décalage signé et non signé ne diffèrent que pour les valeurs négatives, exactement le cas qu'une suite de tests oublie. |
 | `^=` | **Candidat futur.** `^` est muté mais pas sa forme composée : c'est une incohérence, pas une décision. |
-| Motifs relationnels (`is > 3`) | **Candidat futur**, et grandissant : c'est le jumeau de la famille `Comparison` pour du code écrit en motifs. |
 | Littéraux numériques | **Candidat futur.** Classique et à fort signal, mais assez bruyant pour mériter une activation explicite plutôt qu'une place par défaut. |
 | `-x` | **Candidat futur**, en dessous des autres : la plupart des erreurs de signe sont déjà atteignables par la famille arithmétique. |
 | `+x` | **Non supporté.** Retirer un plus unaire ne change rien : le mutant est équivalent par construction et ne peut jamais être tué. |
 | `~x` | **Non supporté pour l'instant.** Le retirer change la valeur si radicalement que tout test touchant l'expression le tue ; le mutant est presque gratuit à écrire et presque sans valeur. |
 | `?.`, `as` | **Non supportés.** Les deux mutent vers des formes qui lèvent plutôt qu'elles ne calculent : elles mesurent si un test touche la ligne, pas s'il en vérifie le résultat — et `?.` ne compile souvent même plus une fois le chemin null retiré. |
-| `is T` | **Non supporté pour l'instant.** À revoir avec les motifs relationnels ci-dessus, comme une seule famille consciente des motifs plutôt que deux règles. |
+| Motifs d'un `switch` | **Non supporté pour l'instant.** Modifier un bras peut rendre un bras suivant inatteignable, ce que le compilateur refuse pour tout le `switch` (CS8510) et qu'aucune vérification d'un nœud isolé ne peut voir - DEC0018. |
 | Bras de `switch` | **Non supportés.** Réordonner ou supprimer un bras est une mutation structurelle, pas une mutation d'opérateur, et demande un autre raisonnement sur l'exhaustivité. |
 
 Trois propriétés valent pour toutes. Chaque remplacement est un **nouveau nœud du bon type**, pas un

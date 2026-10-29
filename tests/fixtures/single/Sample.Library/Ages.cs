@@ -76,4 +76,10 @@ public static class Ages
     {
         return name ?? "unknown";
     }
+
+    /// <summary>Patterns: relational bounds joined by an <c>and</c>.</summary>
+    public static bool IsTeenager(int age)
+    {
+        return age is >= 13 and <= 19;
+    }
 }

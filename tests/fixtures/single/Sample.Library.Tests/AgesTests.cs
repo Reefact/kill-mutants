@@ -86,4 +86,16 @@ public class AgesTests
     {
         Assert.Equal(expected, Ages.NameOrDefault(name));
     }
+
+    [Theory]
+    // both bounds, so that shifting either is caught
+    [InlineData(13, true)]
+    [InlineData(19, true)]
+    // one step outside each, so that dropping either arm of the `and` is caught
+    [InlineData(12, false)]
+    [InlineData(20, false)]
+    public void A_teenager_is_thirteen_to_nineteen(int age, bool expected)
+    {
+        Assert.Equal(expected, Ages.IsTeenager(age));
+    }
 }

@@ -95,7 +95,7 @@ what the contract is for.
 | Results | `KillMutants.Reporting` | `MutationTestReport`, console and JSON writers, progress |
 | CLI | `KillMutants.Cli` | `dotnet killmutants`, thresholds and exit codes (DEC0009) |
 
-**The catalogue.** Twelve families, each a separate `IMutator`, each with its own tests and each
+**The catalogue.** Thirteen families, each a separate `IMutator`, each with its own tests and each
 exercised end to end against a real fixture project.
 
 | Family | Rewrites | Into |
@@ -111,7 +111,8 @@ exercised end to end against a real fixture project.
 | `NullCoalescing` | `a ?? b` | `a`, and `b ?? a` when `a` only reads a variable, a field or an auto-implemented property |
 | `BooleanLiteral` | `true` `false` | each other |
 | `Negation` | `!x` | `x` |
-| `NegatedDecision` | the condition of a branch or a loop, or a returned `bool`, when it is not a constant | the decision negated, unless it is a negation, a comparison, a literal or a ternary's condition, which other families already make the mutant of |
+| `NegatedDecision` | the condition of a branch or a loop, or a returned `bool`, when it is not a constant | the decision negated, unless it is a negation, a comparison, an `is`, a literal or a ternary's condition, which other families already make the mutant of |
+| `Pattern` | `x is P`, `x is T`, and the patterns inside an `is` | the test negated (`x is not P`); a relational pattern's boundary shift and negation, the negation left out when it is the whole pattern; each arm of an `or` or `and` dropped, an `and` keeping its `not null` |
 | `StringLiteral` | `"text"` | `""`, and `""` into a non-empty string |
 
 **What it deliberately does not mutate.** The catalogue is selective rather than exhaustive: every
@@ -122,13 +123,12 @@ was measured by running the catalogue over each form rather than read off the la
 |---|---|
 | `>>>`, `>>>=` | **Future candidate.** High signal - unsigned and signed shift differ only for negative values, which is exactly the case a test suite forgets. |
 | `^=` | **Future candidate.** `^` is mutated but its compound form is not, which is an inconsistency rather than a decision. |
-| Relational patterns (`is > 3`) | **Future candidate**, and a growing one: it is the `Comparison` family's twin for code written in patterns. |
 | Numeric literals | **Future candidate.** Classic and high signal, but noisy enough that it wants its own opt-in rather than a place in the default set. |
 | `-x` | **Future candidate**, below the others: most sign errors are already reachable through the arithmetic family. |
 | `+x` | **Not supported.** Removing a unary plus changes nothing, so the mutant is equivalent by construction and can never be killed. |
 | `~x` | **Not supported for now.** Removing it changes the value so drastically that any test touching the expression kills it; the mutant is nearly free to write and nearly worthless. |
 | `?.`, `as` | **Not supported.** Both mutate into forms that usually throw rather than compute, so they measure whether a test touches the line, not whether it checks the result - and `?.` often does not even compile once the null path is removed. |
-| `is T` | **Not supported for now.** Worth revisiting with the relational patterns above, as one pattern-aware family rather than two rules. |
+| Patterns of a `switch` | **Not supported for now.** Changing one arm can make a later arm unreachable, which the compiler refuses for the whole switch (CS8510) and no check of a single node can see - DEC0018. |
 | `switch` arms | **Not supported.** Reordering or removing arms is a structural mutation, not an operator one, and needs a different kind of reasoning about exhaustiveness. |
 
 Three properties hold across all of them. Each replacement is a **new node of the target kind**, not

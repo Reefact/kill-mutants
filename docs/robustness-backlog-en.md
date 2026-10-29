@@ -638,7 +638,9 @@ The instrumented build fails, so the run stops before a single mutant is tested.
 
 **The rule.** No site with a `PatternSyntax` or `SwitchLabelSyntax` ancestor carries a recorder. A
 `when` clause is deliberately outside it: it is a sibling of the pattern rather than part of it, and
-its expressions are ordinary code.
+its expressions are ordinary code. A pattern that is itself a site, which the `Pattern` family makes of
+`< 0 or > 100` (DEC0018), carries none either: it is not an expression, and a call has nothing there
+to wrap.
 
 **What stays.** The *mutation* is unaffected and must be: `s is "abc"` rewritten to `s is ""` is a
 constant, compiles, and changes what matches. This is a rule about recorders, exactly like RB-017 —

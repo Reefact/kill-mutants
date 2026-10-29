@@ -86,6 +86,20 @@ public class MutationSitesTests
     }
 
     /// <summary>
+    /// A pattern that is itself a site - the <c>Pattern</c> family drops an arm of
+    /// <c>&lt; 0 or &gt; 100</c> - is not an expression, so a call has nothing to wrap there: the
+    /// instrumented build would not even be built.
+    /// </summary>
+    [Fact]
+    public void A_pattern_that_is_itself_a_site_carries_no_recorder()
+    {
+        MutationSites sites = SitesOf("class C { bool M(int c) => c is < 0 or > 100; }");
+
+        Assert.DoesNotContain(sites.IdentifierByNode.Keys, node => node is PatternSyntax);
+        Assert.NotEmpty(sites.Unmeasurable);
+    }
+
+    /// <summary>
     /// A `when` clause is not part of the pattern, so the rule must not swallow it.
     /// </summary>
     [Fact]
