@@ -118,6 +118,35 @@ public class PatternMutatorTests
     }
 
     /// <summary>
+    /// Regression test (review of #38). A named constant holding <c>null</c> matches it as the
+    /// literal does, so <c>(N or "a")</c> lets <c>null</c> through and the null check is dropped.
+    /// </summary>
+    [Fact]
+    public void An_and_drops_its_null_check_when_the_other_arm_matches_a_named_null()
+    {
+        IReadOnlyList<string> mutated = MutatorTestBase.MutatedTexts(
+            Mutator,
+            "string? s",
+            "const string? N = null; bool M({0}) => s is not null and (N or \"a\");");
+
+        Assert.Contains("(N or \"a\")", mutated);
+    }
+
+    /// <summary>
+    /// A named constant holding anything but <c>null</c> rejects it, so the null check stays.
+    /// </summary>
+    [Fact]
+    public void An_and_keeps_its_null_check_beside_a_named_constant_that_is_not_null()
+    {
+        IReadOnlyList<string> mutated = MutatorTestBase.MutatedTexts(
+            Mutator,
+            "string? s",
+            "const string A = \"a\"; bool M({0}) => s is not null and (A or \"b\");");
+
+        Assert.DoesNotContain("(A or \"b\")", mutated);
+    }
+
+    /// <summary>
     /// Regression test (review of #38). The right arm of <c>o is string and { Length: &gt; 0 }</c>
     /// is matched against a <c>string</c>: alone, it would read a <c>Length</c> an <c>object</c>
     /// does not have. The left arm can still stand alone.
