@@ -55,6 +55,8 @@ public class CatalogueCorpusTests
             { "an or pattern and a negated one", "string s, char c", "bool M({0}) => s is \".\" or \"..\" || c is not ('}' or ']');" },
             { "an and pattern behind a null check", "string? s", "bool M({0}) => s is not null and { Length: < 9 };" },
             { "an enum member tested like a type", "System.DayOfWeek d", "bool M({0}) => d is System.DayOfWeek.Monday || d is not System.DayOfWeek.Friday;" },
+            { "an and whose right arm reads the type its left arm narrows", "object o", "bool M({0}) => o is string and { Length: > 0 };" },
+            { "a type test inside an expression tree", "int a", "object M({0}) { System.Linq.Expressions.Expression<System.Func<object, bool>> f = x => x is string; return f; }" },
             { "relational bounds of a percentage", "int c", "bool M({0}) => c is < 0 or > 100;" },
             { "target-typed conditional", "bool f, int x", "int? M({0}) => f ? x : null;" },
             { "conditional over a common base", "bool f, string s", "object M({0}) => f ? s : (object)1;" },

@@ -101,6 +101,36 @@ public class PatternMutatorTests
     }
 
     /// <summary>
+    /// Regression test (review of #38). The right arm of <c>o is string and { Length: &gt; 0 }</c>
+    /// is matched against a <c>string</c>: alone, it would read a <c>Length</c> an <c>object</c>
+    /// does not have. The left arm can still stand alone.
+    /// </summary>
+    [Fact]
+    public void An_and_keeps_the_arm_that_narrows_the_type_the_other_reads()
+    {
+        IReadOnlyList<string> mutated = MutatorTestBase.MutatedTexts(
+            Mutator, "object o", "bool M({0}) => o is string and { Length: > 0 };");
+
+        Assert.DoesNotContain("{ Length: > 0 }", mutated);
+        Assert.Contains("string", mutated);
+    }
+
+    /// <summary>
+    /// Regression test (review of #38). An expression tree accepts the type-test operator and no
+    /// pattern (CS8122), so the type test is negated around its operator there.
+    /// </summary>
+    [Fact]
+    public void A_type_test_in_an_expression_tree_is_negated_around_its_operator()
+    {
+        IReadOnlyList<string> mutated = MutatorTestBase.MutatedTexts(
+            Mutator,
+            "int a",
+            "object M({0}) { System.Linq.Expressions.Expression<System.Func<object, bool>> f = x => x is string; return f; }");
+
+        Assert.Equal(["!(x is string)"], mutated);
+    }
+
+    /// <summary>
     /// A pattern in a switch is left alone: changing one arm can make a later one unreachable, which
     /// the compiler refuses for the whole switch.
     /// </summary>
