@@ -89,6 +89,7 @@ public class CatalogueCorpusTests
             { "a narrow field a constant converts into", "int n", "byte Limit = 100; uint Mask = 255; public int M({0}) => n % Limit + (int)Mask;" },
             { "a negative value converted into a narrow field", "int n", "sbyte Floor = -5; public int M({0}) => n + Floor;" },
             { "a sum of constants converted into a narrow field", "int n", "byte Total = 200 + 55; public int M({0}) => n + Total;" },
+            { "the minimum of each signed type", "long n", "const int IntFloor = -2147483648; const long LongFloor = -9223372036854775808; public bool M({0}) => n > IntFloor && n > LongFloor;" },
             { "a nullable narrow field", "int n", "sbyte? Step = 3; public int M({0}) => n + (Step ?? 0);" },
             { "a narrow parameter given a constant", "int n", "static readonly int Level = Narrow(30); static int Narrow(byte b) => b; public int M({0}) => n + Level;" },
         };

@@ -68,6 +68,9 @@ public class NumericLiteralMutatorTests
     [InlineData("const byte Full = 255;", "254")]
     [InlineData("const sbyte Lowest = -128;", "127")]
     [InlineData("const int Max = 2147483647;", "2147483646")]
+    [InlineData("const int Min = -2147483648;", "2147483647")]
+    [InlineData("const long Min = -9223372036854775808;", "9223372036854775807")]
+    [InlineData("const long Min = -9223372036854775808L;", "9223372036854775807L")]
     public void A_neighbour_out_of_range_is_not_proposed(string member, string only)
     {
         Assert.Equal([only], MutatorTestBase.MutatedTexts(Mutator, "", member));
