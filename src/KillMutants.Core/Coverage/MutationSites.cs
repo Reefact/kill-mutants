@@ -128,7 +128,9 @@ internal sealed class MutationSites
             return false;
         }
 
-        if (IsAConstantTheCompilerReads(node, semanticModel) || IsInAConstantDeclaration(node))
+        if (IsAConstantTheCompilerReads(node, semanticModel) ||
+            IsInAConstantDeclaration(node) ||
+            LosesItsConstantConversion(node, semanticModel))
         {
             return false;
         }
@@ -143,6 +145,24 @@ internal sealed class MutationSites
              type.TypeKind != TypeKind.Pointer &&
              type.SpecialType != SpecialType.System_Void);
     }
+
+    /// <summary>
+    /// True when the site is a constant, or part of one, whose value reaches the type it is used as
+    /// only because it is a constant.
+    /// </summary>
+    /// <remarks>
+    /// <c>byte limit = 100</c> compiles, and <c>byte limit = Hit(1, 100)</c> does not: the probe
+    /// returns an <c>int</c> that is no longer a constant, and no implicit conversion takes an
+    /// <c>int</c> to a <c>byte</c> (CS0266). The same holds for a <c>uint</c>, an <c>sbyte?</c>,
+    /// a <c>byte</c> parameter, and a literal inside <c>-5</c> or <c>200 + 55</c>, where it is the
+    /// enclosing constant that needed the conversion. <c>NumericLiteral</c> made it reachable by
+    /// mutating initializers (DEC0019); <c>Arithmetic</c> could already reach a constant sum. The
+    /// mutants there are kept and tested against the whole suite.
+    /// </remarks>
+    private static bool LosesItsConstantConversion(SyntaxNode node, SemanticModel semanticModel) =>
+        node is ExpressionSyntax site &&
+        semanticModel.GetConstantValue(site).HasValue &&
+        MutationSite.ConvertsOnlyAsAConstant(MutationSite.OutermostConstant(site, semanticModel), semanticModel);
 
     /// <summary>
     /// True when the site is part of the value a <c>const</c> is declared with.

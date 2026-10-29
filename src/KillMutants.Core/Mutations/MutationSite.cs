@@ -125,6 +125,7 @@ internal static class MutationSite
                 : semanticModel.Compilation.GetSemanticModel(inTree.Key);
 
             if (inTree.Any(identifier =>
+                    !IsInsideNameof(identifier, model) &&
                     SymbolEqualityComparer.Default.Equals(model.GetSymbolInfo(identifier).Symbol, constant)))
             {
                 return true;
@@ -132,6 +133,66 @@ internal static class MutationSite
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// True inside <c>nameof(...)</c>, which reads a name and never a value: <c>nameof(Limit)</c>
+    /// is <c>"Limit"</c> whatever <c>Limit</c> holds.
+    /// </summary>
+    /// <remarks>
+    /// Asked of the compiler as well as the syntax, since a method that happens to be called
+    /// <c>nameof</c> binds to a symbol and the operator does not.
+    /// </remarks>
+    private static bool IsInsideNameof(SyntaxNode node, SemanticModel semanticModel) =>
+        node.Ancestors()
+            .OfType<InvocationExpressionSyntax>()
+            .Any(invocation => invocation.Expression is IdentifierNameSyntax { Identifier.ValueText: "nameof" } &&
+                               semanticModel.GetSymbolInfo(invocation).Symbol is null);
+
+    /// <summary>
+    /// The largest constant expression <paramref name="site"/> is part of: itself, or what encloses
+    /// it for as long as that is still a constant.
+    /// </summary>
+    /// <remarks>
+    /// What the compiler checks against a target type is the whole constant: in
+    /// <c>byte b = 200 + 55</c> it is <c>255</c> that must fit a <c>byte</c>, not <c>200</c>.
+    /// </remarks>
+    public static ExpressionSyntax OutermostConstant(ExpressionSyntax site, SemanticModel semanticModel)
+    {
+        ArgumentNullException.ThrowIfNull(site);
+        ArgumentNullException.ThrowIfNull(semanticModel);
+
+        ExpressionSyntax constant = site;
+
+        while (constant.Parent is ExpressionSyntax enclosing &&
+               semanticModel.GetConstantValue(enclosing).HasValue)
+        {
+            constant = enclosing;
+        }
+
+        return constant;
+    }
+
+    /// <summary>
+    /// True when the expression reaches the type it is used as only because it is a constant.
+    /// </summary>
+    /// <remarks>
+    /// C# converts an <c>int</c> constant to a <c>byte</c>, a <c>uint</c> or a <c>sbyte?</c> when
+    /// its value fits, and an <c>int</c> that is not a constant to none of them. So
+    /// <c>byte b = 100</c> compiles while <c>byte b = Hit(1, 100)</c> fails with CS0266, and
+    /// <c>byte b = 101 + 155</c> fails with CS0031 although each literal fits on its own. Asked of
+    /// the types alone, which is the conversion a value that is no longer a constant would get.
+    /// </remarks>
+    public static bool ConvertsOnlyAsAConstant(ExpressionSyntax expression, SemanticModel semanticModel)
+    {
+        ArgumentNullException.ThrowIfNull(expression);
+        ArgumentNullException.ThrowIfNull(semanticModel);
+
+        TypeInfo info = semanticModel.GetTypeInfo(expression);
+
+        return info.Type is { TypeKind: not TypeKind.Error } type &&
+               info.ConvertedType is { TypeKind: not TypeKind.Error } target &&
+               !semanticModel.Compilation.ClassifyCommonConversion(type, target).IsImplicit;
     }
 
     /// <summary>Every identifier in <paramref name="compilation"/>, by the name it spells.</summary>
