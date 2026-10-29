@@ -101,6 +101,23 @@ public class PatternMutatorTests
     }
 
     /// <summary>
+    /// Regression test (review of #38). The arm beside <c>not null</c> matches <c>null</c> here, so
+    /// dropping the null check changes what matches - and asks whether a test passes <c>null</c>.
+    /// </summary>
+    [Fact]
+    public void An_and_drops_its_null_check_when_the_other_arm_matches_null()
+    {
+        IReadOnlyList<string> mutated = MutatorTestBase.MutatedTexts(
+            Mutator, "string? s", "bool M({0}) => s is not null and (null or \"a\");");
+
+        Assert.Contains("(null or \"a\")", mutated);
+
+        // Dropping "a" would leave `not null and null`, a pattern the compiler refuses as one that
+        // never matches: the mutant is asked of the compiler first, and not proposed (RB-011).
+        Assert.DoesNotContain("null", mutated);
+    }
+
+    /// <summary>
     /// Regression test (review of #38). The right arm of <c>o is string and { Length: &gt; 0 }</c>
     /// is matched against a <c>string</c>: alone, it would read a <c>Length</c> an <c>object</c>
     /// does not have. The left arm can still stand alone.

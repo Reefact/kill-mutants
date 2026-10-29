@@ -56,8 +56,37 @@ internal sealed class PatternMutator : IMutator
 
         foreach (SyntaxNode replacement in replacements)
         {
-            yield return new MutationCandidate(Name, node, replacement.WithTriviaFrom(node));
+            SyntaxNode mutated = replacement.WithTriviaFrom(node);
+
+            if (Binds(node, mutated, semanticModel))
+            {
+                yield return new MutationCandidate(Name, node, mutated);
+            }
         }
+    }
+
+    /// <summary>True when the member holding the mutant still compiles - the RB-011 rule.</summary>
+    /// <remarks>
+    /// A pattern can bind and still be refused: dropping <c>"a"</c> from
+    /// <c>s is not null and (null or "a")</c> leaves <c>not null and null</c>, which the compiler
+    /// rejects as a pattern that never matches. That is decided over the whole pattern rather than
+    /// the node, so the member is rebound with the mutant in place and its errors are read. Found in
+    /// review of #38. Patterns are few, which is what makes binding a member per mutant affordable.
+    /// </remarks>
+    private static bool Binds(SyntaxNode original, SyntaxNode mutated, SemanticModel semanticModel)
+    {
+        SyntaxAnnotation marker = new();
+        SyntaxTree tree = original.SyntaxTree;
+        SyntaxNode root = tree.GetRoot().ReplaceNode(original, mutated.WithAdditionalAnnotations(marker));
+        SyntaxTree rewritten = tree.WithRootAndOptions(root, tree.Options);
+        SemanticModel model = semanticModel.Compilation
+            .ReplaceSyntaxTree(tree, rewritten)
+            .GetSemanticModel(rewritten);
+
+        SyntaxNode placed = rewritten.GetRoot().GetAnnotatedNodes(marker).Single();
+        SyntaxNode scope = placed.FirstAncestorOrSelf<MemberDeclarationSyntax>() ?? rewritten.GetRoot();
+
+        return !model.GetDiagnostics(scope.Span).Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
     }
 
     /// <summary>
@@ -163,9 +192,9 @@ internal sealed class PatternMutator : IMutator
     /// does, mostly makes a pattern that never matches, which says nothing about which arm is tested.
     /// </para>
     /// <para>
-    /// An <c>and</c> never loses a <c>not null</c> or an empty <c>{ }</c>: the arm beside it nearly
-    /// always rejects <c>null</c> already, as <c>x is not null and { Length: &gt; 0 }</c> does, and
-    /// the mutant would behave exactly like the original.
+    /// An <c>and</c> keeps its <c>not null</c> or empty <c>{ }</c> when the arm beside it rejects
+    /// <c>null</c> already, as <c>x is not null and { Length: &gt; 0 }</c> does: the mutant would
+    /// behave exactly like the original.
     /// </para>
     /// </remarks>
     private static IEnumerable<PatternSyntax> Arms(BinaryPatternSyntax binary, SemanticModel semanticModel)
@@ -173,7 +202,8 @@ internal sealed class PatternMutator : IMutator
         foreach ((PatternSyntax kept, PatternSyntax dropped) in new[] { (binary.Left, binary.Right), (binary.Right, binary.Left) })
         {
             if (binary.IsKind(SyntaxKind.AndPattern) &&
-                (OnlyRejectsNull(dropped) || ReliesOnTheTypeTheOtherArmNarrows(kept, binary, semanticModel)))
+                ((OnlyRejectsNull(dropped) && !MayMatchNull(kept)) ||
+                 ReliesOnTheTypeTheOtherArmNarrows(kept, binary, semanticModel)))
             {
                 continue;
             }
@@ -196,6 +226,40 @@ internal sealed class PatternMutator : IMutator
         semanticModel.GetOperation(binary) is IBinaryPatternOperation operation &&
         semanticModel.GetOperation(kept) is IPatternOperation arm &&
         !SymbolEqualityComparer.Default.Equals(arm.InputType, operation.InputType);
+
+    /// <summary>
+    /// False only when the pattern certainly rejects <c>null</c>; true when it may match it.
+    /// </summary>
+    /// <remarks>
+    /// The <c>not null</c> of an <c>and</c> is only redundant when the arm beside it rejects
+    /// <c>null</c> itself. <c>s is not null and (null or "a")</c> matches <c>"a"</c> alone, and
+    /// without its null check it matches <c>null</c> too - a mutant that asks exactly whether a
+    /// test passes <c>null</c>. Found in review of #38. Read from the syntax, and conservative:
+    /// a shape this does not know may match <c>null</c>, so its mutant is kept.
+    /// </remarks>
+    private static bool MayMatchNull(PatternSyntax pattern) => pattern switch
+    {
+        ConstantPatternSyntax constant => constant.Expression.IsKind(SyntaxKind.NullLiteralExpression),
+        TypePatternSyntax or DeclarationPatternSyntax or RecursivePatternSyntax or RelationalPatternSyntax
+            or ListPatternSyntax => false,
+        UnaryPatternSyntax negation when negation.IsKind(SyntaxKind.NotPattern) => !MayRejectNull(negation.Pattern),
+        BinaryPatternSyntax either when either.IsKind(SyntaxKind.OrPattern) => MayMatchNull(either.Left) || MayMatchNull(either.Right),
+        BinaryPatternSyntax both when both.IsKind(SyntaxKind.AndPattern) => MayMatchNull(both.Left) && MayMatchNull(both.Right),
+        ParenthesizedPatternSyntax parenthesized => MayMatchNull(parenthesized.Pattern),
+        _ => true,
+    };
+
+    /// <summary>The other half of <see cref="MayMatchNull"/>: false only when the pattern certainly matches <c>null</c>.</summary>
+    private static bool MayRejectNull(PatternSyntax pattern) => pattern switch
+    {
+        ConstantPatternSyntax constant => !constant.Expression.IsKind(SyntaxKind.NullLiteralExpression),
+        VarPatternSyntax or DiscardPatternSyntax => false,
+        UnaryPatternSyntax negation when negation.IsKind(SyntaxKind.NotPattern) => MayMatchNull(negation.Pattern),
+        BinaryPatternSyntax either when either.IsKind(SyntaxKind.OrPattern) => MayRejectNull(either.Left) && MayRejectNull(either.Right),
+        BinaryPatternSyntax both when both.IsKind(SyntaxKind.AndPattern) => MayRejectNull(both.Left) || MayRejectNull(both.Right),
+        ParenthesizedPatternSyntax parenthesized => MayRejectNull(parenthesized.Pattern),
+        _ => true,
+    };
 
     private static bool OnlyRejectsNull(PatternSyntax pattern) => pattern switch
     {
