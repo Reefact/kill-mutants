@@ -69,6 +69,7 @@ internal sealed class MsBuildQuery
             "-getProperty:OutputType",
             "-getProperty:XunitTestProject",
             "-getProperty:KillMutantsTestSupport",
+            "-getProperty:ProjectAssetsFile",
             "-getItem:PackageReference",
             "-getItem:ProjectReference",
         ]);
@@ -101,6 +102,7 @@ internal sealed class MsBuildQuery
             OutputType: Property("OutputType"),
             XunitTestProject: IsTrue(Property("XunitTestProject")),
             DeclaredTestSupport: IsTrue(Property("KillMutantsTestSupport")),
+            ProjectAssetsFile: Property("ProjectAssetsFile"),
             PackageReferences: ReadItems(root, "PackageReference", identity => identity),
             ProjectReferences: ReadItems(
                 root,

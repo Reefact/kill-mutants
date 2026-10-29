@@ -212,6 +212,15 @@ that reaches it, pinned explicitly on both MSBuild queries. A *test* project tha
 refused with a message naming them, rather than silently picking one and reporting a score for a
 framework the user did not choose — each would need its own run, its own output and its own verdict.
 
+**The framework is the one the test project loads the library for, not its own.** A `net10.0` suite
+referencing a library built for `netstandard2.0` alone loads the `netstandard2.0` build, and asking
+that library to be analysed "for `net10.0`" stopped the run with NETSDK1005 on a target it never had.
+Any `netstandard2.0` library under a modern suite met it. The framework is now the one NuGet
+negotiated, read from the suite's `project.assets.json` — transitive references included — and only
+when the library does not declare the suite's own framework, where an exact match wins and nothing
+is read. A suite not yet restored is restored first, as its build would have done. When the file
+cannot answer, the suite's framework is used, as before.
+
 **This entry was wrong for a while, and that is worth recording.** "Pinned explicitly on the MSBuild
 query" was true of the query for a project's *facts* and false of the query for its *compiler command
 line*, which named no framework at all. An automated review of the opening pull request found it. The

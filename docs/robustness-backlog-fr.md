@@ -229,6 +229,16 @@ plusieurs est refusé avec un message les nommant, plutôt que d'en choisir un e
 rapporter un score pour un framework que l'utilisateur n'a pas choisi — chacun demanderait son propre
 run, sa propre sortie et son propre verdict.
 
+**Le framework est celui pour lequel le projet de test charge la bibliothèque, pas le sien.** Une
+suite `net10.0` qui référence une bibliothèque visant `netstandard2.0` seulement charge le build
+`netstandard2.0`, et demander d'analyser cette bibliothèque « pour `net10.0` » arrêtait l'exécution
+sur NETSDK1005, une cible qu'elle n'a jamais eue. Toute bibliothèque `netstandard2.0` sous une suite
+moderne la rencontrait. Le framework est désormais celui que NuGet a négocié, lu dans le
+`project.assets.json` de la suite — références transitives comprises — et seulement quand la
+bibliothèque ne déclare pas le framework de la suite : une correspondance exacte l'emporte et rien
+n'est lu. Une suite pas encore restaurée l'est d'abord, comme son build l'aurait fait. Quand le
+fichier ne peut pas répondre, le framework de la suite est utilisé, comme avant.
+
 **Cette entrée a été fausse pendant un temps, et cela mérite d'être consigné.** « Épinglé
 explicitement sur la requête MSBuild » était vrai de la requête sur les *faits* d'un projet et faux
 de la requête sur sa *ligne de commande de compilation*, qui ne nommait aucun framework. Une revue

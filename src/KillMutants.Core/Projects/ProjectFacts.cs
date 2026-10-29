@@ -10,6 +10,10 @@ namespace KillMutants.Projects;
 /// <param name="OutputType">The project's <c>OutputType</c>: <c>Exe</c>, <c>Library</c>, and so on.</param>
 /// <param name="XunitTestProject">Whether xUnit's own build files declared this a test project.</param>
 /// <param name="DeclaredTestSupport">Whether the project sets <c>KillMutantsTestSupport</c>.</param>
+/// <param name="ProjectAssetsFile">
+/// Where NuGet wrote the restore result, empty when the project has none. It holds the framework
+/// NuGet picked for each project this one references.
+/// </param>
 /// <param name="PackageReferences">Package identifiers the project references.</param>
 /// <param name="ProjectReferences">Absolute paths of the projects it references.</param>
 /// <param name="AnalyzerProjects">
@@ -32,6 +36,7 @@ internal sealed record ProjectFacts(
     string OutputType,
     bool XunitTestProject,
     bool DeclaredTestSupport,
+    string ProjectAssetsFile,
     IReadOnlyList<string> PackageReferences,
     IReadOnlyList<string> ProjectReferences,
     IReadOnlyList<string> AnalyzerProjects,

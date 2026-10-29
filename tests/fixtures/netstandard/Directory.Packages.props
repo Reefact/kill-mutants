@@ -1,0 +1,9 @@
+<Project>
+  <!--
+    Stops NuGet from walking up to the repository Directory.Packages.props.
+    Fixture projects pin their own package versions inline, exactly as a user's project would.
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>
