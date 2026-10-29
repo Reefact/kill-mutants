@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Operations;
 
 namespace KillMutants.Mutations.Mutators;
 
@@ -46,9 +47,10 @@ internal sealed class PatternMutator : IMutator
             IsPatternExpressionSyntax test when IsDecidedAtRunTime(test, semanticModel) => [Negated(test)],
             BinaryExpressionSyntax test when test.IsKind(SyntaxKind.IsExpression) &&
                                              test.Right is TypeSyntax type &&
-                                             IsDecidedAtRunTime(test, semanticModel) => [NegatedTypeTest(test, type, semanticModel)],
+                                             IsDecidedAtRunTime(test, semanticModel) =>
+                [IsInsideAnExpressionTree(test, semanticModel) ? NegatedAsAnOperator(test) : NegatedTypeTest(test, type, semanticModel)],
             RelationalPatternSyntax relational when BelongsToAnIsExpression(relational) => Shifted(relational),
-            BinaryPatternSyntax binary when BelongsToAnIsExpression(binary) => Arms(binary),
+            BinaryPatternSyntax binary when BelongsToAnIsExpression(binary) => Arms(binary, semanticModel),
             _ => [],
         };
 
@@ -77,6 +79,33 @@ internal sealed class PatternMutator : IMutator
                 pattern is BinaryPatternSyntax ? SyntaxFactory.ParenthesizedPattern(pattern) : pattern);
 
         return test.WithPattern(negated.WithTriviaFrom(test.Pattern));
+    }
+
+    /// <summary><c>x is T</c> as <c>!(x is T)</c>, for where a pattern cannot stand.</summary>
+    /// <remarks>
+    /// An expression tree accepts the type-test operator and no pattern at all (CS8122), so a type
+    /// test inside one keeps its operator and is negated around it, as <c>NegatedDecision</c> did
+    /// before it left the <c>is</c> to this family. Found in review of #38.
+    /// </remarks>
+    private static PrefixUnaryExpressionSyntax NegatedAsAnOperator(BinaryExpressionSyntax test) =>
+        SyntaxFactory.PrefixUnaryExpression(
+            SyntaxKind.LogicalNotExpression,
+            SyntaxFactory.ParenthesizedExpression(test.WithoutTrivia()));
+
+    /// <summary>True when the expression is part of a lambda the compiler turns into an expression tree.</summary>
+    private static bool IsInsideAnExpressionTree(SyntaxNode node, SemanticModel semanticModel) =>
+        node.Ancestors().OfType<AnonymousFunctionExpressionSyntax>().Any(lambda =>
+            semanticModel.GetTypeInfo(lambda).ConvertedType is INamedTypeSymbol type &&
+            IsAnExpressionTreeType(type));
+
+    private static bool IsAnExpressionTreeType(INamedTypeSymbol type)
+    {
+        for (INamedTypeSymbol? current = type; current is not null; current = current.BaseType)
+        {
+            if (current.ToDisplayString() == "System.Linq.Expressions.LambdaExpression") { return true; }
+        }
+
+        return false;
     }
 
     /// <summary><c>x is T</c>, the type test that predates patterns, as <c>x is not T</c>.</summary>
@@ -139,11 +168,12 @@ internal sealed class PatternMutator : IMutator
     /// the mutant would behave exactly like the original.
     /// </para>
     /// </remarks>
-    private static IEnumerable<PatternSyntax> Arms(BinaryPatternSyntax binary)
+    private static IEnumerable<PatternSyntax> Arms(BinaryPatternSyntax binary, SemanticModel semanticModel)
     {
         foreach ((PatternSyntax kept, PatternSyntax dropped) in new[] { (binary.Left, binary.Right), (binary.Right, binary.Left) })
         {
-            if (binary.IsKind(SyntaxKind.AndPattern) && OnlyRejectsNull(dropped))
+            if (binary.IsKind(SyntaxKind.AndPattern) &&
+                (OnlyRejectsNull(dropped) || ReliesOnTheTypeTheOtherArmNarrows(kept, binary, semanticModel)))
             {
                 continue;
             }
@@ -151,6 +181,21 @@ internal sealed class PatternMutator : IMutator
             yield return kept.WithoutTrivia();
         }
     }
+
+    /// <summary>
+    /// True when an arm of an <c>and</c> is matched against a type its left neighbour narrowed to.
+    /// </summary>
+    /// <remarks>
+    /// In <c>o is string and { Length: &gt; 0 }</c> the right arm is matched against a
+    /// <c>string</c>, not the <c>object</c> the <c>is</c> started from, and alone it reads a
+    /// <c>Length</c> an <c>object</c> does not have. The compiler's own operation tree says which
+    /// type each arm is matched against. Found in review of #38.
+    /// </remarks>
+    private static bool ReliesOnTheTypeTheOtherArmNarrows(
+        PatternSyntax kept, BinaryPatternSyntax binary, SemanticModel semanticModel) =>
+        semanticModel.GetOperation(binary) is IBinaryPatternOperation operation &&
+        semanticModel.GetOperation(kept) is IPatternOperation arm &&
+        !SymbolEqualityComparer.Default.Equals(arm.InputType, operation.InputType);
 
     private static bool OnlyRejectsNull(PatternSyntax pattern) => pattern switch
     {
