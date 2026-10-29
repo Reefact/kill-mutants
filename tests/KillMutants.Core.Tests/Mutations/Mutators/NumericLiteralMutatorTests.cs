@@ -56,6 +56,7 @@ public class NumericLiteralMutatorTests
 
     [Theory]
     [InlineData("const long Big = 100L;", "101L", "99L")]
+    [InlineData("const long Floor = -2147483648u;", "2147483649u", "2147483647u")]
     [InlineData("const uint Mask = 0xFFu;", "256u", "254u")]
     [InlineData("const int Large = 40_000;", "40001", "39999")]
     public void The_suffix_and_so_the_type_are_kept(string member, string up, string down)

@@ -59,7 +59,7 @@ internal sealed class NumericLiteralMutator : IMutator
 
         foreach (BigInteger moved in (BigInteger[])[value + 1, value - 1])
         {
-            if (moved >= 0 && Rewrite(literal, moved) is { } replacement && Fits(literal, moved, semanticModel))
+            if (moved >= 0 && Rewrite(literal, moved, semanticModel) is { } replacement && Fits(literal, moved, semanticModel))
             {
                 yield return new MutationCandidate(Name, literal, replacement);
             }
@@ -118,21 +118,34 @@ internal sealed class NumericLiteralMutator : IMutator
     /// types <c>-2147483648</c> as an <c>int</c> although its token <c>2147483648</c> is a
     /// <c>uint</c>, and <c>-9223372036854775808</c> as a <c>long</c> over a <c>ulong</c> token, so
     /// comparing tokens refused the only neighbour of <c>int.MinValue</c> and <c>long.MinValue</c>.
+    /// The rule depends on the suffix too - <c>-2147483648u</c> is a <c>long</c>, since negation
+    /// promotes a <c>uint</c> - so the negated expression is bound by the compiler rather than
+    /// typed by a rule restated here.
     /// </para>
     /// </remarks>
-    private static LiteralExpressionSyntax? Rewrite(LiteralExpressionSyntax literal, BigInteger moved)
+    private static LiteralExpressionSyntax? Rewrite(
+        LiteralExpressionSyntax literal, BigInteger moved, SemanticModel semanticModel)
     {
         string text = literal.Token.Text;
         string suffix = text[(text.TrimEnd('u', 'U', 'l', 'L').Length)..];
 
         if (SyntaxFactory.ParseExpression(moved.ToString(CultureInfo.InvariantCulture) + suffix)
-                is not LiteralExpressionSyntax replacement ||
-            TypeOf(replacement.Token.Value, IsNegated(literal)) != TypeOf(literal.Token.Value, IsNegated(literal)))
+                is not LiteralExpressionSyntax replacement)
         {
             return null;
         }
 
-        return replacement.WithTriviaFrom(literal);
+        bool sameType = literal.Parent is PrefixUnaryExpressionSyntax negation &&
+                        negation.IsKind(SyntaxKind.UnaryMinusExpression)
+            ? SymbolEqualityComparer.Default.Equals(
+                semanticModel.GetTypeInfo(negation).Type,
+                semanticModel.GetSpeculativeTypeInfo(
+                    negation.SpanStart,
+                    SyntaxFactory.PrefixUnaryExpression(SyntaxKind.UnaryMinusExpression, replacement),
+                    SpeculativeBindingOption.BindAsExpression).Type)
+            : replacement.Token.Value?.GetType() == literal.Token.Value?.GetType();
+
+        return sameType ? replacement.WithTriviaFrom(literal) : null;
     }
 
     /// <summary>
@@ -188,23 +201,6 @@ internal sealed class NumericLiteralMutator : IMutator
 
         return range is not { } bounds || (signed >= bounds.Min && signed <= bounds.Max);
     }
-
-    private static bool IsNegated(LiteralExpressionSyntax literal) =>
-        literal.Parent is PrefixUnaryExpressionSyntax negation && negation.IsKind(SyntaxKind.UnaryMinusExpression);
-
-    /// <summary>The type C# gives the literal, or its negation when it is negated.</summary>
-    /// <remarks>
-    /// Negation promotes a <c>uint</c> to a <c>long</c>, and C# makes the two magnitudes that are
-    /// one past a signed maximum the minimum of that type - the only literals it reads that way.
-    /// </remarks>
-    private static Type? TypeOf(object? value, bool negated) => (value, negated) switch
-    {
-        (_, false) => value?.GetType(),
-        (2147483648u, true) => typeof(int),
-        (9223372036854775808ul, true) => typeof(long),
-        (uint, true) => typeof(long),
-        _ => value?.GetType(),
-    };
 
     private static BigInteger? AsInteger(object? value) => value switch
     {
