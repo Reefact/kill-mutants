@@ -1,0 +1,3 @@
+<Project>
+  <!-- Same isolation rationale as Directory.Build.props. -->
+</Project>

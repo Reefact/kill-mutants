@@ -476,6 +476,12 @@ internal sealed class FixtureCopy : IDisposable
     public static FixtureCopy CreateMultiTargetedProject() => CopyOf(FixtureDirectory("multitarget"));
 
     /// <summary>
+    /// Copies the netstandard fixture: a library built for netstandard2.0 alone, exercised by a net10.0
+    /// test project that therefore loads a framework the library was never asked to build for.
+    /// </summary>
+    public static FixtureCopy CreateNetStandardProject() => CopyOf(FixtureDirectory("netstandard"));
+
+    /// <summary>
     /// Copies the test-support fixture: <c>Tests -&gt; Support -&gt; Library</c>, where the support
     /// project is a class library referencing <c>xunit.v3.assert</c> - the package xUnit directs a
     /// non-test library to - and carrying a mutable site of its own.

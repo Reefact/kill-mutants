@@ -159,6 +159,7 @@ public class ProjectFactsTests
             OutputType: outputType,
             XunitTestProject: xunitTestProject,
             DeclaredTestSupport: declaredTestSupport,
+            ProjectAssetsFile: string.Empty,
             PackageReferences: [package],
             ProjectReferences: [],
             AnalyzerProjects: [],

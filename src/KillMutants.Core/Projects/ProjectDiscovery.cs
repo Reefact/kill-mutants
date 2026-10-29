@@ -194,7 +194,28 @@ internal sealed class ProjectDiscovery
                     frameworksByProject[mutablePath] = new SortedSet<string>(StringComparer.Ordinal);
                 }
 
-                frameworksByProject[mutablePath].Add(testProject.TargetFramework);
+                // The framework the suite loads this project for, which is its own only when the
+                // project happens to be built for it. A suite on net10.0 referencing a
+                // netstandard2.0 library loads the netstandard2.0 build, and asking the library
+                // about net10.0 stopped the run on a target it never had. A library that does
+                // declare the suite's framework needs no negotiation - an exact match always wins.
+                string framework = testProject.TargetFramework;
+
+                if (byPath.TryGetValue(mutablePath, out ProjectFacts? library) &&
+                    !ReferencedFramework.Declares(library, framework))
+                {
+                    // Only a library with a choice needs NuGet's verdict, which is in the suite's
+                    // assets file - and a run that has not built anything yet does not have it.
+                    // Restoring is what the build would do first.
+                    if (library.TargetsSeveralFrameworks)
+                    {
+                        await RestoreIfMissingAsync(testProject, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    framework = ReferencedFramework.For(testProject, library) ?? framework;
+                }
+
+                frameworksByProject[mutablePath].Add(framework);
                 tests.Add(runnable);
             }
         }
@@ -577,6 +598,29 @@ internal sealed class ProjectDiscovery
             {
                 throw new ProjectAnalysisException($"'{testProject.Name}' cannot be used: {reason}");
             }
+        }
+    }
+
+    private static async Task RestoreIfMissingAsync(ProjectFacts project, CancellationToken cancellationToken)
+    {
+        if (project.ProjectAssetsFile.Length == 0 || File.Exists(project.ProjectAssetsFile))
+        {
+            return;
+        }
+
+        ProcessResult result = await ProcessRunner.RunAsync(
+                "dotnet",
+                ["restore", project.ProjectPath, "-nologo"],
+                project.Directory,
+                BuildBudget,
+                cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!result.Succeeded)
+        {
+            throw new ProjectAnalysisException(
+                $"'{project.Name}' failed to restore, so there is nothing to mutate." +
+                $"{Environment.NewLine}{result.CombinedOutput}");
         }
     }
 

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!--
+      The point of this fixture. The test project is net10.0 and this library has no such target: a
+      netstandard2.0 library is what a suite on a modern runtime loads by NuGet's nearest-framework
+      rule, and asking it to be analysed "for net10.0" ends in NETSDK1005.
+    -->
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+</Project>

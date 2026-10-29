@@ -40,4 +40,18 @@ public class MultiTargetedProjectTests
         Assert.Equal(MutantStatus.Killed, mutant.Status);
         Assert.All(report.Results, result => Assert.Equal(MutantStatus.Killed, result.Status));
     }
+
+    [Fact]
+    public async Task A_library_built_only_for_netstandard_is_mutated_under_a_suite_on_a_newer_framework()
+    {
+        using var fixture = FixtureCopy.CreateNetStandardProject();
+
+        MutationTestReport report = await MutationTesting.RunAsync(
+            fixture.Root, cancellationToken: TestContext.Current.CancellationToken);
+
+        MutantResult mutant = Assert.Single(
+            report.Results, result => result.Mutant.MutatedText == "age > 18");
+
+        Assert.Equal(MutantStatus.Killed, mutant.Status);
+    }
 }
