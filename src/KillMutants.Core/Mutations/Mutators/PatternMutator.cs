@@ -202,7 +202,7 @@ internal sealed class PatternMutator : IMutator
         foreach ((PatternSyntax kept, PatternSyntax dropped) in new[] { (binary.Left, binary.Right), (binary.Right, binary.Left) })
         {
             if (binary.IsKind(SyntaxKind.AndPattern) &&
-                ((OnlyRejectsNull(dropped) && !MayMatchNull(kept)) ||
+                ((OnlyRejectsNull(dropped, semanticModel) && !MayMatchNull(kept, semanticModel)) ||
                  ReliesOnTheTypeTheOtherArmNarrows(kept, binary, semanticModel)))
             {
                 continue;
@@ -234,41 +234,57 @@ internal sealed class PatternMutator : IMutator
     /// The <c>not null</c> of an <c>and</c> is only redundant when the arm beside it rejects
     /// <c>null</c> itself. <c>s is not null and (null or "a")</c> matches <c>"a"</c> alone, and
     /// without its null check it matches <c>null</c> too - a mutant that asks exactly whether a
-    /// test passes <c>null</c>. Found in review of #38. Read from the syntax, and conservative:
-    /// a shape this does not know may match <c>null</c>, so its mutant is kept.
+    /// test passes <c>null</c>. Found in review of #38. Read from the pattern's shape and its
+    /// constants' values, and conservative: a shape this does not know may match <c>null</c>, so its
+    /// mutant is kept.
     /// </remarks>
-    private static bool MayMatchNull(PatternSyntax pattern) => pattern switch
+    private static bool MayMatchNull(PatternSyntax pattern, SemanticModel semanticModel) => pattern switch
     {
-        ConstantPatternSyntax constant => constant.Expression.IsKind(SyntaxKind.NullLiteralExpression),
+        ConstantPatternSyntax constant => IsNull(constant, semanticModel),
         TypePatternSyntax or DeclarationPatternSyntax or RecursivePatternSyntax or RelationalPatternSyntax
             or ListPatternSyntax => false,
-        UnaryPatternSyntax negation when negation.IsKind(SyntaxKind.NotPattern) => !MayRejectNull(negation.Pattern),
-        BinaryPatternSyntax either when either.IsKind(SyntaxKind.OrPattern) => MayMatchNull(either.Left) || MayMatchNull(either.Right),
-        BinaryPatternSyntax both when both.IsKind(SyntaxKind.AndPattern) => MayMatchNull(both.Left) && MayMatchNull(both.Right),
-        ParenthesizedPatternSyntax parenthesized => MayMatchNull(parenthesized.Pattern),
+        UnaryPatternSyntax negation when negation.IsKind(SyntaxKind.NotPattern) => !MayRejectNull(negation.Pattern, semanticModel),
+        BinaryPatternSyntax either when either.IsKind(SyntaxKind.OrPattern) =>
+            MayMatchNull(either.Left, semanticModel) || MayMatchNull(either.Right, semanticModel),
+        BinaryPatternSyntax both when both.IsKind(SyntaxKind.AndPattern) =>
+            MayMatchNull(both.Left, semanticModel) && MayMatchNull(both.Right, semanticModel),
+        ParenthesizedPatternSyntax parenthesized => MayMatchNull(parenthesized.Pattern, semanticModel),
         _ => true,
     };
 
     /// <summary>The other half of <see cref="MayMatchNull"/>: false only when the pattern certainly matches <c>null</c>.</summary>
-    private static bool MayRejectNull(PatternSyntax pattern) => pattern switch
+    private static bool MayRejectNull(PatternSyntax pattern, SemanticModel semanticModel) => pattern switch
     {
-        ConstantPatternSyntax constant => !constant.Expression.IsKind(SyntaxKind.NullLiteralExpression),
+        ConstantPatternSyntax constant => !IsNull(constant, semanticModel),
         VarPatternSyntax or DiscardPatternSyntax => false,
-        UnaryPatternSyntax negation when negation.IsKind(SyntaxKind.NotPattern) => MayMatchNull(negation.Pattern),
-        BinaryPatternSyntax either when either.IsKind(SyntaxKind.OrPattern) => MayRejectNull(either.Left) && MayRejectNull(either.Right),
-        BinaryPatternSyntax both when both.IsKind(SyntaxKind.AndPattern) => MayRejectNull(both.Left) || MayRejectNull(both.Right),
-        ParenthesizedPatternSyntax parenthesized => MayRejectNull(parenthesized.Pattern),
+        UnaryPatternSyntax negation when negation.IsKind(SyntaxKind.NotPattern) => MayMatchNull(negation.Pattern, semanticModel),
+        BinaryPatternSyntax either when either.IsKind(SyntaxKind.OrPattern) =>
+            MayRejectNull(either.Left, semanticModel) && MayRejectNull(either.Right, semanticModel),
+        BinaryPatternSyntax both when both.IsKind(SyntaxKind.AndPattern) =>
+            MayRejectNull(both.Left, semanticModel) || MayRejectNull(both.Right, semanticModel),
+        ParenthesizedPatternSyntax parenthesized => MayRejectNull(parenthesized.Pattern, semanticModel),
         _ => true,
     };
 
-    private static bool OnlyRejectsNull(PatternSyntax pattern) => pattern switch
+    private static bool OnlyRejectsNull(PatternSyntax pattern, SemanticModel semanticModel) => pattern switch
     {
         UnaryPatternSyntax { Pattern: ConstantPatternSyntax constant } not
-            when not.IsKind(SyntaxKind.NotPattern) && constant.Expression.IsKind(SyntaxKind.NullLiteralExpression) => true,
+            when not.IsKind(SyntaxKind.NotPattern) && IsNull(constant, semanticModel) => true,
         RecursivePatternSyntax { Type: null, PositionalPatternClause: null, Designation: null } recursive
             => recursive.PropertyPatternClause is { Subpatterns.Count: 0 },
         _ => false,
     };
+
+    /// <summary>
+    /// True when the constant is <c>null</c>, however it is written.
+    /// </summary>
+    /// <remarks>
+    /// Asked of the compiler rather than the syntax: <c>const string N = null;</c> makes
+    /// <c>s is N</c> a null test the literal alone would miss, and with it <c>not null and (N or "a")</c>
+    /// would lose a mutant that changes what matches. Found in review of #38.
+    /// </remarks>
+    private static bool IsNull(ConstantPatternSyntax constant, SemanticModel semanticModel) =>
+        semanticModel.GetConstantValue(constant.Expression) is { HasValue: true, Value: null };
 
     /// <summary>True when the pattern is part of an <c>is</c> expression rather than of a switch.</summary>
     private static bool BelongsToAnIsExpression(PatternSyntax pattern) =>
