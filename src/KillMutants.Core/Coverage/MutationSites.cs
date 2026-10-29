@@ -128,7 +128,7 @@ internal sealed class MutationSites
             return false;
         }
 
-        if (IsAConstantTheCompilerReads(node, semanticModel))
+        if (IsAConstantTheCompilerReads(node, semanticModel) || IsInAConstantDeclaration(node))
         {
             return false;
         }
@@ -143,6 +143,24 @@ internal sealed class MutationSites
              type.TypeKind != TypeKind.Pointer &&
              type.SpecialType != SpecialType.System_Void);
     }
+
+    /// <summary>
+    /// True when the site is part of the value a <c>const</c> is declared with.
+    /// </summary>
+    /// <remarks>
+    /// A constant's initializer must be a constant, and the probe is a call:
+    /// <c>const int Limit = Hit(1, 100)</c> fails with CS0133 and the instrumented build with it.
+    /// Only <c>NumericLiteral</c> reaches such a site (DEC0019). Nothing would be measured there
+    /// anyway - a constant is never evaluated at run time - so its mutants are tested against the
+    /// whole suite, like those of any site without a recorder.
+    /// </remarks>
+    private static bool IsInAConstantDeclaration(SyntaxNode node) =>
+        node.Ancestors().Any(ancestor => ancestor switch
+        {
+            FieldDeclarationSyntax field => field.Modifiers.Any(SyntaxKind.ConstKeyword),
+            LocalDeclarationStatementSyntax local => local.IsConst,
+            _ => false,
+        });
 
     /// <summary>
     /// True when the site is a constant, or part of one, that the compiler reads to decide which

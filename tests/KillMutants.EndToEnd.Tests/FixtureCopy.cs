@@ -278,6 +278,78 @@ internal sealed class FixtureCopy : IDisposable
     }
 
     /// <summary>
+    /// Adds named thresholds: one the tests assert at, one they assert only around, and one only
+    /// the tests read.
+    /// </summary>
+    /// <remarks>
+    /// The three cases DEC0019 is about. The constants the library reads are recompiled with each
+    /// mutant, so its own comparisons see the new value; the one only the tests read is copied into
+    /// the test assembly, which keeps the original whatever the mutant says.
+    /// </remarks>
+    public void AddNamedThresholds()
+    {
+        File.WriteAllText(
+            Path.Combine(Root, "Sample.Library", "Limits.cs"),
+            """
+            namespace Sample.Library;
+
+            public static class Limits
+            {
+                public const int MinimumNouns = 100;
+
+                public const int MaximumLength = 40;
+
+                public const int ReadByTheTestsOnly = 7;
+
+                public static bool HasEnoughNouns(int nouns)
+                {
+                    return nouns >= MinimumNouns;
+                }
+
+                public static bool FitsInASlug(int length)
+                {
+                    return length <= MaximumLength;
+                }
+            }
+
+            """);
+
+        File.WriteAllText(
+            Path.Combine(Root, "Sample.Library.Tests", "LimitsTests.cs"),
+            """
+            using Sample.Library;
+
+            namespace Sample.Library.Tests;
+
+            public class LimitsTests
+            {
+                // At the boundary: both neighbours of 100 change one of these answers.
+                [Fact]
+                public void A_hundred_nouns_is_enough_and_ninety_nine_is_not()
+                {
+                    Assert.True(Limits.HasEnoughNouns(100));
+                    Assert.False(Limits.HasEnoughNouns(99));
+                }
+
+                // Around it only: 39 and 41 give the same answers as 40.
+                [Fact]
+                public void A_short_slug_fits_and_a_huge_one_does_not()
+                {
+                    Assert.True(Limits.FitsInASlug(5));
+                    Assert.False(Limits.FitsInASlug(500));
+                }
+
+                [Fact]
+                public void The_constant_only_the_tests_read_is_seven()
+                {
+                    Assert.Equal(7, Limits.ReadByTheTestsOnly);
+                }
+            }
+
+            """);
+    }
+
+    /// <summary>
     /// Adds a second generator to the copied generator fixture, one that throws, and whose output
     /// nothing in the library needs.
     /// </summary>

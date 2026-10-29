@@ -104,6 +104,7 @@ public class RunIdentityTests
     [InlineData("coverage")]
     [InlineData("mutators")]
     [InlineData("without")]
+    [InlineData("with")]
     [InlineData("exclude")]
     public void A_setting_that_changes_verdicts_does_not_continue(string differing)
     {
@@ -114,10 +115,18 @@ public class RunIdentityTests
             "coverage" => Identity(coverage: false),
             "mutators" => Identity(mutators: ["Comparison"]),
             "without" => Identity(without: ["StringLiteral"]),
+            "with" => Identity() with { With = ["NumericLiteral"] },
             _ => Identity(exclude: []),
         };
 
         Assert.NotNull(changed.WhyNotContinuedBy(Identity()));
+    }
+
+    /// <summary>A plan written before families could be added holds no list, and means none.</summary>
+    [Fact]
+    public void A_plan_that_records_no_added_families_added_none()
+    {
+        Assert.Null((Identity() with { With = [] }).WhyNotContinuedBy(Identity() with { With = null }));
     }
 
     /// <summary>What the run only learns once it has selected its mutants is compared only then.</summary>

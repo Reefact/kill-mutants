@@ -30,6 +30,22 @@ internal sealed class MutatorCatalog
         new StringLiteralMutator(),
     ]);
 
+    /// <summary>
+    /// The rules a run applies only when it names them: the families whose signal is real but whose
+    /// noise would cost every project that did not ask for them.
+    /// </summary>
+    /// <remarks>
+    /// Named rather than levelled. Stryker.NET groups its optional mutators by level, so raising it
+    /// turns several on at once; with one optional family here, a level would be a name for a list
+    /// of one. DEC0019.
+    /// </remarks>
+    private static readonly IReadOnlyList<IMutator> OptIn =
+    [
+        new NumericLiteralMutator(),
+    ];
+
+    private static readonly IReadOnlyList<IMutator> Every = [.. Default.Mutators, .. OptIn];
+
     /// <summary>The rules in this catalog.</summary>
     public IReadOnlyList<IMutator> Mutators { get; }
 
@@ -41,16 +57,30 @@ internal sealed class MutatorCatalog
     /// </remarks>
     internal static MutatorCatalog Of(IReadOnlyList<IMutator> mutators) => new(mutators);
 
-    /// <summary>Every family this tool knows, named, in the order the default catalog lists them.</summary>
+    /// <summary>
+    /// Every family this tool knows, named: the default catalog's in its order, then the ones a run
+    /// must ask for.
+    /// </summary>
     public static IReadOnlyList<MutatorName> Names { get; } =
-        [.. Default.Mutators.Select(mutator => mutator.Name)];
+        [.. Every.Select(mutator => mutator.Name)];
+
+    /// <summary>The families a run applies only when it names them - see <see cref="OptIn"/>.</summary>
+    public static IReadOnlyList<MutatorName> OptInNames { get; } =
+        [.. OptIn.Select(mutator => mutator.Name)];
 
     /// <summary>
-    /// The default catalog narrowed to <paramref name="wanted"/>, or with <paramref name="unwanted"/>
-    /// left out.
+    /// The families named in <paramref name="wanted"/>, or the default catalog when none are, with
+    /// <paramref name="added"/> joined to them and <paramref name="unwanted"/> left out.
     /// </summary>
-    /// <param name="wanted">The only families to run, or none to start from all of them.</param>
-    /// <param name="unwanted">Families to drop, applied after <paramref name="wanted"/>.</param>
+    /// <param name="wanted">
+    /// The only families to run, or none to start from the default catalog. An opt-in family may be
+    /// named here, which runs it alone.
+    /// </param>
+    /// <param name="unwanted">Families to drop, applied after the other two.</param>
+    /// <param name="added">
+    /// Families to run on top of the others - what turns an opt-in family on without retyping the
+    /// default catalog. A family already there is not added twice.
+    /// </param>
     /// <remarks>
     /// A choice worth offering because the families do not carry equal signal, and the difference is
     /// measurable rather than a matter of taste. Run against this repository: the operator families
@@ -62,17 +92,22 @@ internal sealed class MutatorCatalog
     /// <exception cref="ArgumentException">A name does not belong to any family.</exception>
     public static MutatorCatalog Of(
         IEnumerable<MutatorName>? wanted = null,
-        IEnumerable<MutatorName>? unwanted = null)
+        IEnumerable<MutatorName>? unwanted = null,
+        IEnumerable<MutatorName>? added = null)
     {
         MutatorName[] included = [.. wanted ?? []];
         MutatorName[] excluded = [.. unwanted ?? []];
+        MutatorName[] joined = [.. added ?? []];
 
-        RejectUnknown([.. included, .. excluded]);
+        RejectUnknown([.. included, .. excluded, .. joined]);
 
         return new MutatorCatalog(
         [
-            .. Default.Mutators
-                .Where(mutator => included.Length == 0 || included.Contains(mutator.Name))
+            .. Every
+                .Where(mutator => (included.Length == 0
+                                      ? Default.Mutators.Contains(mutator)
+                                      : included.Contains(mutator.Name)) ||
+                                  joined.Contains(mutator.Name))
                 .Where(mutator => !excluded.Contains(mutator.Name)),
         ]);
     }

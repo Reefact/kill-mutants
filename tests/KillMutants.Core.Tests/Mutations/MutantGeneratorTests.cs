@@ -95,4 +95,77 @@ public class MutantGeneratorTests
         // could not be acted on. They are still compiled, just never mutated.
         Assert.Empty(Generate("class C { bool M(int x) => x >= 1; }", path));
     }
+    private static IReadOnlyList<Mutant> GenerateWithNumericLiterals(string source) =>
+        new MutantGenerator(MutatorCatalog.Of(added: [MutatorName.Create("NumericLiteral")]))
+            .Generate(TestCompilation.From(source));
+
+    private static string[] NumericMutants(string source) =>
+        [.. GenerateWithNumericLiterals(source)
+            .Where(mutant => mutant.Mutator.ToString() == "NumericLiteral")
+            .Select(mutant => $"{mutant.OriginalText} -> {mutant.MutatedText}")];
+
+    /// <summary>
+    /// The project under test is recompiled with the mutant, so its own read of the constant sees
+    /// the new value even though the test assembly keeps the old one. DEC0019.
+    /// </summary>
+    [Fact]
+    public void A_constant_its_project_reads_is_moved()
+    {
+        Assert.Equal(
+            ["100 -> 101", "100 -> 99"],
+            NumericMutants(
+                "public class Themes { public const int MinimumNouns = 100; " +
+                "public static bool IsValid(int nouns) => nouns >= MinimumNouns; }"));
+    }
+
+    /// <summary>
+    /// Only the tests could read it, and they keep the value they were compiled against: the mutant
+    /// would survive whatever they assert, a gap that does not exist.
+    /// </summary>
+    [Fact]
+    public void A_constant_its_project_never_reads_is_left_alone()
+    {
+        Assert.Empty(NumericMutants("public class Themes { public const int MinimumNouns = 100; }"));
+    }
+
+    /// <summary>
+    /// A read that is itself copied onward - into another constant, an attribute, a parameter's
+    /// default - does not count, since the copy is where the trail goes cold.
+    /// </summary>
+    [Theory]
+    [InlineData("public class C { public const int A = 100; public const int B = A + 1; }")]
+    [InlineData("public class C { public const int A = 100; public static int M(int x = A) => x; }")]
+    [InlineData("public class C { public const int A = 100; [System.ComponentModel.DefaultValue(A)] public int P { get; set; } }")]
+    public void A_constant_read_only_where_it_is_copied_onward_is_left_alone(string source)
+    {
+        Assert.DoesNotContain(NumericMutants(source), mutant => mutant.StartsWith("100 ", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_constant_read_from_another_file_of_the_project_counts()
+    {
+        Compilation compilation = TestCompilation.From("public class Themes { public const int MinimumNouns = 100; }")
+            .AddSyntaxTrees(CSharpSyntaxTree.ParseText(
+                "public class Validator { public bool IsValid(int n) => n >= Themes.MinimumNouns; }",
+                path: "/src/Validator.cs",
+                cancellationToken: TestContext.Current.CancellationToken));
+
+        IReadOnlyList<Mutant> mutants = new MutantGenerator(
+                MutatorCatalog.Of(added: [MutatorName.Create("NumericLiteral")]))
+            .Generate(compilation, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            ["101", "99"],
+            mutants.Where(mutant => mutant.Mutator.ToString() == "NumericLiteral").Select(mutant => mutant.MutatedText));
+    }
+
+    /// <summary>The exception is the opt-in family's alone: the default catalog still never reaches a constant.</summary>
+    [Fact]
+    public void Other_families_still_leave_a_read_constant_alone()
+    {
+        Assert.DoesNotContain(
+            GenerateWithNumericLiterals(
+                "public class C { public const bool Flag = 3 >= 2; public static bool M() => Flag; }"),
+            mutant => mutant.Mutator.ToString() != "NumericLiteral");
+    }
 }

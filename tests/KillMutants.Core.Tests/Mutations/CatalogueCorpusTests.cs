@@ -80,6 +80,12 @@ public class CatalogueCorpusTests
             { "spans", "System.Span<int> a, System.Span<int> b, bool f", "int M({0}) => (f ? a : b).Length >= 1 ? 1 : 0;" },
             { "unary minus and bitwise complement", "int a", "int M({0}) => -a + ~a;" },
             { "null-conditional and null-coalescing assignment", "string? a", "int M({0}) { a ??= \"x\"; return a?.Length ?? 0; }" },
+            { "a constant the project reads", "int n", "const int Minimum = 100; public bool M({0}) => n >= Minimum;" },
+            { "a constant computed from literals", "int n", "const long Combinations = 200L * 200; public bool M({0}) => n >= Combinations;" },
+            { "a negative constant at the edge of its type", "sbyte n", "const sbyte Floor = -128; public bool M({0}) => n > Floor;" },
+            { "a byte at its maximum", "int n", "const byte Full = 255; public int M({0}) => n % Full;" },
+            { "fields and properties initialized by value", "int n", "static readonly System.TimeSpan Wait = System.TimeSpan.FromSeconds(30); int Retries { get; } = 3; public int M({0}) => n * Retries + Wait.Seconds;" },
+            { "a constant local", "int n", "int M({0}) { const int Step = 7; return n + Step; }" },
         };
 
     /// <summary>
@@ -134,8 +140,15 @@ public class CatalogueCorpusTests
             // that only ends by one, and negating or instrumenting the condition breaks that.
             { "a loop on a named constant", "System.Func<int> f", "int M({0}) { const bool Forever = true; while (Forever) { f(); } }" },
 
-            // Numeric literals are not in the catalogue, so a case label offers nothing to mutate.
+            // A case label is not a value something is initialized with, so NumericLiteral, the
+            // only family that moves a number, leaves it alone.
             { "a switch case label", "int a", "int M({0}) { switch (a) { case 3: return 1; default: return 0; } }" },
+
+            // Only the tests could read it, and they keep the value they were compiled against.
+            { "a constant nothing in the project reads", "", "const int Minimum = 100;" },
+
+            // The only neighbour of an enum's 0 that converts to it is none.
+            { "an enum field at zero", "", "System.DayOfWeek Day = 0;" },
         };
 
     /// <summary>
@@ -348,6 +361,9 @@ public class CatalogueCorpusTests
             string.Join("; ", errors.Select(diagnostic => diagnostic.ToString())));
     }
 
+    /// <summary>The opt-in families included: a corpus that skipped them would vouch for nothing about them.</summary>
+    private static MutatorCatalog EveryFamily => MutatorCatalog.Of(MutatorCatalog.Names);
+
     private static (Compilation Compilation, IReadOnlyList<Mutant> Mutants) Analyse(
         string parameters, string member)
     {
@@ -356,7 +372,7 @@ public class CatalogueCorpusTests
 
         Assert.Empty(compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error));
 
-        IReadOnlyList<Mutant> mutants = new MutantGenerator(MutatorCatalog.Default).Generate(compilation);
+        IReadOnlyList<Mutant> mutants = new MutantGenerator(EveryFamily).Generate(compilation);
 
         // Without this the assertions below pass vacuously on any entry the catalogue ignores, and
         // the corpus would quietly stop testing the thing it was written for. The cases the
@@ -374,7 +390,7 @@ public class CatalogueCorpusTests
 
         Assert.Empty(compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error));
 
-        return new MutantGenerator(MutatorCatalog.Default).Generate(compilation);
+        return new MutantGenerator(EveryFamily).Generate(compilation);
     }
 
     private static EmitResult Emit(Compilation compilation, Mutant mutant) =>

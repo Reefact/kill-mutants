@@ -2,6 +2,7 @@ using KillMutants.Filtering;
 using KillMutants.Mutations.Mutators;
 using KillMutants.Selection;
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace KillMutants.Mutations;
 
@@ -9,6 +10,7 @@ namespace KillMutants.Mutations;
 internal sealed class MutantGenerator
 {
     private readonly MutatorCatalog _catalog;
+    private readonly bool _reachesConstants;
     private readonly PathFilter _exclusions;
     private readonly string _root;
 
@@ -25,6 +27,7 @@ internal sealed class MutantGenerator
         ArgumentNullException.ThrowIfNull(catalog);
 
         _catalog = catalog;
+        _reachesConstants = catalog.Mutators.Any(mutator => mutator.ReachesConstants);
         _exclusions = exclusions ?? PathFilter.None;
         _root = root ?? string.Empty;
     }
@@ -63,6 +66,11 @@ internal sealed class MutantGenerator
 
         List<Mutant> mutants = [];
 
+        // Built at the first constant a rule proposes to mutate, and never for a catalogue that
+        // reaches none - which is the default one.
+        Lazy<ILookup<string, IdentifierNameSyntax>> identifiers =
+            new(() => MutationSite.IdentifiersOf(compilation));
+
         foreach (SyntaxTree tree in compilation.SyntaxTrees)
         {
             // Per file, because a semantic model and a walk of every node are what generation
@@ -84,8 +92,11 @@ internal sealed class MutantGenerator
             {
                 // Three different refusals, for three different reasons: a mutation nothing could
                 // notice, a mutation that could not compile, and code the developer has said is not
-                // measured.
-                if (!MutationSite.IsObservable(node) ||
+                // measured. The first has one exception, settled per rule below: a constant its own
+                // project reads, offered to a rule that reaches constants (DEC0019).
+                bool observable = MutationSite.IsObservable(node);
+
+                if ((!observable && !_reachesConstants) ||
                     MutationSite.DeclaresAVariable(node) ||
                     MutationSite.AssignsOnSomePathsOnly(node) ||
                     MutationSite.IsExcludedFromCoverage(node, semanticModel))
@@ -93,10 +104,27 @@ internal sealed class MutantGenerator
                     continue;
                 }
 
+                // Asked only once a rule has proposed something, and once per node: it binds every
+                // identifier of the project that spells the constant's name, and most nodes of a
+                // constant propose nothing.
+                bool? readConstant = null;
+
                 foreach (IMutator mutator in _catalog.Mutators)
                 {
+                    if (!observable && !mutator.ReachesConstants)
+                    {
+                        continue;
+                    }
+
                     foreach (MutationCandidate candidate in mutator.Mutate(node, semanticModel))
                     {
+                        if (!observable &&
+                            !(readConstant ??= MutationSite.IsAConstantItsProjectReads(
+                                node, semanticModel, identifiers.Value)))
+                        {
+                            break;
+                        }
+
                         mutants.Add(new Mutant(_nextId, candidate, _root));
                         _nextId = _nextId.Next();
                     }

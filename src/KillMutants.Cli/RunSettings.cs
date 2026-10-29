@@ -10,7 +10,9 @@ namespace KillMutants.Cli;
 /// <param name="MeasureCoverage">Run only the tests that reach each mutant.</param>
 /// <param name="Exclude">Patterns for projects and source files to leave alone.</param>
 /// <param name="Mutators">The only mutator families to run, or empty for all of them.</param>
-/// <param name="WithoutMutators">Families to leave out, applied after <paramref name="Mutators"/>.</param>
+/// <param name="WithoutMutators">
+/// Families to leave out, applied after <paramref name="Mutators"/> and <paramref name="WithMutators"/>.
+/// </param>
 /// <param name="VerifyKills">How many of the mutants reported killed to test a second time.</param>
 /// <param name="JsonReportPath">Where to write the machine-readable report, or null for none.</param>
 /// <param name="Threshold">The score the run must reach, or null when the run only reports.</param>
@@ -21,6 +23,10 @@ namespace KillMutants.Cli;
 /// <param name="Resume">
 /// The series this run continues, or starts when none of that name exists beside the report; null
 /// for a run that names none. See DEC0015.
+/// </param>
+/// <param name="WithMutators">
+/// Families to run on top of <paramref name="Mutators"/>, which is how an opt-in family joins the
+/// default catalog. See DEC0019.
 /// </param>
 internal sealed record RunSettings(
     string Directory,
@@ -35,7 +41,8 @@ internal sealed record RunSettings(
     double? Threshold,
     string? Since,
     TimeSpan? StopAfter = null,
-    string? Resume = null)
+    string? Resume = null,
+    IReadOnlyList<MutatorName>? WithMutators = null)
 {
     /// <summary>Resolves what was asked against what the project keeps in its file.</summary>
     /// <param name="options">What the command line asked for.</param>
@@ -63,8 +70,9 @@ internal sealed record RunSettings(
 
         IReadOnlyList<MutatorName> mutators = Families(options.Mutators, file?.Mutators);
         IReadOnlyList<MutatorName> without = Families(options.WithoutMutators, file?.Without);
+        IReadOnlyList<MutatorName> with = Families(options.WithMutators, file?.With);
 
-        RejectUnknown([.. mutators, .. without]);
+        RejectUnknown([.. mutators, .. without, .. with]);
         RejectImpossible(file);
         RejectThresholdWithSince(options, file);
 
@@ -86,7 +94,8 @@ internal sealed record RunSettings(
             options.ThresholdCleared ? null : options.Threshold ?? file?.BreakAt,
             options.Since,
             options.StopAfterCleared ? null : options.StopAfter ?? StopAfterIn(file),
-            options.Resume);
+            options.Resume,
+            with);
     }
 
     /// <summary>

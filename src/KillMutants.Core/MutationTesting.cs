@@ -8,7 +8,8 @@ namespace KillMutants;
 public static class MutationTesting
 {
     /// <summary>
-    /// The mutator families this tool knows, which are the names <c>mutators</c> accepts.
+    /// The mutator families this tool knows, which are the names <c>mutators</c> accepts - the opt-in
+    /// ones included, see <see cref="OptInMutatorFamilies"/>.
     /// </summary>
     /// <remarks>
     /// The catalog itself stays internal - it is a set of rules, not an extension point - but its
@@ -16,6 +17,13 @@ public static class MutationTesting
     /// </remarks>
     public static IReadOnlyList<Mutations.MutatorName> MutatorFamilies =>
         Mutations.Mutators.MutatorCatalog.Names;
+
+    /// <summary>
+    /// The families a run applies only when it names them, in <c>mutators</c> or
+    /// <c>withMutators</c>. DEC0019.
+    /// </summary>
+    public static IReadOnlyList<Mutations.MutatorName> OptInMutatorFamilies =>
+        Mutations.Mutators.MutatorCatalog.OptInNames;
 
     /// <summary>
     /// Discovers the test project and the project it exercises, mutates the latter, and reports
@@ -37,10 +45,17 @@ public static class MutationTesting
     /// mutated nor used to run tests; an excluded file is still compiled but never mutated.
     /// </param>
     /// <param name="mutators">
-    /// The only mutator families to run, or null for all of them. Names come from
-    /// <see cref="Mutations.Mutators.MutatorCatalog.Names"/>.
+    /// The only mutator families to run, or null for the default catalog - every family except the
+    /// opt-in ones. Names come from <see cref="MutatorFamilies"/>.
     /// </param>
-    /// <param name="withoutMutators">Families to leave out, applied after <paramref name="mutators"/>.</param>
+    /// <param name="withoutMutators">
+    /// Families to leave out, applied after <paramref name="mutators"/> and
+    /// <paramref name="withMutators"/>.
+    /// </param>
+    /// <param name="withMutators">
+    /// Families to run on top of <paramref name="mutators"/>, which is how an opt-in family joins the
+    /// default catalog.
+    /// </param>
     /// <param name="verifyKills">
     /// How many of the mutants reported killed to test a second time, on their own, before the run
     /// ends. Zero, the default, skips the check; each sampled mutant costs one more test run.
@@ -94,6 +109,7 @@ public static class MutationTesting
         IEnumerable<string>? exclude = null,
         IEnumerable<Mutations.MutatorName>? mutators = null,
         IEnumerable<Mutations.MutatorName>? withoutMutators = null,
+        IEnumerable<Mutations.MutatorName>? withMutators = null,
         int verifyKills = 0,
         Selection.IChangeSource? changes = null,
         IProgress<Reporting.MutationTestProgress>? progress = null,
@@ -104,7 +120,7 @@ public static class MutationTesting
     {
         var session = new MutationTestSession(
             new XUnitTestRunner(), configuration, timeoutPolicy: null, workerCount, measureCoverage,
-            exclude, Mutations.Mutators.MutatorCatalog.Of(mutators, withoutMutators), verifyKills,
+            exclude, Mutations.Mutators.MutatorCatalog.Of(mutators, withoutMutators, withMutators), verifyKills,
             changes, progress, verdicts, continuation);
 
         return session.RunAsync(searchDirectory, cancellationToken, stopToken);

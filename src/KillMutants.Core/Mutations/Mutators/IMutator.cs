@@ -25,6 +25,17 @@ internal interface IMutator
     /// <summary>Names this rule in reports.</summary>
     MutatorName Name { get; }
 
+    /// <summary>
+    /// True when the rule may also be offered the nodes of a <c>const</c> that its own project
+    /// reads, which every other rule is kept out of.
+    /// </summary>
+    /// <remarks>
+    /// False unless a rule says otherwise, because the exclusion in
+    /// <see cref="MutationSite.IsObservable"/> is the safe default: a mutation the tests cannot see
+    /// is a gap that does not exist. A rule that opts in has been argued separately - DEC0019.
+    /// </remarks>
+    bool ReachesConstants => false;
+
     /// <summary>Proposes the mutations that apply to <paramref name="node"/>, if any.</summary>
     /// <param name="node">The node to consider.</param>
     /// <param name="semanticModel">

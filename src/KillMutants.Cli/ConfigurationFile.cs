@@ -8,6 +8,7 @@ namespace KillMutants.Cli;
 /// <param name="Exclude">Patterns for projects and source files to leave alone.</param>
 /// <param name="Mutators">The only mutator families to run.</param>
 /// <param name="Without">Families to leave out.</param>
+/// <param name="With">Families to add to the others, which is how an opt-in family is turned on.</param>
 /// <param name="Parallel">How many mutants to test at once.</param>
 /// <param name="Coverage">Whether to run only the tests that reach each mutant.</param>
 /// <param name="BreakAt">The mutation score the run must reach, as a percentage.</param>
@@ -37,7 +38,8 @@ internal sealed record ConfigurationFile(
     double? BreakAt = null,
     int? VerifyKills = null,
     string? ReportJson = null,
-    string? StopAfter = null)
+    string? StopAfter = null,
+    IReadOnlyList<string>? With = null)
 {
     /// <summary>The file KillMutants looks for in the directory it was pointed at.</summary>
     public const string Name = "killmutants.json";

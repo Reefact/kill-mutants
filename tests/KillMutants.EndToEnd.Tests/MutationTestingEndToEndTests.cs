@@ -313,6 +313,28 @@ public class MutationTestingEndToEndTests
     }
 
     /// <summary>
+    /// DEC0019, end to end: a threshold asserted at is killed both ways, one asserted only around
+    /// survives both ways, and a constant only the tests read is not mutated at all, since its
+    /// mutants would survive whatever the tests assert.
+    /// </summary>
+    [Fact]
+    public async Task A_named_threshold_is_killed_when_the_tests_assert_at_it_and_survives_when_they_assert_around_it()
+    {
+        using var fixture = FixtureCopy.Create();
+        fixture.AddNamedThresholds();
+
+        MutationTestReport report = await MutationTesting.RunAsync(
+            fixture.Root,
+            mutators: [MutatorName.Create("NumericLiteral")],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            ["100 -> 101: Killed", "100 -> 99: Killed", "40 -> 41: Survived", "40 -> 39: Survived"],
+            report.Results.Select(result =>
+                $"{result.Mutant.OriginalText} -> {result.Mutant.MutatedText}: {result.Status}"));
+    }
+
+    /// <summary>
     /// A generator is rarely one file: Mapperly, Refit and protobuf all ship helper assemblies
     /// beside themselves, and this fixture reproduces that shape with a generator whose output is
     /// computed by a second assembly. Two separate defects made this project fail before M11.

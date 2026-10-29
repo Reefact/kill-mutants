@@ -11,6 +11,7 @@ public class RunSettingsTests
 {
     private static readonly MutatorName Comparison = MutatorName.Create("Comparison");
     private static readonly MutatorName StringLiteral = MutatorName.Create("StringLiteral");
+    private static readonly MutatorName NumericLiteral = MutatorName.Create("NumericLiteral");
 
     private static CommandLineOptions Asked(params string[] arguments) =>
         CommandLineOptions.Parse(["/work", .. arguments]);
@@ -210,5 +211,28 @@ public class RunSettingsTests
             () => Asked("--without", ""));
 
         Assert.Contains("'none' for no families at all", refusal.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// An opt-in family is turned on by adding it, so a project keeps the default catalogue without
+    /// retyping it - DEC0019. The file and the command line follow the rule every list follows.
+    /// </summary>
+    [Fact]
+    public void An_opt_in_family_is_added_from_the_command_line_or_the_file()
+    {
+        Assert.Equal([NumericLiteral], RunSettings.From(Asked("--with", "NumericLiteral"), file: null).WithMutators);
+
+        var file = new ConfigurationFile(With: ["NumericLiteral"]);
+
+        Assert.Equal([NumericLiteral], RunSettings.From(Asked(), file).WithMutators);
+        Assert.Empty(RunSettings.From(Asked("--with", "none"), file).WithMutators!);
+        Assert.Empty(RunSettings.From(Asked(), file: null).WithMutators!);
+    }
+
+    [Fact]
+    public void A_family_added_that_does_not_exist_is_refused()
+    {
+        Assert.Throws<ArgumentException>(() => RunSettings.From(Asked("--with", "Numeric"), file: null));
+        Assert.Throws<ArgumentException>(() => RunSettings.From(Asked(), new ConfigurationFile(With: ["Numeric"])));
     }
 }

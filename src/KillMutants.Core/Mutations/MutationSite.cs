@@ -23,6 +23,11 @@ internal static class MutationSite
     /// the tests are, so generating it would manufacture a false gap and depress the score for a
     /// reason the user could never act on. These sites are skipped rather than reported.
     /// </para>
+    /// <para>
+    /// One narrow exception lives beside this rule rather than inside it: a constant the project
+    /// under test reads itself, offered only to a family that asks for it - see
+    /// <see cref="IsAConstantItsProjectReads"/>.
+    /// </para>
     /// </remarks>
     public static bool IsObservable(SyntaxNode node)
     {
@@ -56,6 +61,91 @@ internal static class MutationSite
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// True when the node belongs to a <c>const</c> - a field or a local - that the project it is
+    /// declared in reads somewhere a change could be seen.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="IsObservable"/> refuses a constant because the test assembly keeps the value it was
+    /// compiled against. That is the whole truth only for a constant nobody else reads: the project
+    /// under test is recompiled with every mutant, so <c>if (count &lt; MinimumNouns)</c> in that
+    /// project reads the mutated value, and a test can notice. A constant only the tests read is
+    /// still left alone, because there the mutant survives whatever the tests do.
+    /// </para>
+    /// <para>
+    /// A read counts only where <see cref="IsObservable"/> would allow a mutation, so a constant
+    /// read only by another constant, an attribute, a parameter's default or an enum member does not
+    /// count: those are copied onward in turn. Following such a chain would find more, and costs a
+    /// walk per link for a shape that is rare. DEC0019.
+    /// </para>
+    /// </remarks>
+    /// <param name="node">The node a rule proposed to mutate.</param>
+    /// <param name="semanticModel">The semantic model of the node's tree.</param>
+    /// <param name="identifiers">
+    /// Every identifier of the compilation by name - see <see cref="IdentifiersOf"/> - built once
+    /// per compilation by the caller, so that each constant binds only the names that match its own
+    /// rather than walking every file again.
+    /// </param>
+    public static bool IsAConstantItsProjectReads(
+        SyntaxNode node,
+        SemanticModel semanticModel,
+        ILookup<string, IdentifierNameSyntax> identifiers)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(semanticModel);
+        ArgumentNullException.ThrowIfNull(identifiers);
+
+        // A constant's initializer holds no lambda and no member, so the nearest declarator is the
+        // constant's own whenever there is a constant at all.
+        VariableDeclaratorSyntax? declarator = node.AncestorsAndSelf()
+            .OfType<VariableDeclaratorSyntax>()
+            .FirstOrDefault();
+
+        bool isConstant = declarator?.Parent?.Parent switch
+        {
+            FieldDeclarationSyntax field => IsConstant(field.Modifiers),
+            LocalDeclarationStatementSyntax local => local.IsConst,
+            _ => false,
+        };
+
+        if (!isConstant || semanticModel.GetDeclaredSymbol(declarator!) is not { } constant)
+        {
+            return false;
+        }
+
+        foreach (IGrouping<SyntaxTree, IdentifierNameSyntax> inTree in identifiers[constant.Name]
+                     .Where(IsObservable)
+                     .GroupBy(identifier => identifier.SyntaxTree))
+        {
+            SemanticModel model = inTree.Key == semanticModel.SyntaxTree
+                ? semanticModel
+                : semanticModel.Compilation.GetSemanticModel(inTree.Key);
+
+            if (inTree.Any(identifier =>
+                    SymbolEqualityComparer.Default.Equals(model.GetSymbolInfo(identifier).Symbol, constant)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Every identifier in <paramref name="compilation"/>, by the name it spells.</summary>
+    /// <remarks>
+    /// Generated sources included: they are compiled into the project, so a read there is a read
+    /// the mutant reaches.
+    /// </remarks>
+    public static ILookup<string, IdentifierNameSyntax> IdentifiersOf(Compilation compilation)
+    {
+        ArgumentNullException.ThrowIfNull(compilation);
+
+        return compilation.SyntaxTrees
+            .SelectMany(tree => tree.GetRoot().DescendantNodes().OfType<IdentifierNameSyntax>())
+            .ToLookup(identifier => identifier.Identifier.ValueText, StringComparer.Ordinal);
     }
 
     /// <summary>

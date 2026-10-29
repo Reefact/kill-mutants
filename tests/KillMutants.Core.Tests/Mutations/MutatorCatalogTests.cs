@@ -13,12 +13,59 @@ public class MutatorCatalogTests
 {
     private static readonly MutatorName Comparison = MutatorName.Create("Comparison");
     private static readonly MutatorName StringLiteral = MutatorName.Create("StringLiteral");
+    private static readonly MutatorName NumericLiteral = MutatorName.Create("NumericLiteral");
 
     [Fact]
-    public void The_default_catalog_runs_every_family()
+    public void The_default_catalog_runs_every_family_but_the_opt_in_ones()
     {
-        Assert.Equal(MutatorCatalog.Names, MutatorCatalog.Default.Mutators.Select(m => m.Name));
-        Assert.Equal(MutatorCatalog.Names, MutatorCatalog.Of().Mutators.Select(m => m.Name));
+        MutatorName[] defaults = [.. MutatorCatalog.Names.Except(MutatorCatalog.OptInNames)];
+
+        Assert.Equal(defaults, MutatorCatalog.Default.Mutators.Select(m => m.Name));
+        Assert.Equal(defaults, MutatorCatalog.Of().Mutators.Select(m => m.Name));
+    }
+
+    /// <summary>Noisy enough that a project which did not ask for it must not pay for it - DEC0019.</summary>
+    [Fact]
+    public void Numeric_literals_are_opt_in()
+    {
+        Assert.Equal([NumericLiteral], MutatorCatalog.OptInNames);
+        Assert.DoesNotContain(NumericLiteral, MutatorCatalog.Default.Mutators.Select(m => m.Name));
+    }
+
+    [Fact]
+    public void Naming_an_opt_in_family_runs_it_alone()
+    {
+        Assert.Equal([NumericLiteral], MutatorCatalog.Of([NumericLiteral]).Mutators.Select(m => m.Name));
+    }
+
+    [Fact]
+    public void Adding_an_opt_in_family_keeps_the_default_catalog()
+    {
+        MutatorCatalog catalog = MutatorCatalog.Of(added: [NumericLiteral]);
+
+        Assert.Equal(MutatorCatalog.Names, catalog.Mutators.Select(m => m.Name));
+    }
+
+    [Fact]
+    public void Adding_joins_the_named_families_without_repeating_one()
+    {
+        MutatorCatalog catalog = MutatorCatalog.Of([Comparison], added: [Comparison, NumericLiteral]);
+
+        Assert.Equal([Comparison, NumericLiteral], catalog.Mutators.Select(m => m.Name));
+    }
+
+    [Fact]
+    public void Dropping_wins_over_adding()
+    {
+        MutatorCatalog catalog = MutatorCatalog.Of(unwanted: [NumericLiteral], added: [NumericLiteral]);
+
+        Assert.DoesNotContain(NumericLiteral, catalog.Mutators.Select(m => m.Name));
+    }
+
+    [Fact]
+    public void An_unknown_family_is_rejected_when_adding_too()
+    {
+        Assert.Throws<ArgumentException>(() => MutatorCatalog.Of(added: [MutatorName.Create("Numeric")]));
     }
 
     [Fact]
@@ -35,7 +82,7 @@ public class MutatorCatalogTests
         MutatorCatalog catalog = MutatorCatalog.Of(unwanted: [StringLiteral]);
 
         Assert.DoesNotContain(StringLiteral, catalog.Mutators.Select(m => m.Name));
-        Assert.Equal(MutatorCatalog.Names.Count - 1, catalog.Mutators.Count);
+        Assert.Equal(MutatorCatalog.Default.Mutators.Count - 1, catalog.Mutators.Count);
     }
 
     /// <summary>Dropping is applied second, so the two options compose without an ordering rule.</summary>
@@ -81,5 +128,6 @@ public class MutatorCatalogTests
     public void The_names_are_the_ones_the_public_surface_offers()
     {
         Assert.Equal(MutatorCatalog.Names, MutationTesting.MutatorFamilies);
+        Assert.Equal(MutatorCatalog.OptInNames, MutationTesting.OptInMutatorFamilies);
     }
 }

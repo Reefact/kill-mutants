@@ -112,6 +112,27 @@ public class CommandLineTests
     }
 
     /// <summary>
+    /// An opt-in family is not in a run that does not name it, and joins the others when one adds
+    /// it - DEC0019.
+    /// </summary>
+    [Fact]
+    public async Task An_opt_in_family_runs_only_when_the_run_adds_it()
+    {
+        using var fixture = FixtureCopy.Create();
+        fixture.AddNamedThresholds();
+
+        (int plain, string comparisons, _) = await RunAsync(fixture.Root, "--mutators", "Comparison");
+        (int added, string both, _) = await RunAsync(
+            fixture.Root, "--mutators", "Comparison", "--with", "NumericLiteral");
+
+        Assert.Equal(Success, plain);
+        Assert.Equal(Success, added);
+        Assert.DoesNotContain("NumericLiteral", comparisons, StringComparison.Ordinal);
+        Assert.Contains("NumericLiteral", both, StringComparison.Ordinal);
+        Assert.Contains("Comparison", both, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// M12. The whole point of the file is that a CI job stops retyping flags, so the proof is a
     /// real run finding the file on its own and behaving as it says.
     /// </summary>
