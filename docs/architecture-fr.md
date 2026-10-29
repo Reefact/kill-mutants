@@ -122,8 +122,8 @@ chacune exercée de bout en bout contre un vrai projet de fixture.
 | `NullCoalescing` | `a ?? b` | `a`, et `b ?? a` quand `a` se limite à lire une variable, un champ ou une propriété automatique |
 | `BooleanLiteral` | `true` `false` | l'un l'autre |
 | `Negation` | `!x` | `x` |
-| `NegatedDecision` | la condition d'un branchement ou d'une boucle, ou un `bool` renvoyé, quand ce n'est pas une constante | la décision niée, sauf s'il s'agit d'une négation, d'une comparaison, d'un `is`, d'un littéral ou de la condition d'un ternaire, dont d'autres familles produisent déjà le mutant |
-| `Pattern` | `x is P`, `x is T`, et les motifs à l'intérieur d'un `is` | le test nié (`x is not P`) ; le décalage de borne et la négation d'un motif relationnel, sans la négation quand il est le motif entier ; chaque bras d'un `or` ou d'un `and` retiré, un `and` gardant son `not null` |
+| `NegatedDecision` | la condition d'un branchement ou d'une boucle, ou un `bool` renvoyé, quand ce n'est pas une constante | la décision niée, sauf s'il s'agit d'une négation, d'une comparaison, d'une expression `is`, d'un littéral ou de la condition d'un ternaire, dont d'autres familles produisent déjà le mutant |
+| `Pattern` | `x is P`, `x is T`, et les motifs contenus dans une expression `is` | le test inversé (`x is not P`) ; pour un motif relationnel, le décalage de borne et l'inversion, sans l'inversion quand il constitue à lui seul le test ; chaque branche d'un motif `or` ou `and` retirée tour à tour, un motif `and` conservant sa branche `not null` |
 | `StringLiteral` | `"texte"` | `""`, et `""` en une chaîne non vide |
 
 **Ce qu'il ne mute délibérément pas.** Le catalogue est sélectif et non exhaustif : chaque mutant
@@ -139,7 +139,7 @@ ci-dessous a été mesuré en passant le catalogue sur chaque forme, pas lu dans
 | `+x` | **Non supporté.** Retirer un plus unaire ne change rien : le mutant est équivalent par construction et ne peut jamais être tué. |
 | `~x` | **Non supporté pour l'instant.** Le retirer change la valeur si radicalement que tout test touchant l'expression le tue ; le mutant est presque gratuit à écrire et presque sans valeur. |
 | `?.`, `as` | **Non supportés.** Les deux mutent vers des formes qui lèvent plutôt qu'elles ne calculent : elles mesurent si un test touche la ligne, pas s'il en vérifie le résultat — et `?.` ne compile souvent même plus une fois le chemin null retiré. |
-| Motifs d'un `switch` | **Non supporté pour l'instant.** Modifier un bras peut rendre un bras suivant inatteignable, ce que le compilateur refuse pour tout le `switch` (CS8510) et qu'aucune vérification d'un nœud isolé ne peut voir - DEC0018. |
+| Motifs d'un `switch` | **Non pris en charge pour l'instant.** Modifier un bras peut rendre un bras suivant inatteignable, ce que le compilateur refuse pour tout le `switch` (CS8510), et qu'aucune vérification limitée à un nœud ne peut détecter - DEC0018. |
 | Bras de `switch` | **Non supportés.** Réordonner ou supprimer un bras est une mutation structurelle, pas une mutation d'opérateur, et demande un autre raisonnement sur l'exhaustivité. |
 
 Trois propriétés valent pour toutes. Chaque remplacement est un **nouveau nœud du bon type**, pas un
