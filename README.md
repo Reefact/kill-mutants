@@ -12,7 +12,7 @@ they miss **survives**.
 Early, but working end to end. Milestone 1 was a deliberately tiny vertical slice — one project
 pair, one mutator, one mutant, executed for real — and every milestone since has widened it on that
 same foundation: multi-project solutions, coverage-driven test selection, mutants tested in
-parallel, console and JSON reports, a `--break-at` quality gate, and a catalogue of twelve mutator
+parallel, console and JSON reports, a `--break-at` quality gate, and a catalogue of thirteen mutator
 families. It is now packaged as a `dotnet` tool and has been run against its own source. The intent
 throughout is a foundation that has been shown to work, rather than a large catalog resting on an
 engine that has never run.
@@ -65,6 +65,7 @@ The few choices that are expensive to reverse. Each is recorded in [docs/decisio
 | DEC0015 — A resumed run inherits the verdicts its series reached on the same code | [en](docs/decisions/0015-a-resumed-run-inherits-the-verdicts-its-series-reached-on-the-same-code-en.md) | [fr](docs/decisions/0015-a-resumed-run-inherits-the-verdicts-its-series-reached-on-the-same-code-fr.md) |
 | DEC0016 — The run writes its plan beside the report, as a file of its own | [en](docs/decisions/0016-the-run-writes-its-plan-beside-the-report-en.md) | [fr](docs/decisions/0016-the-run-writes-its-plan-beside-the-report-fr.md) |
 | DEC0017 — A ternary's condition is forced each way, still evaluated, rather than its branches swapped | [en](docs/decisions/0017-a-ternary-is-forced-each-way-rather-than-swapped-en.md) | [fr](docs/decisions/0017-a-ternary-is-forced-each-way-rather-than-swapped-fr.md) |
+| DEC0018 — The patterns of an `is` are mutated by a family of their own, as the catalogue's operators are | [en](docs/decisions/0018-patterns-are-mutated-by-a-family-of-their-own-en.md) | [fr](docs/decisions/0018-patterns-are-mutated-by-a-family-of-their-own-fr.md) |
 
 ## Installing
 
