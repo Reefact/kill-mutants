@@ -58,6 +58,10 @@ public sealed record RunPlan(
 /// Each project under test with the test projects reaching it, or null before discovery.
 /// </param>
 /// <param name="TestFramework">The xUnit the test applications were built on, or null before the build.</param>
+/// <param name="With">
+/// The families added to the others, or null in a plan written before the option existed, which is
+/// read as none.
+/// </param>
 /// <remarks>
 /// <para>
 /// A mutant's key covers the mutation and nothing else: not the rest of the file, not the tests, not
@@ -84,7 +88,8 @@ public sealed record RunIdentity(
     PlannedScope? Scope = null,
     string? Fingerprint = null,
     IReadOnlyList<string>? TargetGraph = null,
-    string? TestFramework = null)
+    string? TestFramework = null,
+    IReadOnlyList<string>? With = null)
 {
     /// <summary>
     /// Why this run cannot continue the one that recorded <paramref name="earlier"/>, phrased for a
@@ -159,6 +164,11 @@ public sealed record RunIdentity(
         if (!SameSet(Without, earlier.Without))
         {
             return "the families left out differ";
+        }
+
+        if (!SameSet(With ?? [], earlier.With ?? []))
+        {
+            return "the families added differ";
         }
 
         if (!SameSet(Exclude, earlier.Exclude))

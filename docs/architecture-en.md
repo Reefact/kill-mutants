@@ -95,8 +95,9 @@ what the contract is for.
 | Results | `KillMutants.Reporting` | `MutationTestReport`, console and JSON writers, progress |
 | CLI | `KillMutants.Cli` | `dotnet killmutants`, thresholds and exit codes (DEC0009) |
 
-**The catalogue.** Thirteen families, each a separate `IMutator`, each with its own tests and each
-exercised end to end against a real fixture project.
+**The catalogue.** Fourteen families, each a separate `IMutator`, each with its own tests and each
+exercised end to end against a real fixture project. Thirteen run by default; `NumericLiteral` runs
+only when `--with` adds it or `--mutators` names it (DEC0019).
 
 | Family | Rewrites | Into |
 |---|---|---|
@@ -114,6 +115,7 @@ exercised end to end against a real fixture project.
 | `NegatedDecision` | the condition of a branch or a loop, or a returned `bool`, when it is not a constant | the decision negated, unless it is a negation, a comparison, an `is`, a literal or a ternary's condition, which other families already make the mutant of |
 | `Pattern` | `x is P`, `x is T`, and the patterns inside an `is` | the test negated (`x is not P`); a relational pattern's boundary shift and negation, the negation left out when it is the whole pattern; each arm of an `or` or `and` dropped, an `and` keeping its `not null` |
 | `StringLiteral` | `"text"` | `""`, and `""` into a non-empty string |
+| `NumericLiteral` *(opt-in)* | an integer literal in the initializer of a constant, a field or a property - a `const` only when its own project reads it | `n + 1` and `n - 1`, each only when it keeps the literal's type and fits the type it is used as |
 
 **What it deliberately does not mutate.** The catalogue is selective rather than exhaustive: every
 mutant costs a test run, so an operator earns its place by the signal it carries. The inventory below
@@ -123,7 +125,7 @@ was measured by running the catalogue over each form rather than read off the la
 |---|---|
 | `>>>`, `>>>=` | **Future candidate.** High signal - unsigned and signed shift differ only for negative values, which is exactly the case a test suite forgets. |
 | `^=` | **Future candidate.** `^` is mutated but its compound form is not, which is an inconsistency rather than a decision. |
-| Numeric literals | **Future candidate.** Classic and high signal, but noisy enough that it wants its own opt-in rather than a place in the default set. |
+| Numeric literals outside an initializer | **Future candidate.** `random.Next(100)` and loop bounds are reached by nothing, but most such literals are noise: to revisit once `NumericLiteral` has been measured - DEC0019. |
 | `-x` | **Future candidate**, below the others: most sign errors are already reachable through the arithmetic family. |
 | `+x` | **Not supported.** Removing a unary plus changes nothing, so the mutant is equivalent by construction and can never be killed. |
 | `~x` | **Not supported for now.** Removing it changes the value so drastically that any test touching the expression kills it; the mutant is nearly free to write and nearly worthless. |

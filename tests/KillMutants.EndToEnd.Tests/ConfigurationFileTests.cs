@@ -32,6 +32,7 @@ public class ConfigurationFileTests : IDisposable
               "exclude": ["tests/fixtures/*"],
               "mutators": ["Comparison"],
               "without": ["StringLiteral"],
+              "with": ["NumericLiteral"],
               "parallel": 3,
               "coverage": false,
               "breakAt": 70,
@@ -44,6 +45,7 @@ public class ConfigurationFileTests : IDisposable
         Assert.Equal(["tests/fixtures/*"], file.Exclude);
         Assert.Equal(["Comparison"], file.Mutators);
         Assert.Equal(["StringLiteral"], file.Without);
+        Assert.Equal(["NumericLiteral"], file.With);
         Assert.Equal(3, file.Parallel);
         Assert.False(file.Coverage);
         Assert.Equal(70, file.BreakAt);

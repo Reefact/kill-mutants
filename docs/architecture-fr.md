@@ -106,8 +106,9 @@ la composition. Voir DEC0011 pour ce à quoi sert ce contrat.
 | Résultats | `KillMutants.Reporting` | `MutationTestReport`, écritures console et JSON, progression |
 | CLI | `KillMutants.Cli` | `dotnet killmutants`, seuils et codes de sortie (DEC0009) |
 
-**Le catalogue.** Treize familles, chacune un `IMutator` distinct, chacune avec ses propres tests et
-chacune exercée de bout en bout contre un vrai projet de fixture.
+**Le catalogue.** Quatorze familles, chacune un `IMutator` distinct, chacune avec ses propres tests et
+chacune exercée de bout en bout contre un vrai projet de fixture. Treize s'exécutent par défaut ;
+`NumericLiteral` ne s'exécute que lorsque `--with` l'ajoute ou que `--mutators` la nomme (DEC0019).
 
 | Famille | Réécrit | En |
 |---|---|---|
@@ -125,6 +126,7 @@ chacune exercée de bout en bout contre un vrai projet de fixture.
 | `NegatedDecision` | la condition d'un branchement ou d'une boucle, ou un `bool` renvoyé, quand ce n'est pas une constante | la décision niée, sauf s'il s'agit d'une négation, d'une comparaison, d'une expression `is`, d'un littéral ou de la condition d'un ternaire, dont d'autres familles produisent déjà le mutant |
 | `Pattern` | `x is P`, `x is T`, et les motifs contenus dans une expression `is` | le test inversé (`x is not P`) ; pour un motif relationnel, le décalage de borne et l'inversion, sans l'inversion quand il constitue à lui seul le test ; chaque branche d'un motif `or` ou `and` retirée tour à tour, un motif `and` conservant sa branche `not null` |
 | `StringLiteral` | `"texte"` | `""`, et `""` en une chaîne non vide |
+| `NumericLiteral` *(sur demande)* | un littéral entier dans l'initialiseur d'une constante, d'un champ ou d'une propriété - une `const` seulement quand son propre projet la lit | `n + 1` et `n - 1`, chacun seulement s'il garde le type du littéral et tient dans le type où il est utilisé |
 
 **Ce qu'il ne mute délibérément pas.** Le catalogue est sélectif et non exhaustif : chaque mutant
 coûte une exécution de tests, donc un opérateur gagne sa place au signal qu'il porte. L'inventaire
@@ -134,7 +136,7 @@ ci-dessous a été mesuré en passant le catalogue sur chaque forme, pas lu dans
 |---|---|
 | `>>>`, `>>>=` | **Candidat futur.** Fort signal : décalage signé et non signé ne diffèrent que pour les valeurs négatives, exactement le cas qu'une suite de tests oublie. |
 | `^=` | **Candidat futur.** `^` est muté mais pas sa forme composée : c'est une incohérence, pas une décision. |
-| Littéraux numériques | **Candidat futur.** Classique et à fort signal, mais assez bruyant pour mériter une activation explicite plutôt qu'une place par défaut. |
+| Littéraux numériques hors d'un initialiseur | **Candidat futur.** Rien n'atteint `random.Next(100)` ni les bornes de boucle, mais la plupart de ces littéraux sont du bruit : à réexaminer une fois `NumericLiteral` mesurée - DEC0019. |
 | `-x` | **Candidat futur**, en dessous des autres : la plupart des erreurs de signe sont déjà atteignables par la famille arithmétique. |
 | `+x` | **Non supporté.** Retirer un plus unaire ne change rien : le mutant est équivalent par construction et ne peut jamais être tué. |
 | `~x` | **Non supporté pour l'instant.** Le retirer change la valeur si radicalement que tout test touchant l'expression le tue ; le mutant est presque gratuit à écrire et presque sans valeur. |

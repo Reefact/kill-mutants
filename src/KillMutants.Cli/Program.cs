@@ -163,8 +163,8 @@ internal static class Program
             .RunAsync(
                 settings.Directory, settings.Configuration, settings.WorkerCount,
                 settings.MeasureCoverage, settings.Exclude, settings.Mutators,
-                settings.WithoutMutators, settings.VerifyKills, changes, progress, files?.Log,
-                files?.Continuation, stopToken: stopToken)
+                settings.WithoutMutators, settings.WithMutators, settings.VerifyKills, changes,
+                progress, files?.Log, files?.Continuation, stopToken: stopToken)
             .ConfigureAwait(false);
 
         // Progress goes to stderr and the report to stdout, so piping the report somewhere useful
@@ -421,7 +421,8 @@ internal static class Program
             settings.MeasureCoverage,
             [.. settings.Mutators.Select(family => family.ToString())],
             [.. settings.WithoutMutators.Select(family => family.ToString())],
-            settings.Exclude);
+            settings.Exclude,
+            With: [.. (settings.WithMutators ?? []).Select(family => family.ToString())]);
 
         bool continues = false;
 
@@ -551,9 +552,9 @@ internal static class Program
             Settings:
               A project may keep its habits in killmutants.json, in the directory above. Every
               option below that states a habit has a key there - configuration, exclude, mutators,
-              without, parallel, coverage, breakAt, verifyKills, reportJson, stopAfter - and anything
-              given on the command line wins. --since and --resume say what one run is about, and
-              have none.
+              with, without, parallel, coverage, breakAt, verifyKills, reportJson, stopAfter - and
+              anything given on the command line wins. --since and --resume say what one run is
+              about, and have none.
 
             Options:
               -c, --configuration <cfg> Build configuration to analyse and run. Defaults to Release.
@@ -565,7 +566,9 @@ internal static class Program
                                         property KillMutantsTestSupport to true, which says it is
                                         test scaffolding rather than code under test.
               -m, --mutators <list>     Only run these mutator families, comma separated.
-                  --without <list>      Leave these families out. Applied after --mutators.
+                  --with <list>         Add these families to the others. NumericLiteral runs
+                                        only when it is named here or in --mutators.
+                  --without <list>      Leave these families out. Applied after the two above.
                                         Pass 'none' to run every family even when the file
                                         excludes some.
               -p, --parallel <n>        Mutants to test at once. Defaults to half the processors.
