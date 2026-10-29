@@ -5,6 +5,7 @@
 | Date | Statut | Note | Compte rendu lié |
 |---|---|---|---|
 | 2026-10-29 | Proposé | Première rédaction | |
+| 2026-10-29 | Accepté | | |
 
 ## Contexte
 
