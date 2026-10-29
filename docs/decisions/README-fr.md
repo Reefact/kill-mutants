@@ -128,3 +128,4 @@ celle qui empêche un agent de merger une pull request.
 | [DEC0015](0015-a-resumed-run-inherits-the-verdicts-its-series-reached-on-the-same-code-fr.md) | Une exécution reprise hérite des verdicts que sa série a rendus sur le même code | Accepté |
 | [DEC0016](0016-the-run-writes-its-plan-beside-the-report-fr.md) | L'exécution écrit son plan à côté du rapport, dans un fichier à part | Accepté |
 | [DEC0017](0017-a-ternary-is-forced-each-way-rather-than-swapped-fr.md) | La condition d'un ternaire est forcée dans chaque sens, toujours évaluée, au lieu d'échanger ses branches | Accepté |
+| [DEC0018](0018-patterns-are-mutated-by-a-family-of-their-own-fr.md) | Les motifs d'un `is` sont mutés par une famille à part, comme les opérateurs du catalogue | Proposé |
