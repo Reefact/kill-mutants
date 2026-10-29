@@ -513,7 +513,8 @@ délibérément pas fait : cela supprime l'opérande gauche et tout effet de bor
 transforme un signal de couverture manquante en un changement de comportement sans rapport. Le mutant
 survivant serait vrai mais sans enseignement.
 
-**Le cas voisin, même milestone.** `Conditional` échange les branches de `c ? a : b`, et un ternaire
+**Le cas voisin, même milestone.** `Conditional` échangeait les branches de `c ? a : b` (il force la
+condition dans chaque sens depuis DEC0017), et un ternaire
 dont les deux branches sont la même expression donnerait un mutant au comportement identique à
 l'original : survie garantie, pour une raison qui ne dit rien des tests. Ceux-là sont écartés. La
 vérification de liaison de cette famille a dû être *plus faible* que celle des binaires : un
@@ -523,7 +524,7 @@ cible — donc un type nul ne doit pas être lu comme un échec, contrairement �
 
 **Nos tests.** `NullCoalescingMutatorTests.A_fallback_that_removes_nullability_is_not_dropped`,
 `A_left_operand_that_widens_to_the_expected_type_is_dropped`,
-`ConditionalExpressionMutatorTests.Identical_branches_are_not_swapped`,
+`ConditionalExpressionMutatorTests.A_ternary_with_identical_branches_is_not_mutated`,
 `A_target_typed_conditional_is_mutated`, et le test de bout en bout
 `Every_mutator_family_is_exercised_against_the_fixture`, qui échoue si une famille cesse de produire
 des mutants contre un vrai projet.

@@ -118,7 +118,7 @@ chacune exercée de bout en bout contre un vrai projet de fixture.
 | `Bitwise` | `&` `\|` `^` `<<` `>>` | son homologue |
 | `Assignment` | `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `<<=` `>>=` | son homologue |
 | `Increment` | `++` `--` | l'un l'autre, en préfixe comme en suffixe |
-| `Conditional` | `c ? a : b` | `c ? b : a` |
+| `Conditional` | `c ? a : b` | `(c \|\| true) ? a : b` et `(c && false) ? a : b` : chaque branche forcée, la condition toujours évaluée |
 | `NullCoalescing` | `a ?? b` | `a`, et `b ?? a` quand `a` se limite à lire une variable, un champ ou une propriété automatique |
 | `BooleanLiteral` | `true` `false` | l'un l'autre |
 | `Negation` | `!x` | `x` |
@@ -150,7 +150,7 @@ comportement identique à l'original s'en abstient : `NullCoalescing` ne conserv
 gauche, jamais celui de droite, et n'échange les deux que si l'opérande de gauche se limite à lire
 une variable, un champ ou une propriété automatique, de sorte qu'aucun effet de bord n'est
 silencieusement supprimé ; `Conditional` laisse tranquille un ternaire dont les deux branches sont la
-même expression ; et `NegatedDecision` ne place jamais de `!` devant un `!` déjà écrit.
+même expression, et évalue toujours la condition qu'il force ; et `NegatedDecision` ne place jamais de `!` devant un `!` déjà écrit.
 
 **L'instrumentation n'a aucun code propre, et c'est voulu.** Parce que chaque mutant reçoit sa propre
 compilation ([DEC0002](decisions/0002-one-compilation-per-mutant-fr.md)), « instrumenter » un mutant se

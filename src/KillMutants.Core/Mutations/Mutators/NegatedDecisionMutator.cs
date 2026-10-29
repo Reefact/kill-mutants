@@ -51,8 +51,9 @@ internal sealed class NegatedDecisionMutator : IMutator
     /// </summary>
     /// <remarks>
     /// The condition of a ternary is deliberately not one of them. <c>c ? a : b</c> negated is
-    /// <c>!c ? a : b</c>, which is <c>c ? b : a</c> - the branch swap the <c>Conditional</c> family
-    /// already makes, so negating it would judge the same mutant twice under two names.
+    /// <c>!c ? a : b</c>, which is <c>c ? b : a</c>: it dies exactly when one of the
+    /// <c>Conditional</c> family's two forced mutants does (DEC0017), so it would add a test run and no
+    /// verdict.
     /// </remarks>
     private static bool IsADecision(ExpressionSyntax expression, SemanticModel semanticModel) =>
         expression.Parent switch
