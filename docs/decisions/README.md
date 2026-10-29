@@ -118,3 +118,4 @@ request.
 | [DEC0014](0014-each-verdict-is-appended-to-a-log-beside-the-report-en.md) | Each verdict is appended to a log beside the report as soon as it is final | Accepted |
 | [DEC0015](0015-a-resumed-run-inherits-the-verdicts-its-series-reached-on-the-same-code-en.md) | A resumed run inherits the verdicts its series reached on the same code | Accepted |
 | [DEC0016](0016-the-run-writes-its-plan-beside-the-report-en.md) | The run writes its plan beside the report, as a file of its own | Accepted |
+| [DEC0017](0017-a-ternary-is-forced-each-way-rather-than-swapped-en.md) | A ternary's condition is forced each way, still evaluated, rather than its branches swapped | Proposed |

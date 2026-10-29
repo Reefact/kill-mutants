@@ -64,6 +64,7 @@ The few choices that are expensive to reverse. Each is recorded in [docs/decisio
 | DEC0014 — Each verdict is appended to a log beside the report as soon as it is final | [en](docs/decisions/0014-each-verdict-is-appended-to-a-log-beside-the-report-en.md) | [fr](docs/decisions/0014-each-verdict-is-appended-to-a-log-beside-the-report-fr.md) |
 | DEC0015 — A resumed run inherits the verdicts its series reached on the same code | [en](docs/decisions/0015-a-resumed-run-inherits-the-verdicts-its-series-reached-on-the-same-code-en.md) | [fr](docs/decisions/0015-a-resumed-run-inherits-the-verdicts-its-series-reached-on-the-same-code-fr.md) |
 | DEC0016 — The run writes its plan beside the report, as a file of its own | [en](docs/decisions/0016-the-run-writes-its-plan-beside-the-report-en.md) | [fr](docs/decisions/0016-the-run-writes-its-plan-beside-the-report-fr.md) |
+| DEC0017 — A ternary's condition is forced each way, still evaluated, rather than its branches swapped | [en](docs/decisions/0017-a-ternary-is-forced-each-way-rather-than-swapped-en.md) | [fr](docs/decisions/0017-a-ternary-is-forced-each-way-rather-than-swapped-fr.md) |
 
 ## Installing
 
