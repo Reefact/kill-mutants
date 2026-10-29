@@ -92,9 +92,10 @@ public class NegatedDecisionMutatorTests
     }
 
     /// <summary>
-    /// Three shapes belong to another family, which already makes the mutant: a comparison to
-    /// <c>Comparison</c>, a literal to <c>BooleanLiteral</c>, and a ternary's condition to
-    /// <c>Conditional</c>, whose two forced mutants already decide whatever that negation would.
+    /// Four shapes belong to another family, which already makes the mutant: a comparison to
+    /// <c>Comparison</c>, a literal to <c>BooleanLiteral</c>, a ternary's condition to
+    /// <c>Conditional</c>, whose two forced mutants already decide whatever that negation would, and
+    /// an <c>is</c> to <c>Pattern</c>, which writes the negation as <c>x is not P</c>.
     /// </summary>
     [Theory]
     [InlineData("bool M({0}) => x > y;")]
@@ -102,6 +103,7 @@ public class NegatedDecisionMutatorTests
     [InlineData("bool M({0}) => true;")]
     [InlineData("int M({0}) => x > y ? x : y;")]
     [InlineData("int M({0}) => b ? x : y;")]
+    [InlineData("bool M({0}) => x is > 3;")]
     public void A_decision_another_family_already_negates_is_left_to_it(string member)
     {
         Assert.Empty(MutatorTestBase.MutateAll(Mutator, "int x, int y, bool b", member));

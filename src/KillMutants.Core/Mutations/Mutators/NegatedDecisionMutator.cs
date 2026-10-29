@@ -89,11 +89,12 @@ internal sealed class NegatedDecisionMutator : IMutator
     /// True unless negating the expression would repeat a mutant another family already makes.
     /// </summary>
     /// <remarks>
-    /// Three shapes are left to the family that owns them. A negation is undone by
+    /// Four shapes are left to the family that owns them. A negation is undone by
     /// <c>Negation</c>, and negating it again would read <c>!!x</c>, the original under another
     /// spelling. A comparison is negated by <c>Comparison</c>: <c>!(a &gt; b)</c> is its
-    /// <c>a &lt;= b</c>, and <c>!(a == b)</c> its <c>a != b</c>. And a literal is flipped by
-    /// <c>BooleanLiteral</c>.
+    /// <c>a &lt;= b</c>, and <c>!(a == b)</c> its <c>a != b</c>. A literal is flipped by
+    /// <c>BooleanLiteral</c>. And an <c>is</c> is negated by <c>Pattern</c>, which writes
+    /// <c>!(x is P)</c> as <c>x is not P</c> (DEC0018).
     /// </remarks>
     private static bool AsksSomethingNoOtherFamilyAsks(ExpressionSyntax expression)
     {
@@ -112,7 +113,9 @@ internal sealed class NegatedDecisionMutator : IMutator
                !inner.IsKind(SyntaxKind.LessThanExpression) &&
                !inner.IsKind(SyntaxKind.LessThanOrEqualExpression) &&
                !inner.IsKind(SyntaxKind.GreaterThanExpression) &&
-               !inner.IsKind(SyntaxKind.GreaterThanOrEqualExpression);
+               !inner.IsKind(SyntaxKind.GreaterThanOrEqualExpression) &&
+               !inner.IsKind(SyntaxKind.IsPatternExpression) &&
+               !inner.IsKind(SyntaxKind.IsExpression);
     }
 
     /// <summary>
