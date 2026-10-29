@@ -683,9 +683,9 @@ Mesuré sur le SDK .NET 10 : instrumenter le littéral de `s is "abc"` donne
 
 **La règle.** Aucun site ayant un ancêtre `PatternSyntax` ou `SwitchLabelSyntax` ne porte
 d'enregistreur. Une clause `when` en est délibérément exclue : elle est sœur du motif et non partie
-de lui, et ses expressions sont du code ordinaire. Un motif qui est lui-même un site, ce que la famille
-`Pattern` fait de `< 0 or > 100` (DEC0018), n'en porte pas non plus : ce n'est pas une expression, et un
-appel n'y a rien à envelopper.
+de lui, et ses expressions sont du code ordinaire. Un motif qui est lui-même un site de mutation, comme `< 0 or > 100`
+pour la famille `Pattern` (DEC0018), n'en porte pas non plus : ce n'est pas une expression, et un appel
+n'a rien à y envelopper.
 
 **Ce qui demeure.** La *mutation* n'est pas affectée, et ne doit pas l'être : `s is "abc"` réécrit en
 `s is ""` est une constante, compile, et change ce qui correspond. C'est une règle sur les
