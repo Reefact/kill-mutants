@@ -107,10 +107,18 @@ internal sealed class NumericLiteralMutator : IMutator
     /// The literal written with its new value, or null when the new text would give it another type.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The type of an unsuffixed literal follows from its size, so <c>2147483647 + 1</c> is a
     /// <c>uint</c>: a mutant that changes the type changes overload resolution and arithmetic as well
     /// as the value, and asks something other than the boundary. The original suffix is kept and the
     /// text parsed back, so the compiler, not this class, says what type the new literal has.
+    /// </para>
+    /// <para>
+    /// Under a unary minus it is the negated expression's type that must stay, not the token's. C#
+    /// types <c>-2147483648</c> as an <c>int</c> although its token <c>2147483648</c> is a
+    /// <c>uint</c>, and <c>-9223372036854775808</c> as a <c>long</c> over a <c>ulong</c> token, so
+    /// comparing tokens refused the only neighbour of <c>int.MinValue</c> and <c>long.MinValue</c>.
+    /// </para>
     /// </remarks>
     private static LiteralExpressionSyntax? Rewrite(LiteralExpressionSyntax literal, BigInteger moved)
     {
@@ -119,7 +127,7 @@ internal sealed class NumericLiteralMutator : IMutator
 
         if (SyntaxFactory.ParseExpression(moved.ToString(CultureInfo.InvariantCulture) + suffix)
                 is not LiteralExpressionSyntax replacement ||
-            replacement.Token.Value?.GetType() != literal.Token.Value?.GetType())
+            TypeOf(replacement.Token.Value, IsNegated(literal)) != TypeOf(literal.Token.Value, IsNegated(literal)))
         {
             return null;
         }
@@ -180,6 +188,23 @@ internal sealed class NumericLiteralMutator : IMutator
 
         return range is not { } bounds || (signed >= bounds.Min && signed <= bounds.Max);
     }
+
+    private static bool IsNegated(LiteralExpressionSyntax literal) =>
+        literal.Parent is PrefixUnaryExpressionSyntax negation && negation.IsKind(SyntaxKind.UnaryMinusExpression);
+
+    /// <summary>The type C# gives the literal, or its negation when it is negated.</summary>
+    /// <remarks>
+    /// Negation promotes a <c>uint</c> to a <c>long</c>, and C# makes the two magnitudes that are
+    /// one past a signed maximum the minimum of that type - the only literals it reads that way.
+    /// </remarks>
+    private static Type? TypeOf(object? value, bool negated) => (value, negated) switch
+    {
+        (_, false) => value?.GetType(),
+        (2147483648u, true) => typeof(int),
+        (9223372036854775808ul, true) => typeof(long),
+        (uint, true) => typeof(long),
+        _ => value?.GetType(),
+    };
 
     private static BigInteger? AsInteger(object? value) => value switch
     {
