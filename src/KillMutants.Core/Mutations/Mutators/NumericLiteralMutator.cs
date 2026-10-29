@@ -133,7 +133,9 @@ internal sealed class NumericLiteralMutator : IMutator
     /// <remarks>
     /// <c>byte b = 255</c> compiles because the constant fits a <c>byte</c>, and <c>256</c> does not:
     /// CS0031. An enum accepts the literal <c>0</c> and no other, so <c>Level l = 0</c> has no
-    /// neighbour that compiles. A negated literal is checked as the negative value it is.
+    /// neighbour that compiles. A negated literal is checked as the negative value it is. A literal
+    /// inside a larger constant that needs such a conversion - <c>byte b = 200 + 55</c> - is left
+    /// alone rather than evaluated: the whole constant is what must fit, and the case is rare.
     /// </remarks>
     private static bool Fits(LiteralExpressionSyntax literal, BigInteger moved, SemanticModel semanticModel)
     {
@@ -142,6 +144,13 @@ internal sealed class NumericLiteralMutator : IMutator
             ? negation
             : literal;
         BigInteger signed = used == literal ? moved : -moved;
+
+        if (MutationSite.OutermostConstant(used, semanticModel) is var outermost &&
+            outermost != used &&
+            MutationSite.ConvertsOnlyAsAConstant(outermost, semanticModel))
+        {
+            return false;
+        }
 
         ITypeSymbol? target = semanticModel.GetTypeInfo(used).ConvertedType;
 

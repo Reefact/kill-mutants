@@ -86,6 +86,11 @@ public class CatalogueCorpusTests
             { "a byte at its maximum", "int n", "const byte Full = 255; public int M({0}) => n % Full;" },
             { "fields and properties initialized by value", "int n", "static readonly System.TimeSpan Wait = System.TimeSpan.FromSeconds(30); int Retries { get; } = 3; public int M({0}) => n * Retries + Wait.Seconds;" },
             { "a constant local", "int n", "int M({0}) { const int Step = 7; return n + Step; }" },
+            { "a narrow field a constant converts into", "int n", "byte Limit = 100; uint Mask = 255; public int M({0}) => n % Limit + (int)Mask;" },
+            { "a negative value converted into a narrow field", "int n", "sbyte Floor = -5; public int M({0}) => n + Floor;" },
+            { "a sum of constants converted into a narrow field", "int n", "byte Total = 200 + 55; public int M({0}) => n + Total;" },
+            { "a nullable narrow field", "int n", "sbyte? Step = 3; public int M({0}) => n + (Step ?? 0);" },
+            { "a narrow parameter given a constant", "int n", "static readonly int Level = Narrow(30); static int Narrow(byte b) => b; public int M({0}) => n + Level;" },
         };
 
     /// <summary>

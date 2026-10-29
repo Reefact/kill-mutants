@@ -141,6 +141,14 @@ public class MutantGeneratorTests
         Assert.DoesNotContain(NumericMutants(source), mutant => mutant.StartsWith("100 ", StringComparison.Ordinal));
     }
 
+    /// <summary><c>nameof</c> reads the name, never the value, so it is no read at all.</summary>
+    [Fact]
+    public void A_constant_named_only_by_nameof_is_left_alone()
+    {
+        Assert.Empty(NumericMutants(
+            "public class C { public const int Limit = 100; public static string Name() => nameof(Limit); }"));
+    }
+
     [Fact]
     public void A_constant_read_from_another_file_of_the_project_counts()
     {
