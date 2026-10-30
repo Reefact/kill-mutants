@@ -85,6 +85,8 @@ public class NumericLiteralMutatorTests
     [InlineData("const double Rate = 0.5;")]
     [InlineData("const decimal Fee = 5m;")]
     [InlineData("System.DayOfWeek Day = 0;")]
+    [InlineData("static readonly string Home = System.Environment.UserName is { Length: > 0 } name ? name : \"\";")]
+    [InlineData("static readonly bool Small = System.Environment.ProcessorCount is 1 or 2;")]
     public void What_is_not_an_integer_naming_a_value_is_left_alone(string member)
     {
         Assert.Empty(MutatorTestBase.MutateAll(Mutator, "", member));

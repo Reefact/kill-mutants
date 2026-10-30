@@ -126,7 +126,7 @@ chacune exercée de bout en bout contre un vrai projet de fixture. Treize s'exé
 | `NegatedDecision` | la condition d'un branchement ou d'une boucle, ou un `bool` renvoyé, quand ce n'est pas une constante | la décision niée, sauf s'il s'agit d'une négation, d'une comparaison, d'une expression `is`, d'un littéral ou de la condition d'un ternaire, dont d'autres familles produisent déjà le mutant |
 | `Pattern` | `x is P`, `x is T`, et les motifs contenus dans une expression `is` | le test inversé (`x is not P`) ; pour un motif relationnel, le décalage de borne et l'inversion, sans l'inversion quand il constitue à lui seul le test ; chaque branche d'un motif `or` ou `and` retirée tour à tour, un motif `and` conservant sa branche `not null` |
 | `StringLiteral` | `"texte"` | `""`, et `""` en une chaîne non vide |
-| `NumericLiteral` *(sur demande)* | un littéral entier dans l'initialiseur d'une constante, d'un champ ou d'une propriété - une `const` seulement quand son propre projet la lit | `n + 1` et `n - 1`, chacun seulement s'il garde le type du littéral et tient dans le type où il est utilisé |
+| `NumericLiteral` *(sur demande)* | un littéral entier dans l'initialiseur d'une constante, d'un champ ou d'une propriété, hors d'un motif - une `const` seulement quand son propre projet la lit | `n + 1` et `n - 1`, chacun seulement s'il garde le type du littéral et tient dans le type où il est utilisé |
 
 **Ce qu'il ne mute délibérément pas.** Le catalogue est sélectif et non exhaustif : chaque mutant
 coûte une exécution de tests, donc un opérateur gagne sa place au signal qu'il porte. L'inventaire
