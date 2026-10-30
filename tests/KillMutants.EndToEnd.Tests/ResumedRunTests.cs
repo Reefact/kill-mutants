@@ -548,7 +548,7 @@ public class ResumedRunTests
         Assert.Equal([2, 27], completed.Series!.Runs.Select(run => run.Verdicts));
         Assert.Equal([0, 2], completed.Series.Runs.Select(run => run.LogLinesBefore));
         Assert.Equal(completed.Total, completed.Series.Runs.Sum(run => run.Verdicts));
-        Assert.Equal([2, 26], store.ReadPlan()!.Runs.Select(run => run.Verdicts));
+        Assert.Equal([2, 27], store.ReadPlan()!.Runs.Select(run => run.Verdicts));
     }
 
     /// <summary>
