@@ -64,7 +64,7 @@ public class MutationTestingEndToEndTests
             [
                 "Arithmetic", "Assignment", "Bitwise", "BooleanLiteral", "Comparison", "Conditional",
                 "Increment", "LogicalOperator", "NegatedDecision", "Negation", "NullCoalescing",
-                "Pattern", "StringLiteral",
+                "Pattern", "Statement", "StringLiteral",
             ],
             families);
         Assert.All(report.Results, result => Assert.Equal(MutantStatus.Killed, result.Status));

@@ -130,3 +130,4 @@ celle qui empêche un agent de merger une pull request.
 | [DEC0017](0017-a-ternary-is-forced-each-way-rather-than-swapped-fr.md) | La condition d'un ternaire est forcée dans chaque sens, toujours évaluée, au lieu d'échanger ses branches | Accepté |
 | [DEC0018](0018-patterns-are-mutated-by-a-family-of-their-own-fr.md) | Les motifs d'un `is` sont mutés par une famille dédiée, comme les opérateurs du catalogue | Accepté |
 | [DEC0019](0019-numeric-literals-are-an-opt-in-family-that-reaches-the-constants-its-project-reads-fr.md) | Les littéraux numériques forment une famille sur demande, décalée d'un cran dans chaque sens, qui atteint les constantes que lit leur projet | Accepté |
+| [DEC0020](0020-a-call-statement-is-removed-by-a-default-family-measured-by-a-statement-probe-fr.md) | Une instruction d'appel est supprimée par une famille par défaut, et sa couverture est mesurée par une sonde placée avant elle | Proposé |

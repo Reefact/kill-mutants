@@ -25,7 +25,9 @@ internal static class CoverageRewriter
         // sites - a comparison inside a logical operator, say - each keep their own recorder.
         return root.ReplaceNodes(
             identifiers.Keys,
-            (original, rewritten) => Record(rewritten, identifiers[original], InsideInterpolation(original)));
+            (original, rewritten) => rewritten is StatementSyntax statement
+                ? Mark(statement, identifiers[original])
+                : Record(rewritten, identifiers[original], InsideInterpolation(original)));
     }
 
     /// <summary>
@@ -41,6 +43,21 @@ internal static class CoverageRewriter
     /// </remarks>
     private static bool InsideInterpolation(SyntaxNode site) =>
         site.Ancestors().Any(ancestor => ancestor is InterpolationSyntax);
+
+    /// <summary>Puts a call that records having reached a statement just before it.</summary>
+    /// <remarks>
+    /// In a block of their own, so the pair stays one statement wherever the original stood: the
+    /// body of an <c>if</c> without braces, a label's target, a <c>switch</c> section. A block that
+    /// declares nothing changes no scope, and the call before the statement cannot change what the
+    /// statement does - DEC0020.
+    /// </remarks>
+    private static BlockSyntax Mark(StatementSyntax statement, int identifier) =>
+        SyntaxFactory
+            .Block(
+                SyntaxFactory.ParseStatement(
+                    $"{CoverageProbe.MarkMethod}({identifier.ToString(CultureInfo.InvariantCulture)});"),
+                statement.WithoutTrivia())
+            .WithTriviaFrom(statement);
 
     /// <summary>Wraps one expression in a call that records having reached it.</summary>
     /// <remarks>

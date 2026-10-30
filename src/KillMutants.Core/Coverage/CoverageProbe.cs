@@ -14,11 +14,23 @@ namespace KillMutants.Coverage;
 /// the machinery a mutation switch would: there is no branch to place, so no context in which the
 /// placement is illegal, and therefore no rollback.
 /// </para>
+/// <para>
+/// <c>Mark</c> records the same way and returns nothing, for a site that is a statement. Placed
+/// before the statement it stands for, it cannot change what that statement does either.
+/// </para>
 /// </remarks>
 internal static class CoverageProbe
 {
     /// <summary>The fully qualified name of the generated recorder's <c>Hit</c> method.</summary>
     public const string HitMethod = "global::KillMutantsGenerated.CoverageProbe.Hit";
+
+    /// <summary>The fully qualified name of the generated recorder's <c>Mark</c> method.</summary>
+    /// <remarks>
+    /// The statement form of <c>Hit</c>. A statement has no value to hand back, and a call to a
+    /// <c>void</c> method cannot be a type argument, so a statement site is recorded by a call placed
+    /// before it in a block of their own - DEC0020.
+    /// </remarks>
+    public const string MarkMethod = "global::KillMutantsGenerated.CoverageProbe.Mark";
 
     /// <summary>The environment variable naming the file the recorder writes to.</summary>
     public const string OutputPathVariable = "KILLMUTANTS_COVERAGE_FILE";
@@ -61,6 +73,11 @@ internal static class CoverageProbe
                     lock (Hits) { Hits.Add(id); }
 
                     return value;
+                }
+
+                public static void Mark(int id)
+                {
+                    lock (Hits) { Hits.Add(id); }
                 }
 
                 private static void Write(bool complete)

@@ -123,6 +123,13 @@ internal sealed class MutationSites
     /// </remarks>
     private static bool CanCarryARecorder(SyntaxNode node, SemanticModel semanticModel)
     {
+        // A statement is recorded by a call placed before it rather than by wrapping it, so none of
+        // the rules below - about what a value may be - applies to it. See CoverageRewriter.Mark.
+        if (node is StatementSyntax)
+        {
+            return true;
+        }
+
         if (node.AncestorsAndSelf().Any(ancestor => ancestor is PatternSyntax or SwitchLabelSyntax))
         {
             return false;

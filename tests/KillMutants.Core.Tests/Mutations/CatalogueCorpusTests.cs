@@ -79,6 +79,8 @@ public class CatalogueCorpusTests
             { "local function and static lambda", "int a", "int M({0}) { static int F(int v) => v * 2; System.Func<int, int> g = static v => v + 1; return F(a) + g(a); }" },
             { "spans", "System.Span<int> a, System.Span<int> b, bool f", "int M({0}) => (f ? a : b).Length >= 1 ? 1 : 0;" },
             { "unary minus and bitwise complement", "int a", "int M({0}) => -a + ~a;" },
+            { "calls removed in every place a statement can stand", "System.Action f, System.Text.StringBuilder b, bool a, int k", "void M({0}) { f(); if (a) f(); else b.Append('x'); b?.Clear(); new System.Text.StringBuilder(); System.Action g = () => { f(); }; g(); switch (k) { case 1: f(); break; } done: f(); }" },
+            { "an awaited call removed", "System.Func<System.Threading.Tasks.Task> f", "async System.Threading.Tasks.Task M({0}) { await f(); await f(); }" },
             { "null-conditional and null-coalescing assignment", "string? a", "int M({0}) { a ??= \"x\"; return a?.Length ?? 0; }" },
             { "a constant the project reads", "int n", "const int Minimum = 100; public bool M({0}) => n >= Minimum;" },
             { "a constant computed from literals", "int n", "const long Combinations = 200L * 200; public bool M({0}) => n >= Combinations;" },
@@ -144,7 +146,17 @@ public class CatalogueCorpusTests
 
             // A constant condition settles reachability: the method needs no return after a loop
             // that only ends by one, and negating or instrumenting the condition breaks that.
-            { "a loop on a named constant", "System.Func<int> f", "int M({0}) { const bool Forever = true; while (Forever) { f(); } }" },
+            // The body assigns rather than calls, so Statement has nothing to remove either.
+            { "a loop on a named constant", "System.Func<int> f", "int M({0}) { const bool Forever = true; int last; while (Forever) { last = f(); } }" },
+
+            // Removing a call that writes an out argument can leave the local unassigned (CS0165).
+            { "a call that writes an out argument", "string s", "int M({0}) { int n; int.TryParse(s, out n); return n; }" },
+
+            // Release drops the call anyway, so removing it could never be noticed.
+            { "a call to a [Conditional] method", "bool a", "void M({0}) { System.Diagnostics.Debug.Assert(a); }" },
+
+            // Not a call: Increment and Assignment already mutate these.
+            { "an assignment statement", "System.Func<int> f", "int M({0}) { int x; x = f(); return x; }" },
 
             // A case label is not a value something is initialized with, so NumericLiteral, the
             // only family that moves a number, leaves it alone.
