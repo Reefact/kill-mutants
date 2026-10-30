@@ -121,4 +121,4 @@ request.
 | [DEC0017](0017-a-ternary-is-forced-each-way-rather-than-swapped-en.md) | A ternary's condition is forced each way, still evaluated, rather than its branches swapped | Accepted |
 | [DEC0018](0018-patterns-are-mutated-by-a-family-of-their-own-en.md) | The patterns of an `is` are mutated by a family of their own, as the catalogue's operators are | Accepted |
 | [DEC0019](0019-numeric-literals-are-an-opt-in-family-that-reaches-the-constants-its-project-reads-en.md) | Numeric literals are an opt-in family, moved one step each way, that reaches the constants its project reads | Accepted |
-| [DEC0020](0020-a-call-statement-is-removed-by-a-default-family-measured-by-a-statement-probe-en.md) | A call statement is removed by a default family, and its coverage is measured by a probe placed before it | Proposed |
+| [DEC0020](0020-a-call-statement-is-removed-by-a-default-family-measured-by-a-statement-probe-en.md) | A call statement is removed by a default family, and its coverage is measured by a probe placed before it | Accepted |
