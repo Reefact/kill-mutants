@@ -1235,3 +1235,51 @@ vérifie aussi que les opérandes voisins restent mutés, et son contrepoids
 `out` derrière `&&` et derrière `||`, une affectation derrière `&&`, un `out` dans la condition d'un
 ternaire, et un `out` lu sur tous les chemins. Les trois premières cassaient à la fois les mutants et
 le build instrumenté avant la règle ; toutes compilent désormais dans les deux cas.
+
+
+---
+
+## RB-031 — Un test doté d'un nom d'affichage n'était jamais lancé contre les mutants qui le visaient · COUVERT
+
+**Comment cela a été trouvé.** En lançant KillMutants sur `Reefact/just-dummies`. Son projet
+générateur affichait 6 % de tués, et tous les mutateurs à zéro ou presque. Le premier survivant,
+`"Create"` devenu `""` dans `Composition.cs`, appliqué à la main, faisait échouer deux de ses tests ;
+lancé avec `--no-coverage`, 13 des 18 mutants du fichier étaient tués, contre aucun avec la couverture.
+Le score mesurait le filtre, pas les tests.
+
+**Ce qui se passe.** La passe de couverture listait les tests avec `-list tests/json`, qui imprime le
+nom d'affichage de chacun, et rendait chaque nom au runner par `-method`. Un nom d'affichage n'est
+`Namespace.Classe.Méthode` que par défaut. `[Fact(DisplayName = "The v1.0 pattern is Any{Type}.")]`
+imprime cette phrase, `-method` attend une méthode, et une phrase ne sélectionne aucun test : mesuré
+avec xUnit 4.0.2, zéro test lancé. Cette suite déclare ainsi 266 noms d'affichage. Chaque mutant que la
+sélection atteignait était alors lancé contre rien, la run ne voyait aucun échec, et le verdict était
+`Survived` - un manque imputé à des tests que personne n'avait sollicités.
+
+C'est la seconde moitié d'un problème déjà résolu de l'autre côté. `ReadFailures` nomme un tueur à
+partir du `type` et du `method` du résultat pour la même raison, et le dit ; la liste n'avait pas reçu
+le même soin. DEC0006 énonce déjà l'identité sur laquelle indexer, `Namespace.Classe.Méthode`. Le code
+avait mesuré que le nom d'affichage en était une sur une fixture aux noms par défaut, et pris les deux
+pour la même chose.
+
+**Pourquoi cela compte.** L'échec est silencieux et il se trompe dans le sens qui se lit comme un
+constat. Une équipe qui écrit ses tests en prose obtient un score de mutation proche de zéro, conclut
+que ses tests sont faibles, et rien de ce que l'outil lui dit ne lui permet de douter de lui.
+
+**La règle.** Deux, parce que chacune seule laisse l'échec de l'autre debout.
+
+1. Les tests sont listés avec `-list methods/json`, qui imprime l'identité que `-method` accepte.
+2. Un mutant n'est `Survived` que si un test a tourné. Quand la sélection n'a atteint aucun test dans
+   aucun projet, toute la suite est lancée à la place - plus lent, jamais faux - comme la run le fait
+   déjà quand la couverture est inconnue. C'est la leçon de RB-028 une nouvelle fois : un verdict doit
+   venir d'une run qui a jugé quelque chose.
+
+**Ce que cela coûte.** Une run de la suite complète de plus pour un mutant dont la sélection n'a rien
+trouvé, ce qui, après la première règle, est une liste en désaccord avec le filtre et non un cas
+normal. La sélection reste par méthode, comme DEC0006 le dit déjà : les cas d'une théorie tournent
+toujours ensemble.
+
+**Nos tests.** `DisplayNamedTestsTests` : sélectionner par couverture donne les verdicts de
+l'exécution de tout sur une suite dont tous les tests portent une phrase pour nom (il échoue sans le
+changement de liste), un tueur est toujours nommé par sa méthode, et, sur un runner dont la liste
+rend des phrases, le repli transforme les survivants en les kills que la suite fait (il échoue sans
+le repli).

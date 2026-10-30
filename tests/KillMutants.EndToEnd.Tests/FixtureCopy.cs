@@ -503,6 +503,23 @@ internal sealed class FixtureCopy : IDisposable
                 StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// Gives every test of the sample suite a sentence for a display name, the way a team that
+    /// writes its tests as prose does. The method names are untouched.
+    /// </summary>
+    public void GiveTheTestsDisplayNames()
+    {
+        string file = Path.Combine(Root, "Sample.Library.Tests", "AgesTests.cs");
+        int count = 0;
+
+        string text = System.Text.RegularExpressions.Regex.Replace(
+            File.ReadAllText(file),
+            @"\[(Fact|Theory)\]",
+            match => $"[{match.Groups[1].Value}(DisplayName = \"Sentence number {++count}.\")]");
+
+        File.WriteAllText(file, text);
+    }
+
     private static FixtureCopy CopyOf(string source)
     {
         string destination = Path.Combine(TempRoot, $"killmutants-e2e-{Guid.NewGuid():N}");

@@ -1142,3 +1142,49 @@ which also asserts that the operands beside it are still mutated, and its counte
 behind `&&` and behind `||`, an assignment behind `&&`, an `out` in a ternary's condition, and an
 `out` read on every path. The first three broke both the mutants and the instrumented build before
 the rule, and every one of them now compiles both ways.
+
+
+---
+
+## RB-031 — A test with a display name was never run against the mutants meant for it · COVERED
+
+**How it was found.** Running KillMutants against `Reefact/just-dummies`. Its generator project
+reported 6% killed, and every mutator at or near zero. The first survivor, `"Create"` becoming `""`
+in `Composition.cs`, applied by hand failed two of its tests; run with `--no-coverage`, 13 of the
+file's 18 mutants were killed, against none with coverage on. The score was a measurement of the
+filter, not of the tests.
+
+**What happens.** The coverage pass listed tests with `-list tests/json`, which prints each test's
+display name, and handed each name back to the runner through `-method`. A display name is
+`Namespace.Class.Method` only by default. `[Fact(DisplayName = "The v1.0 pattern is Any{Type}.")]`
+prints that sentence, `-method` takes a method, and a sentence selects no test: measured against
+xUnit 4.0.2, zero tests run. That suite declares 266 display names this way. Every mutant the
+selection reached was then run against nothing, the run saw no failure, and the verdict was
+`Survived` - a gap blamed on tests that had never been asked.
+
+It is the second half of a problem already solved on the other side. `ReadFailures` names a killer
+from the result's `type` and `method` for the same reason, and says so; the listing had not been
+given the same care. DEC0006 already states the identity to key on, `Namespace.Class.Method`. The
+code had measured display name to be that on a fixture with default names and taken the two for the
+same thing.
+
+**Why it matters.** The failure is silent and it is wrong in the direction that reads as a finding.
+A team that writes its tests as prose gets a mutation score near zero, concludes that its tests are
+weak, and is told nothing that would let it doubt the tool.
+
+**The rule.** Two, because either alone leaves the other's failure standing.
+
+1. Tests are listed with `-list methods/json`, which prints the identity `-method` accepts.
+2. A mutant is `Survived` only if some test ran. When the selection reached no test in any project,
+   the whole suite is run instead - slower, never wrong - as the run already does when coverage is
+   unknown. That is RB-028's lesson again: a verdict has to come from a run that judged something.
+
+**What it costs.** One more run of the full suite for a mutant whose selection matched nothing, which
+after the first rule is a listing that disagrees with the filter and not a normal case. Selection is
+per method, as DEC0006 already says, so a theory's cases are still run together.
+
+**Our tests.** `DisplayNamedTestsTests`: selecting by coverage gives the verdicts of running
+everything on a suite whose tests all carry a sentence for a name (it fails without the listing
+change), that a killer is still named by its method, and, on a runner whose listing returns
+sentences, that the fallback turns would-be survivors into the kills the suite makes (it fails
+without the fallback).
