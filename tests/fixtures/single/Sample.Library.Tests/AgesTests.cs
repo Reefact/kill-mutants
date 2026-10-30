@@ -98,4 +98,14 @@ public class AgesTests
     {
         Assert.Equal(expected, Ages.IsTeenager(age));
     }
+
+    [Fact]
+    public void A_registered_age_is_kept()
+    {
+        var register = new System.Collections.Generic.List<int>();
+
+        Ages.Register(register, 42);
+
+        Assert.Equal([42], register);
+    }
 }

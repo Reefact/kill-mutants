@@ -82,4 +82,10 @@ public static class Ages
     {
         return age is >= 13 and <= 19;
     }
+
+    /// <summary>Statement removal: the call is the whole effect.</summary>
+    public static void Register(System.Collections.Generic.List<int> register, int age)
+    {
+        register.Add(age);
+    }
 }
