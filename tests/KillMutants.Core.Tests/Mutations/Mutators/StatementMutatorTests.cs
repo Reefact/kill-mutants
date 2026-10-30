@@ -1,4 +1,5 @@
 using KillMutants.Mutations.Mutators;
+using Microsoft.CodeAnalysis;
 
 namespace KillMutants.Core.Tests.Mutations.Mutators;
 
@@ -43,5 +44,38 @@ public class StatementMutatorTests
     public void What_is_not_a_plain_call_statement_is_left_alone(string member)
     {
         Assert.Empty(MutatorTestBase.MutateAll(Mutator, "", member));
+    }
+
+    /// <summary>
+    /// Calls the compiler drops by itself, so removing them changes nothing and their mutant could
+    /// never be killed: a <c>[Conditional]</c> method reached through <c>?.</c>, and a partial
+    /// method nobody implemented.
+    /// </summary>
+    [Theory]
+    [InlineData(
+        "public class Log { [System.Diagnostics.Conditional(\"NEVER_DEFINED\")] public void Trace() { } } " +
+        "public class C { public void M(Log? log) { log?.Trace(); } }")]
+    [InlineData(
+        "public partial class C { partial void OnChanged(); public void M() { OnChanged(); } }")]
+    public void A_call_the_compiler_drops_is_left_alone(string source)
+    {
+        (SyntaxTree tree, SemanticModel model) = TestCompilation.WithModel(source);
+
+        Assert.Empty(tree.GetRoot(TestContext.Current.CancellationToken)
+            .DescendantNodes()
+            .SelectMany(node => Mutator.Mutate(node, model)));
+    }
+
+    /// <summary>An implemented partial method is called for real, so removing the call is a mutant.</summary>
+    [Fact]
+    public void A_call_to_an_implemented_partial_method_is_removed()
+    {
+        (SyntaxTree tree, SemanticModel model) = TestCompilation.WithModel(
+            "public partial class C { partial void OnChanged(); partial void OnChanged() { } " +
+            "public void M() { OnChanged(); } }");
+
+        Assert.Single(tree.GetRoot(TestContext.Current.CancellationToken)
+            .DescendantNodes()
+            .SelectMany(node => Mutator.Mutate(node, model)));
     }
 }

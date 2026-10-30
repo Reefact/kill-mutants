@@ -39,7 +39,7 @@ internal sealed class StatementMutator : IMutator
         if (node is not ExpressionStatementSyntax statement ||
             !IsACall(statement.Expression) ||
             WritesAnOutArgument(statement) ||
-            CallsAConditionalMethod(statement.Expression, semanticModel))
+            CallsAMethodTheCompilerDrops(statement.Expression, semanticModel))
         {
             yield break;
         }
@@ -67,19 +67,40 @@ internal sealed class StatementMutator : IMutator
             .Any(argument => argument.RefKindKeyword.IsKind(SyntaxKind.OutKeyword));
 
     /// <summary>
-    /// True for a call to a method marked <c>[Conditional]</c>, such as <c>Debug.Assert</c>.
+    /// True for a call the compiler removes by itself: to a method marked <c>[Conditional]</c>, such
+    /// as <c>Debug.Assert</c>, or to a partial method nobody implemented.
     /// </summary>
     /// <remarks>
-    /// The compiler drops such a call whenever its symbol is not defined - in a Release build, which
-    /// is what a run builds by default - so removing it changes nothing and the mutant could never be
-    /// killed: a gap reported in tests that have nothing to find.
+    /// <para>
+    /// A <c>[Conditional]</c> call is dropped whenever its symbol is not defined - in a Release build,
+    /// which is what a run builds by default - and a call to a partial method with no implementation
+    /// is dropped always. Removing either changes nothing, so the mutant could never be killed: a gap
+    /// reported in tests that have nothing to find.
+    /// </para>
+    /// <para>
+    /// The method is asked of the invocation itself, inside <c>await</c> and inside <c>?.</c>: the
+    /// conditional access as a whole binds to no method, which let <c>log?.Trace()</c> through.
+    /// </para>
     /// </remarks>
-    private static bool CallsAConditionalMethod(ExpressionSyntax expression, SemanticModel semanticModel)
+    private static bool CallsAMethodTheCompilerDrops(ExpressionSyntax expression, SemanticModel semanticModel)
     {
-        ExpressionSyntax call = expression is AwaitExpressionSyntax awaited ? awaited.Expression : expression;
+        if (Invocation(expression) is not { } invocation ||
+            semanticModel.GetSymbolInfo(invocation).Symbol is not IMethodSymbol method)
+        {
+            return false;
+        }
 
-        return semanticModel.GetSymbolInfo(call).Symbol is IMethodSymbol method &&
+        return method is { IsPartialDefinition: true, PartialImplementationPart: null } ||
                method.GetAttributes().Any(attribute =>
                    attribute.AttributeClass?.ToDisplayString() == "System.Diagnostics.ConditionalAttribute");
     }
+
+    /// <summary>The invocation a call statement makes, through <c>await</c> and <c>?.</c>.</summary>
+    private static InvocationExpressionSyntax? Invocation(ExpressionSyntax expression) => expression switch
+    {
+        AwaitExpressionSyntax awaited => Invocation(awaited.Expression),
+        ConditionalAccessExpressionSyntax access => Invocation(access.WhenNotNull),
+        InvocationExpressionSyntax invocation => invocation,
+        _ => null,
+    };
 }
