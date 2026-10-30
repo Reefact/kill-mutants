@@ -52,6 +52,16 @@ internal sealed class XUnitTestRunner : ITestRunner
     };
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Lists <c>methods</c>, not <c>tests</c>. The latter prints each test's display name, which is
+    /// <c>Namespace.Class.Method</c> only until somebody writes
+    /// <c>[Fact(DisplayName = "a customer over eighteen")]</c>; handed to <c>-method</c> that sentence
+    /// selects no test, and a mutant "run" against it is never run at all. The method listing is the
+    /// identity <c>-method</c> accepts, and DEC0006 already says that identity is the one to key on.
+    /// Measured against xUnit 4.0.2: a project of 265 tests, none of whose display names looked like a
+    /// method, listed 265 entries by display name and every one selected nothing; the same project
+    /// listed by method selected them all.
+    /// </remarks>
     public async Task<IReadOnlyList<TestName>> DiscoverAsync(
         TestProject testProject,
         CancellationToken cancellationToken = default)
@@ -60,7 +70,7 @@ internal sealed class XUnitTestRunner : ITestRunner
 
         ProcessResult result = await RunProcessAsync(
                 testProject,
-                [testProject.AssemblyPath, "-automated", "-noLogo", "-list", "tests/json"],
+                [testProject.AssemblyPath, "-automated", "-noLogo", "-list", "methods/json"],
                 DiscoveryBudget,
                 environment: null,
                 cancellationToken)

@@ -761,18 +761,62 @@ internal sealed class MutationTestSession
         sandbox.Inject(emitted.Assembly!);
 
         // A mutant is killed by the first suite that notices it; the rest would add nothing.
+        (MutantResult? verdict, bool anyTestRan) = await RunSuitesAsync(
+                sandbox, mutant, covering, budget, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (verdict is not null)
+        {
+            return verdict;
+        }
+
+        // Survived means the tests ran and every one passed. A selection that matched no test in any
+        // project ran nothing, and answering "survived" would blame the suite for a filter: the same
+        // shape as RB-028, a verdict born of a run that judged nothing. The whole suite is slower and
+        // never wrong, which is the trade the run already makes when coverage is unknown.
+        if (!anyTestRan && covering is { Count: > 0 })
+        {
+            (verdict, _) = await RunSuitesAsync(
+                    sandbox, mutant, selection: null, budget, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (verdict is not null)
+            {
+                return verdict;
+            }
+        }
+
+        return new MutantResult(mutant, MutantStatus.Survived);
+    }
+
+    /// <summary>
+    /// Runs <paramref name="selection"/> (every test when null) against each test project in turn.
+    /// </summary>
+    /// <returns>
+    /// The verdict when a project reached one, and whether any test ran at all - which is what tells a
+    /// survivor from a selection that matched nothing.
+    /// </returns>
+    private async Task<(MutantResult? Verdict, bool AnyTestRan)> RunSuitesAsync(
+        TestSandbox sandbox,
+        Mutant mutant,
+        IReadOnlyList<TestName>? selection,
+        TimeSpan budget,
+        CancellationToken cancellationToken)
+    {
+        bool anyTestRan = false;
+
         foreach (TestProject testProject in sandbox.TestProjects)
         {
             TestRunOutcome outcome = await _testRunner
                 .RunAsync(
                     new TestRunRequest(
-                        testProject, budget, StopOnFirstFailure: true, TestNames: covering),
+                        testProject, budget, StopOnFirstFailure: true, TestNames: selection),
                     cancellationToken)
                 .ConfigureAwait(false);
 
             if (outcome.TimedOut)
             {
-                return new MutantResult(mutant, MutantStatus.Timeout);
+                return (new MutantResult(mutant, MutantStatus.Timeout), anyTestRan);
             }
 
             if (outcome.Crashed)
@@ -780,7 +824,7 @@ internal sealed class MutationTestSession
                 // The baseline proved this host runs cleanly unmutated, so a crash here is
                 // attributable to the mutation. The suite certainly did not pass. No test is named:
                 // the host died before saying which, and inventing one would be worse than silence.
-                return new MutantResult(mutant, MutantStatus.Killed, outcome.CrashDetail);
+                return (new MutantResult(mutant, MutantStatus.Killed, outcome.CrashDetail), anyTestRan);
             }
 
             if (outcome.NoTestsRan)
@@ -789,16 +833,17 @@ internal sealed class MutationTestSession
                 continue;
             }
 
+            anyTestRan = true;
+
             if (outcome.AnyFailed)
             {
                 // Named, so the kill can be reproduced without this tool: apply the mutation, run
                 // these tests, watch them fail.
-                return new MutantResult(
-                    mutant, MutantStatus.Killed, KilledBy: outcome.FailedTests);
+                return (new MutantResult(mutant, MutantStatus.Killed, KilledBy: outcome.FailedTests), true);
             }
         }
 
-        return new MutantResult(mutant, MutantStatus.Survived);
+        return (null, anyTestRan);
     }
 
 }
