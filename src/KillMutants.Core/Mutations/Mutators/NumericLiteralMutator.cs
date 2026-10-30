@@ -71,9 +71,17 @@ internal sealed class NumericLiteralMutator : IMutator
     /// with, and not of code that runs inside it.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A parameter's default and an enum member are initializers too, and are left out: both are
     /// copied into their callers, which no recompilation of the project reaches. A local is left out
     /// unless it is a constant, because a local's value is ordinary code in a method body.
+    /// </para>
+    /// <para>
+    /// A literal inside a pattern is left out too, although an initializer may hold one:
+    /// <c>Path = home is { Length: &gt; 0 } ? home : fallback</c> names no value, and the
+    /// <c>Pattern</c> family already shifts that bound. Measured on slugger, it was the one
+    /// mutant in 25 that was noise rather than a missing assertion.
+    /// </para>
     /// </remarks>
     private static bool NamesAValue(LiteralExpressionSyntax literal)
     {
@@ -90,6 +98,7 @@ internal sealed class NumericLiteralMutator : IMutator
                         _ => false,
                     };
 
+                case PatternSyntax:
                 case AnonymousFunctionExpressionSyntax:
                 case StatementSyntax:
                 case MemberDeclarationSyntax:
