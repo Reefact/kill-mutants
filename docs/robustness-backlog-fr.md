@@ -1317,12 +1317,15 @@ résiste à un build déterministe. Une suite écrite ainsi ne pouvait pas être
 l'arrêt arrivait tard : tous les projets précédents avaient été jugés, et le rapport était perdu avec
 le run.
 
-**La règle.** Les bacs à sable d'une cible sont créés à côté de la sortie de build de son premier
-projet de test, dans un répertoire `killmutants` voisin de `bin/<configuration>/<framework>`, plutôt
-que dans le répertoire temporaire. La copie a alors les ancêtres de l'original. C'est le seul endroit
+**La règle.** Les copies de bac à sable de chaque projet de test sont créées à côté de sa propre
+sortie de build, dans un répertoire `killmutants` voisin de `bin/<configuration>/<framework>`, plutôt
+que dans le répertoire temporaire. La copie a alors les ancêtres de l'original. Chaque projet de
+test, et non chaque cible : une cible peut contenir plusieurs suites dans des répertoires différents,
+et la première version de cette règle les plaçait toutes à côté de la sortie de la première suite, où
+la seconde perdait ses propres ancêtres - relevé en revue de #58. C'est le seul endroit
 où un projet écrit déjà et que tout dépôt ignore déjà : l'arbre de travail reste aussi propre que le
-build l'a laissé, ce qu'exige une série reprise (DEC0015). Le répertoire est supprimé après la cible,
-et `killmutants` aussi lorsqu'il ne contient plus rien.
+build l'a laissé, ce qu'exige une série reprise (DEC0015). Les répertoires sont supprimés après la
+cible, et chaque `killmutants` aussi lorsqu'il ne contient plus rien.
 
 **Ce que ce n'est pas.** RB-023 est l'autre face du même choix : un bac à sable isole l'assembly mais
 pas le système de fichiers que les tests atteignent, si bien que des workers concurrents peuvent
@@ -1331,8 +1334,9 @@ toujours se croiser dans un répertoire de fixtures partagé. Déplacer le bac �
 **Ce que cela coûte.** Un run interrompu laisse désormais son bac à sable sous `bin` plutôt que dans
 le répertoire temporaire (RB-006) ; supprimer la sortie de build l'efface.
 
-**Nos tests.** `SandboxParentTests` : le parent se trouve à côté de la sortie de build du premier
-projet de test, pour la disposition classique comme pour la disposition `artifacts`, et remonter
-depuis une copie du bac à sable atteint le dépôt. Vérifié sur le cas réel : avec seulement
+**Nos tests.** `SandboxParentTests` : le parent se trouve à côté de la sortie de build propre à un
+projet de test, pour la disposition classique comme pour la disposition `artifacts`, et avec deux
+suites dans des répertoires distincts chaque copie garde sa propre suite parmi ses ancêtres et pas
+l'autre (il échoue quand toutes les copies vont à côté de la sortie de la première suite). Vérifié sur le cas réel : avec seulement
 `RequestBinder.UnitTests` sélectionné, la baseline passe, les bacs à sable apparaissent sous
 `bin/Release/killmutants`, et rien ne reste ensuite.
