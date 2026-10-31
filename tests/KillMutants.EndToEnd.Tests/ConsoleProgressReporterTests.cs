@@ -123,6 +123,20 @@ public class ConsoleProgressReporterTests : IDisposable
         Assert.Equal(["Discovering projects", "Discovering projects 18/19 — FloorCheck"], Lines());
     }
 
+    /// <summary>
+    /// Review of #55. A total of 0 means "not known yet", which cannot tell one item from many, so
+    /// a phase that goes through items is announced without the first one's name whatever its total.
+    /// </summary>
+    [Fact]
+    public void A_phase_over_items_with_an_unknown_total_is_announced_without_the_first_ones_name()
+    {
+        using ConsoleProgressReporter progress = Redirected();
+
+        progress.Report(new MutationTestProgress(MutationTestPhase.Discovering, 0, 0, "First.Tests"));
+
+        Assert.Equal(["Discovering projects"], Lines());
+    }
+
     private sealed class ManualClock : TimeProvider
     {
         private long _ticks;

@@ -64,18 +64,21 @@ internal sealed class ConsoleProgressReporter : IProgress<MutationTestProgress>,
                 // far it had got when it began, and the line written a minute later is the one
                 // that says how far it has got.
                 //
-                // And without its subject when it goes through several items: the subject then
-                // names the first of them, not the phase, and in a log it is the line still on
-                // screen when something fails. A discovery that stopped on the nineteenth project
-                // was announced as "Discovering projects — <the first>", which pointed at a project
-                // that was fine (#52). A phase of one item is still named by it.
+                // And without its subject when that subject names an item rather than the phase:
+                // it is then the first of the items the phase goes through, and in a log it is the
+                // line still on screen when something fails. A discovery that stopped on the
+                // nineteenth project was announced as "Discovering projects — <the first>", which
+                // pointed at a project that was fine (#52). Whether a subject names an item is the
+                // phase's to say, not the total's: a total of 0 means "not known yet", so it cannot
+                // tell one item from many (review of #55). A phase of exactly one item is still
+                // named by it.
                 _announced = value.Phase;
                 _lastWritten = _time.GetTimestamp();
                 _writer.WriteLine(Describe(value with
                 {
                     Completed = 0,
                     Total = 0,
-                    Subject = value.Total > 1 ? null : value.Subject,
+                    Subject = NamesAnItem(value.Phase) && value.Total != 1 ? null : value.Subject,
                 }));
             }
             else if (value.IsCounted && _time.GetElapsedTime(_lastWritten) >= Interval)
@@ -104,6 +107,14 @@ internal sealed class ConsoleProgressReporter : IProgress<MutationTestProgress>,
         _writer.Write('\r' + line.PadRight(_lastWidth));
         _lastWidth = line.Length;
     }
+
+    /// <summary>
+    /// True for a phase whose subject is the item it is on - a project, a target, a mutant - and
+    /// false for one whose subject names the phase itself: the target a baseline is verified for,
+    /// the revision a partial run compares from.
+    /// </summary>
+    private static bool NamesAnItem(MutationTestPhase phase) =>
+        phase is not (MutationTestPhase.VerifyingBaseline or MutationTestPhase.SelectingChanges);
 
     private static string Describe(MutationTestProgress progress)
     {
