@@ -1278,7 +1278,10 @@ que ses tests sont faibles, et rien de ce que l'outil lui dit ne lui permet de d
 2. Un mutant n'est `Survived` que si un test a tourné. Quand la sélection n'a atteint aucun test dans
    aucun projet, toute la suite est lancée à la place - plus lent, jamais faux - comme l'exécution le fait
    déjà quand la couverture est inconnue. C'est la leçon de RB-028 une nouvelle fois : un verdict doit
-   venir d'une exécution qui a jugé quelque chose.
+   venir d'une exécution qui a jugé quelque chose. Quand même la suite complète ne lance rien, il n'y
+   a aucun verdict à consigner : la ligne de base a prouvé que la suite non mutée lance des tests, pas
+   que le mutant en produit encore. L'exécution s'arrête et nomme le mutant, comme un environnement
+   cassé et non comme un survivant.
 
 **Ce que cela coûte.** Une exécution supplémentaire de la suite complète pour un mutant dont la sélection n'a rien
 trouvé, ce qui, après la première règle, est une liste en désaccord avec le filtre et non un cas

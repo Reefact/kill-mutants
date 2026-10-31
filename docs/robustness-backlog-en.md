@@ -1185,6 +1185,9 @@ weak, and is told nothing that would let it doubt the tool.
 2. A mutant is `Survived` only if some test ran. When the selection reached no test in any project,
    the whole suite is run instead - slower, never wrong - as the run already does when coverage is
    unknown. That is RB-028's lesson again: a verdict has to come from a run that judged something.
+   When even the whole suite runs nothing, there is no verdict to record: the baseline proved the
+   unmutated suite runs tests, not that the mutant still produces any. The run stops and names the
+   mutant, as a broken environment and not as a survivor.
 
 **What it costs.** One more run of the full suite for a mutant whose selection matched nothing, which
 after the first rule is a listing that disagrees with the filter and not a normal case. Selection is
