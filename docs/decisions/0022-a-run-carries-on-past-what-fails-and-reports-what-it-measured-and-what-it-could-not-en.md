@@ -19,7 +19,12 @@ baseline on one target still ends the whole run.
 
 Failures below the target level are already contained. A test host that crashes costs one mutant,
 not the run (RB-003), and a mutant that does not compile is set aside rather than stopping anything
-(RB-011).
+(RB-011). Both are outcomes of a mutant inside the measured scope: the report counts a mutant that
+cannot be tested as untestable, and under DEC0009 neither changes the exit code.
+
+Discovery reads every project under the directory to find out which are test projects. A project it
+cannot read may therefore be a test project, and then nothing tells which production code only it
+reaches: those mutants may read as uncovered, or their target may not be selected at all.
 
 On `Reefact/first-class-errors` at `8f84258` (#44), two stops of this kind happened before any result
 was reported:
@@ -49,11 +54,12 @@ The maintainer sees no reason a user would want the run to stop at the first fai
 
 ## Decision
 
-In this context, a run sets aside whatever fails at any level - a project it cannot read, a target
-it cannot build or whose baseline is not green, a mutant it cannot judge - together with the reason,
-carries on with everything else, stops early only when nothing more can advance, and ends with a
-report of what it measured and what it could not, a score labelled with the part it covers, no gate
-passed, and exit code `2` when anything was set aside.
+In this context, a run sets aside any part of its scope it cannot measure - a project it cannot read,
+a target it cannot build or whose baseline is not green - together with the reason, carries on with
+everything else, stops early only when nothing more can advance, and ends with a report of what it
+measured and what it could not, a score only when the population it covers can be established and
+labelled with that part, no gate passed, and exit code `2`, while a mutant that cannot be judged stays
+an outcome inside the measured scope.
 
 ## Rationale
 
@@ -72,12 +78,19 @@ correctly and were invisible without a report; recovering them depended on knowi
 
 The same rule already holds below the target, where a crashed host or a mutant that does not compile
 costs that mutant and nothing more (RB-003, RB-011). Extending it to projects and targets makes one
-rule for every level, which is the maintainer's stated expectation.
+rule for every level, which is the maintainer's stated expectation. A mutant that cannot be judged
+does not leave any of the scope unmeasured: it is an outcome of the scope, counted as untestable, and
+treating it as a failure of the run would let one ordinary mutant turn a complete run red. Only what
+leaves part of the intended scope unmeasured is set aside.
 
 A score over the measured part is useful and is only misleading when it reads as the whole; labelled
-with the part it covers and printed beside what was set aside, it states what it is. No gate passes,
-because a gate is a claim about every mutant in its scope - DEC0013's rule for a run that did not
-judge everything.
+with the part it covers and printed beside what was set aside, it states what it is. That holds only
+when the part it covers is known. A target set aside after discovery leaves the other targets'
+populations as they were; a project set aside at discovery may have been the only suite reaching
+some code, which then leaves the population itself unknown, and a percentage over an unknown
+population is the misreading DEC0010 and DEC0013 refuse. So a score is printed only when nothing was
+set aside at discovery. No gate passes, because a gate is a claim about every mutant in its scope -
+DEC0013's rule for a run that did not judge everything.
 
 Exit code `2`, because DEC0009 gives it to a run that could not happen and names a red baseline among
 its causes; part of this run could not happen, for a reason the user has to fix in the environment or
@@ -111,7 +124,7 @@ the series with a score over everything (DEC0015).
 
 * **Description:** as decided, but with only the counts of what was judged, never a percentage.
 * **Why rejected:** it withholds the assessment the measured part supports, which the maintainer
-  asked for; a label naming the covered part removes the reason to withhold it.
+  asked for; when the covered part is known, a label naming it removes the reason to withhold it.
 
 ### Alternative 4 — An option to stop at the first failure
 
@@ -124,17 +137,20 @@ the series with a score over everything (DEC0015).
 ### Positive
 
 * No correctly measured verdict is lost to a failure elsewhere in the run.
-* One rule for every level, from a project to a mutant: what fails is set aside with its reason.
+* One rule for every level above the mutant: what cannot be measured is set aside with its reason,
+  as a mutant that cannot be judged already is within its target.
 * The report says what could not be measured and why, where the user reads it, instead of a single
   error that hides everything else.
 * A project discovery cannot read, such as `FloorCheck.csproj`, no longer prevents measuring the
-  rest of the repository.
+  rest of the repository, and the report names it with the reason it could not be read.
 * A resumed run completes a series whose earlier run set something aside.
 
 ### Negative
 
 * A run with useful results now exits `2`, which a CI job reading only the exit code treats as a tool
   failure; the report has to be read to see what was measured.
+* A single project discovery cannot read, anywhere under the directory, withholds the score of the
+  whole run until it is excluded or fixed.
 * DEC0005's abort and the meaning of a red baseline under DEC0009 change, so the README, the
   architecture document and the messages that describe them must change too.
 * The report gains a section for what was set aside, and the score a statement of what it covers.
@@ -142,8 +158,6 @@ the series with a score over everything (DEC0015).
 ### Risks
 
 * A score over part of the code may still be quoted as the project's score, whatever its label says.
-* A project discovery cannot read may be a test project; the mutants only it reaches would then read
-  as uncovered rather than as not measured, and the set-aside notice is what tells the two apart.
 * A cause shared by every target is reported once per target, which can bury the one message that
   matters.
 
