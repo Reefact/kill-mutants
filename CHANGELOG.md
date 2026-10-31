@@ -16,6 +16,9 @@ release rather than shipping undocumented.
 
 ### Added
 
+- `--target-framework <tfm>` (and `targetFramework` in `killmutants.json`) names the one framework the
+  test projects run on. A test project targeting several frameworks was refused outright; it is
+  now refused only without the option, and the message lists what it offers. See DEC0021.
 - Release pipeline: tag-triggered publish to NuGet with OIDC trusted publishing,
   SLSA build provenance attestation, embedded SPDX SBOM, and a side-effect-free
   rehearsal (`release-dryrun`) on every pull request.

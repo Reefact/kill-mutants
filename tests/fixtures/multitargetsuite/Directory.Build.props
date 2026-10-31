@@ -1,0 +1,11 @@
+<Project>
+  <!--
+    Deliberately does NOT import the repository Directory.Build.props.
+    Fixture projects stand in for a real user's project: they must be built exactly as a user's
+    project would be, not with KillMutants' own (much stricter) settings.
+    MSBuild stops walking up once it finds this file.
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>

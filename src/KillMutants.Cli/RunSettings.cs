@@ -28,6 +28,9 @@ namespace KillMutants.Cli;
 /// Families to run on top of <paramref name="Mutators"/>, which is how an opt-in family joins the
 /// default catalog. See DEC0019.
 /// </param>
+/// <param name="TargetFramework">
+/// The one framework the test projects run on, or null when none was named. See DEC0021.
+/// </param>
 internal sealed record RunSettings(
     string Directory,
     string Configuration,
@@ -42,7 +45,8 @@ internal sealed record RunSettings(
     string? Since,
     TimeSpan? StopAfter = null,
     string? Resume = null,
-    IReadOnlyList<MutatorName>? WithMutators = null)
+    IReadOnlyList<MutatorName>? WithMutators = null,
+    string? TargetFramework = null)
 {
     /// <summary>Resolves what was asked against what the project keeps in its file.</summary>
     /// <param name="options">What the command line asked for.</param>
@@ -95,7 +99,8 @@ internal sealed record RunSettings(
             options.Since,
             options.StopAfterCleared ? null : options.StopAfter ?? StopAfterIn(file),
             options.Resume,
-            with);
+            with,
+            options.TargetFramework ?? NamedFramework(file?.TargetFramework));
     }
 
     /// <summary>
@@ -129,6 +134,10 @@ internal sealed record RunSettings(
                 "one commit, and what a change-scoped series would be is not decided yet.");
         }
     }
+
+    /// <summary>The framework the file names, trimmed, or null when it names none.</summary>
+    private static string? NamedFramework(string? written) =>
+        string.IsNullOrWhiteSpace(written) ? null : written.Trim();
 
     /// <summary>The deadline the file sets, already known to be readable.</summary>
     private static TimeSpan? StopAfterIn(ConfigurationFile? file) =>

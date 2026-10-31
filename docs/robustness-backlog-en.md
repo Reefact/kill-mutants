@@ -209,8 +209,10 @@ the test project never loads.
 
 **Our behaviour.** A project under test is always resolved against the framework of the test project
 that reaches it, pinned explicitly on both MSBuild queries. A *test* project that targets several is
-refused with a message naming them, rather than silently picking one and reporting a score for a
-framework the user did not choose — each would need its own run, its own output and its own verdict.
+refused with a message naming them and the option that lifts the refusal, rather than silently picking
+one and reporting a score for a framework the user did not choose — each would need its own run, its
+own output and its own verdict. `--target-framework` names the one it runs on (DEC0021); a test project
+that does not offer the value stops the run too, instead of dropping out of the report unseen.
 
 **The framework is the one the test project loads the library for, not its own.** A `net10.0` suite
 referencing a library built for `netstandard2.0` alone loads the `netstandard2.0` build, and asking

@@ -19,6 +19,7 @@ namespace KillMutants.Cli;
 /// <param name="StopAfterCleared">True when <c>--stop-after none</c> was given.</param>
 /// <param name="Resume">The series this run continues or starts, or null when it names none.</param>
 /// <param name="WithMutators">Families to add to the others, or null when the option was not given.</param>
+/// <param name="TargetFramework">The framework the test projects run on, or null when it was not given.</param>
 /// <remarks>
 /// Every setting is nullable, and that is the point: <c>--configuration Release</c> and saying
 /// nothing must be told apart, because a project's <c>killmutants.json</c> sits between them.
@@ -41,7 +42,8 @@ internal sealed record CommandLineOptions(
     TimeSpan? StopAfter = null,
     bool StopAfterCleared = false,
     string? Resume = null,
-    IReadOnlyList<MutatorName>? WithMutators = null)
+    IReadOnlyList<MutatorName>? WithMutators = null,
+    string? TargetFramework = null)
 {
     /// <summary>
     /// Parses the command line. The defaults are chosen so that <c>dotnet killmutants</c> with no
@@ -74,6 +76,7 @@ internal sealed record CommandLineOptions(
         TimeSpan? stopAfter = null;
         bool stopAfterCleared = false;
         string? resume = null;
+        string? targetFramework = null;
 
         for (int index = 0; index < args.Count; index++)
         {
@@ -90,6 +93,18 @@ internal sealed record CommandLineOptions(
                     }
 
                     configuration = args[index];
+
+                    break;
+
+                case "--target-framework":
+                    index++;
+
+                    if (index >= args.Count || string.IsNullOrWhiteSpace(args[index]))
+                    {
+                        throw new ArgumentException($"'{argument}' needs a target framework, such as net10.0.");
+                    }
+
+                    targetFramework = args[index].Trim();
 
                     break;
 
@@ -309,7 +324,8 @@ internal sealed record CommandLineOptions(
             stopAfter,
             stopAfterCleared,
             resume,
-            withMutators);
+            withMutators,
+            targetFramework);
     }
 
     /// <summary>Parses a comma-separated list of mutator family names.</summary>

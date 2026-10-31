@@ -31,8 +31,10 @@ public class MixedFrameworkTargetTests
         Assert.Contains("net9.0", refusal.Message, StringComparison.Ordinal);
         Assert.Contains("net10.0", refusal.Message, StringComparison.Ordinal);
 
-        // Says what it would take rather than only what it will not do.
-        Assert.Contains("its own run and its own score", refusal.Message, StringComparison.Ordinal);
+        // Says what it would take rather than only what it will not do: the option that names one
+        // framework, and the one that sets aside the suites that do not run on it (DEC0021).
+        Assert.Contains("--target-framework", refusal.Message, StringComparison.Ordinal);
+        Assert.Contains("--exclude", refusal.Message, StringComparison.Ordinal);
     }
 
     /// <summary>

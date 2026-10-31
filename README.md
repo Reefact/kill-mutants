@@ -68,6 +68,7 @@ The few choices that are expensive to reverse. Each is recorded in [docs/decisio
 | DEC0018 — The patterns of an `is` are mutated by a family of their own, as the catalogue's operators are | [en](docs/decisions/0018-patterns-are-mutated-by-a-family-of-their-own-en.md) | [fr](docs/decisions/0018-patterns-are-mutated-by-a-family-of-their-own-fr.md) |
 | DEC0019 — Numeric literals are an opt-in family, moved one step each way, that reaches the constants its project reads | [en](docs/decisions/0019-numeric-literals-are-an-opt-in-family-that-reaches-the-constants-its-project-reads-en.md) | [fr](docs/decisions/0019-numeric-literals-are-an-opt-in-family-that-reaches-the-constants-its-project-reads-fr.md) |
 | DEC0020 — A call statement is removed by a default family, and its coverage is measured by a probe placed before it | [en](docs/decisions/0020-a-call-statement-is-removed-by-a-default-family-measured-by-a-statement-probe-en.md) | [fr](docs/decisions/0020-a-call-statement-is-removed-by-a-default-family-measured-by-a-statement-probe-fr.md) |
+| DEC0021 — The developer chooses the framework the test projects run on, and an ambiguous run is refused without that choice | [en](docs/decisions/0021-the-developer-chooses-the-framework-the-test-projects-run-on-en.md) | [fr](docs/decisions/0021-the-developer-chooses-the-framework-the-test-projects-run-on-fr.md) |
 
 ## Installing
 
@@ -119,6 +120,19 @@ with a line on standard error either way. Ctrl-C, SIGINT and SIGTERM stop it the
 second Ctrl-C ends it at once. The deadline is the one that works on GitHub Actions, where a job's
 own timeout signals the step's shell rather than the tool and kills everything seconds later
 ([DEC0013](docs/decisions/0013-a-stopped-run-reports-what-it-judged-and-passes-no-gate-en.md)).
+
+A test project may target several frameworks, and a score describes one build of the code, so a run
+has to be told which one. Without it the run stops and lists what each test project offers; with it,
+every test project runs on that framework and the libraries follow the one NuGet resolves for it:
+
+```bash
+dotnet killmutants --target-framework net10.0
+```
+
+One framework per run — run it again for another. A test project that does not offer the framework
+stops the run too, rather than dropping out of the report unseen; `--exclude` sets it aside on
+purpose. The same choice can live in `killmutants.json` as `targetFramework`
+([DEC0021](docs/decisions/0021-the-developer-chooses-the-framework-the-test-projects-run-on-en.md)).
 
 Every verdict also lands, as soon as it is final, in a JSON Lines log beside the report — the same
 path ending in `.jsonl`, here `artifacts/mutation.jsonl` — one line per mutant, in the shape of the

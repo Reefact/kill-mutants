@@ -62,6 +62,10 @@ public sealed record RunPlan(
 /// The families added to the others, or null in a plan written before the option existed, which is
 /// read as none.
 /// </param>
+/// <param name="TargetFramework">
+/// The framework the developer named for the test projects, or null when none was named, which is
+/// also what a plan written before the option existed says. See DEC0021.
+/// </param>
 /// <remarks>
 /// <para>
 /// A mutant's key covers the mutation and nothing else: not the rest of the file, not the tests, not
@@ -89,7 +93,8 @@ public sealed record RunIdentity(
     string? Fingerprint = null,
     IReadOnlyList<string>? TargetGraph = null,
     string? TestFramework = null,
-    IReadOnlyList<string>? With = null)
+    IReadOnlyList<string>? With = null,
+    string? TargetFramework = null)
 {
     /// <summary>
     /// Why this run cannot continue the one that recorded <paramref name="earlier"/>, phrased for a
@@ -166,6 +171,14 @@ public sealed record RunIdentity(
             return "the families left out differ";
         }
 
+        // A framework is a build: verdicts reached on one say nothing about another. Absent on both
+        // sides is the ordinary case, a run that named none.
+        if (!string.Equals(TargetFramework, earlier.TargetFramework, StringComparison.OrdinalIgnoreCase))
+        {
+            return $"the earlier run ran its tests on {NamedOrNot(earlier.TargetFramework)} and this one " +
+                $"on {NamedOrNot(TargetFramework)}";
+        }
+
         if (!SameSet(With ?? [], earlier.With ?? []))
         {
             return "the families added differ";
@@ -223,6 +236,9 @@ public sealed record RunIdentity(
 
     private static string Describe(string directory) =>
         directory.Length == 0 ? "the top" : $"'{directory}'";
+
+    private static string NamedOrNot(string? framework) =>
+        string.IsNullOrEmpty(framework) ? "no framework named" : framework;
 }
 
 /// <summary>What population a run inspected, as the report records it.</summary>

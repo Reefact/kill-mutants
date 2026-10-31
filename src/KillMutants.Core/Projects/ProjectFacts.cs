@@ -166,4 +166,11 @@ internal sealed record ProjectFacts(
 
     /// <summary>True when the project targets more than one framework.</summary>
     public bool TargetsSeveralFrameworks => TargetFrameworks.Count > 1;
+
+    /// <summary>
+    /// True when the project targets several frameworks and this reading does not say which. The
+    /// property of an outer build is empty; a reading made for a framework carries it, whatever the
+    /// list says.
+    /// </summary>
+    public bool NeedsAFrameworkChoice => TargetsSeveralFrameworks && string.IsNullOrEmpty(TargetFramework);
 }

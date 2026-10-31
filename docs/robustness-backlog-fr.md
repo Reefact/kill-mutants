@@ -225,9 +225,11 @@ un framework que le projet de test ne charge jamais.
 
 **Notre comportement.** Un projet à muter est toujours résolu contre le framework du projet de test
 qui l'atteint, épinglé explicitement sur les deux requêtes MSBuild. Un *projet de test* qui en vise
-plusieurs est refusé avec un message les nommant, plutôt que d'en choisir un en silence et de
-rapporter un score pour un framework que l'utilisateur n'a pas choisi — chacun demanderait son propre
-run, sa propre sortie et son propre verdict.
+plusieurs est refusé avec un message les nommant ainsi que l'option qui lève le refus, plutôt que d'en
+choisir un en silence et de rapporter un score pour un framework que l'utilisateur n'a pas choisi —
+chacun demanderait sa propre exécution, sa propre sortie et son propre verdict. `--target-framework`
+nomme celui sur lequel il tourne (DEC0021) ; un projet de test qui n'offre pas la valeur arrête
+l'exécution lui aussi, au lieu de sortir du rapport sans qu'on le voie.
 
 **Le framework est celui pour lequel le projet de test charge la bibliothèque, pas le sien.** Une
 suite `net10.0` qui référence une bibliothèque visant `netstandard2.0` seulement charge le build
@@ -236,7 +238,7 @@ sur NETSDK1005, une cible qu'elle n'a jamais eue. Toute bibliothèque `netstanda
 moderne la rencontrait. Le framework est désormais celui que NuGet a négocié, lu dans le
 `project.assets.json` de la suite — références transitives comprises — et seulement quand la
 bibliothèque ne déclare pas le framework de la suite : une correspondance exacte l'emporte et rien
-n'est lu. La suite est restaurée d'abord, pour la configuration de la run et qu'un résultat de
+n'est lu. La suite est restaurée d'abord, pour la configuration de l'exécution et qu'un résultat de
 restauration existe ou non : celui d'un build antérieur nomme des frameworks qu'une bibliothèque
 modifiée depuis n'offre plus, et s'y fier retombe sur le framework même que cette négociation existe
 pour éviter. Quand le fichier ne peut pas répondre, le framework de la suite est utilisé, comme avant.
@@ -1254,7 +1256,7 @@ nom d'affichage de chacun, et rendait chaque nom au runner par `-method`. Un nom
 `Namespace.Classe.Méthode` que par défaut. `[Fact(DisplayName = "The v1.0 pattern is Any{Type}.")]`
 imprime cette phrase, `-method` attend une méthode, et une phrase ne sélectionne aucun test : mesuré
 avec xUnit 4.0.2, zéro test lancé. Cette suite déclare ainsi 266 noms d'affichage. Chaque mutant que la
-sélection atteignait était alors lancé contre rien, la run ne voyait aucun échec, et le verdict était
+sélection atteignait était alors lancé contre rien, l'exécution ne voyait aucun échec, et le verdict était
 `Survived` - un manque imputé à des tests que personne n'avait sollicités.
 
 C'est la seconde moitié d'un problème déjà résolu de l'autre côté. `ReadFailures` nomme un tueur à
@@ -1271,9 +1273,9 @@ que ses tests sont faibles, et rien de ce que l'outil lui dit ne lui permet de d
 
 1. Les tests sont listés avec `-list methods/json`, qui imprime l'identité que `-method` accepte.
 2. Un mutant n'est `Survived` que si un test a tourné. Quand la sélection n'a atteint aucun test dans
-   aucun projet, toute la suite est lancée à la place - plus lent, jamais faux - comme la run le fait
+   aucun projet, toute la suite est lancée à la place - plus lent, jamais faux - comme l'exécution le fait
    déjà quand la couverture est inconnue. C'est la leçon de RB-028 une nouvelle fois : un verdict doit
-   venir d'une run qui a jugé quelque chose.
+   venir d'une exécution qui a jugé quelque chose.
 
 **Ce que cela coûte.** Une run de la suite complète de plus pour un mutant dont la sélection n'a rien
 trouvé, ce qui, après la première règle, est une liste en désaccord avec le filtre et non un cas
@@ -1281,7 +1283,7 @@ normal. La sélection reste par méthode, comme DEC0006 le dit déjà : les cas 
 toujours ensemble.
 
 **Nos tests.** `DisplayNamedTestsTests` : sélectionner par couverture donne les verdicts de
-l'exécution de tout sur une suite dont tous les tests portent une phrase pour nom (il échoue sans le
+l'exécution de la suite complète sur une suite dont tous les tests portent une phrase pour nom (il échoue sans le
 changement de liste), un tueur est toujours nommé par sa méthode, et, sur un runner dont la liste
-rend des phrases, le repli transforme les survivants en les kills que la suite fait (il échoue sans
+rend des phrases, le repli permet de détecter les mutants que la suite élimine (il échoue sans
 le repli).
