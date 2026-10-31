@@ -269,6 +269,19 @@ internal static class Program
     /// <summary>Decides what to tell the shell, and says why on the way out.</summary>
     private static int Verdict(RunSettings settings, MutationTestReport report, RunStop stop)
     {
+        // First of all: a run that set part of its scope aside has not measured what it was asked
+        // to, whatever it found in the rest, so no gate passes and the code is the one DEC0009 gives
+        // a run that could not happen (DEC0022). Before the stop, because a stopped run that also set
+        // something aside has the graver of the two to report.
+        if (!report.MeasuredEverything)
+        {
+            Console.Error.WriteLine(
+                $"{report.SetAside.Count.ToString(CultureInfo.InvariantCulture)} part(s) of the run could not be " +
+                "measured and were set aside; the report names each with its reason. Fix them and run again.");
+
+            return ExitCode.CouldNotRun;
+        }
+
         // Before everything else, because nothing else can be settled without it: whatever the
         // score or the verdict would have said, a stopped run did not get to every mutant it would
         // have said it about.
@@ -706,7 +719,7 @@ internal static class Program
               1   Ran, and the gate did not pass: the score is below --break-at, no mutant could be
                   tested at all, --since found an undetected mutant in the change, or the run was
                   stopped before the gate it was asked for could be shown to pass.
-              2   Could not run: see the message on standard error.
+              2   Could not run, or part of the run was set aside: see the report and standard error.
               64  The command line was not understood.
             """);
     }

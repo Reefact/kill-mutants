@@ -103,6 +103,16 @@ public static class JsonReportWriter
         complete = report.IsComplete,
         mutantsSelected = report.Stopped is { } stopped ? stopped.Selected : report.Total,
 
+        // What the run could not measure and why (DEC0022). Empty when it measured everything; when
+        // it is not, no gate passes and the exit code is 2, and `score` covers the measured part
+        // only - or is null when a project set aside at discovery leaves the population unknown.
+        setAside = report.SetAside.Select(part => new
+        {
+            stage = part.Stage.ToString(),
+            name = part.Name,
+            reason = part.Reason,
+        }).ToArray(),
+
         // Null for a run that named no series. Otherwise the sum this report is: how many verdicts
         // came from earlier runs, and what each run of the series ran on - the flat environment
         // below describes only the run that wrote this file (DEC0015).
@@ -210,8 +220,7 @@ public static class JsonReportWriter
     };
 
     /// <summary>True when the run's population is not one a percentage can describe.</summary>
-    private static bool HasNoScore(MutationTestReport report) =>
-        report.Scope.IsPartial || !report.IsComplete;
+    private static bool HasNoScore(MutationTestReport report) => !report.HasScore;
 
     private static object Describe(MutantResult result) => new
     {

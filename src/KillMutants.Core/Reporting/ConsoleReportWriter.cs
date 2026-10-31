@@ -22,6 +22,7 @@ public static class ConsoleReportWriter
         writer.WriteLine();
 
         WriteStopCaveat(writer, report);
+        WriteSetAside(writer, report);
         WriteSeriesCaveat(writer, report);
         WriteComparisonCaveat(writer, report);
 
@@ -116,6 +117,45 @@ public static class ConsoleReportWriter
         writer.WriteLine();
     }
 
+    /// <summary>Names what the run could not measure, and why, before anything it leaves partial.</summary>
+    /// <remarks>
+    /// At the top, for the reason the stop caveat is: every count below is about the part that was
+    /// measured, and the reader has to know which part that is first. The reason is the one the run
+    /// would have stopped with before DEC0022, so nothing it said is lost by carrying on.
+    /// </remarks>
+    private static void WriteSetAside(TextWriter writer, MutationTestReport report)
+    {
+        if (report.MeasuredEverything)
+        {
+            return;
+        }
+
+        writer.WriteLine($"Set aside ({Format(report.SetAside.Count)}) - not measured, so no gate passes on this run:");
+
+        foreach (SetAside part in report.SetAside)
+        {
+            writer.WriteLine();
+            writer.WriteLine($"  {part.Name} ({Describe(part.Stage)})");
+
+            foreach (string line in part.Reason.ReplaceLineEndings("\n").Split('\n'))
+            {
+                writer.WriteLine(line.Length == 0 ? string.Empty : $"    {line}");
+            }
+        }
+
+        writer.WriteLine();
+    }
+
+    private static string Describe(SetAsideStage stage) => stage switch
+    {
+        SetAsideStage.Discovery => "could not be read",
+        SetAsideStage.Build => "did not build",
+        SetAsideStage.Analysis => "could not be analysed",
+        SetAsideStage.Baseline => "red baseline",
+        SetAsideStage.Coverage => "coverage could not be measured",
+        _ => stage.ToString(),
+    };
+
     /// <summary>Says the report is the sum of several runs, before the counts that sum them.</summary>
     /// <remarks>
     /// A run that inherited everything writes a complete report in minutes, having tested almost
@@ -150,9 +190,45 @@ public static class ConsoleReportWriter
     {
         if (!report.Scope.IsPartial)
         {
-            if (report.IsComplete)
+            if (report.HasScore && report.MeasuredEverything)
             {
                 writer.WriteLine($"Mutation score: {report.Score}");
+
+                return;
+            }
+
+            if (report.HasScore && report.Total == 0)
+            {
+                writer.WriteLine("No mutation score: nothing was measured; every part with mutants was set aside above.");
+
+                return;
+            }
+
+            // The part measured has a score of its own, and it is labelled as such so it is not
+            // quoted as the project's (DEC0022).
+            if (report.HasScore)
+            {
+                foreach (string line in Wrap(
+                             $"Mutation score: {report.Score}, over the part measured only - " +
+                             $"{Format(report.SetAside.Count)} part(s) set aside above. See DEC0022.",
+                             width: 88))
+                {
+                    writer.WriteLine(line);
+                }
+
+                return;
+            }
+
+            if (report.IsComplete)
+            {
+                foreach (string line in Wrap(
+                             "No mutation score: a project set aside at discovery may have been the " +
+                             "only suite reaching some code, so the population a score would cover " +
+                             "is not known. See DEC0022.",
+                             width: 88))
+                {
+                    writer.WriteLine(line);
+                }
 
                 return;
             }
@@ -370,7 +446,7 @@ public static class ConsoleReportWriter
             // The per-family percentage is the whole-run score in miniature, and a partial run has
             // no population for it to be a percentage of either - nor does a stopped one. The counts
             // stay; the ratio goes.
-            string score = report.Scope.IsPartial || !report.IsComplete
+            string score = !report.HasScore
                 ? string.Empty
                 : $"  ({family.Score})";
 

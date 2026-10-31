@@ -31,6 +31,7 @@ public sealed class MutationTestReport
     /// Whether the change touched a source file itself, asked of each undetected mutant when a
     /// project was widened. Null when nothing was.
     /// </param>
+    /// <param name="setAside">What the run could not measure, and why. Empty when it measured everything.</param>
     public MutationTestReport(
         IReadOnlyList<MutantResult> results,
         TimeSpan duration = default,
@@ -41,7 +42,8 @@ public sealed class MutationTestReport
         EarlyStop? stopped = null,
         RunSeries? series = null,
         IReadOnlyList<WidenedProject>? widened = null,
-        Func<string, bool>? inTheChange = null)
+        Func<string, bool>? inTheChange = null,
+        IReadOnlyList<SetAside>? setAside = null)
     {
         ArgumentNullException.ThrowIfNull(results);
 
@@ -54,6 +56,7 @@ public sealed class MutationTestReport
         Stopped = stopped;
         Series = series;
         Widened = widened ?? [];
+        SetAside = setAside ?? [];
         Killed = Count(MutantStatus.Killed);
         Survived = Count(MutantStatus.Survived);
         TimedOut = Count(MutantStatus.Timeout);
@@ -262,6 +265,25 @@ public sealed class MutationTestReport
 
     /// <summary>True when every mutant the run selected has a verdict.</summary>
     public bool IsComplete => Stopped is null;
+
+    /// <summary>The parts of the scope the run could not measure, each with its reason (DEC0022).</summary>
+    public IReadOnlyList<SetAside> SetAside { get; }
+
+    /// <summary>True when the run measured everything it set out to.</summary>
+    public bool MeasuredEverything => SetAside.Count == 0;
+
+    /// <summary>
+    /// True when a percentage describes this run's population: a full run, not stopped, and whose
+    /// population is known.
+    /// </summary>
+    /// <remarks>
+    /// A partial run has no score by design (DEC0010) and a stopped one judged whatever came first
+    /// (DEC0013). A run that set something aside after discovery still has one, labelled with the
+    /// part it covers; one that set something aside at discovery does not, because a project it
+    /// could not read may have been the only suite reaching some code, and the population is then
+    /// not known (DEC0022).
+    /// </remarks>
+    public bool HasScore => !Scope.IsPartial && IsComplete && !SetAside.Any(part => part.HidesThePopulation);
 
     /// <summary>
     /// The series this run continued or started, with what it inherited, or null when it named none.

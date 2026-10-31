@@ -330,7 +330,7 @@ score, which is the point.
 |---|---|
 | 0 | Ran, and the gate you asked for passed — or you asked for none |
 | 1 | Ran, but the gate did not pass; standard error says which case |
-| 2 | Could not run; the reason is on standard error |
+| 2 | Could not run, or ran but set part of its scope aside; the report or standard error says why |
 | 64 | The command line was not understood |
 
 `1` is named for the gate rather than for one of its causes, because it has more than one: a score
@@ -341,6 +341,17 @@ when it was given a gate: it has not judged everything the gate is about. A buil
 error says which case it was. The mapping is fixed
 ([DEC0009](docs/decisions/0009-exit-codes-are-a-public-contract-en.md)): a code is never renumbered,
 and a new cause of an outcome a code already names joins it rather than taking a code of its own.
+
+**A part that cannot be measured is set aside, and the run carries on**
+([DEC0022](docs/decisions/0022-a-run-carries-on-past-what-fails-and-reports-what-it-measured-and-what-it-could-not-en.md)).
+A project MSBuild cannot read, a test project that does not build, a project whose compilation
+cannot be reconstructed, a suite that does not pass against unmutated code, a coverage pass that
+fails: each is named at the top of the report under *Set aside*, with the reason, and the rest of
+the run is measured as usual. Such a run passes no gate and exits `2`. Its score covers the part
+measured and says so; when a project could not be read at all, it may have been the only suite
+reaching some code, so no score is printed. A mutant that cannot be judged is not set aside: it is
+an outcome inside the scope, counted as untestable. A run still stops when nothing can advance - no
+test project at all, a command line or configuration it cannot act on.
 
 Progress is written to standard error and the report to standard output, so redirecting the report
 does not drag the progress line along with it.
