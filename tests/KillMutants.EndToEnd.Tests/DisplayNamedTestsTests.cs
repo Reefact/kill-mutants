@@ -87,6 +87,46 @@ public class DisplayNamedTestsTests
         Assert.DoesNotContain(report.Results, result => result.Status == MutantStatus.Survived);
     }
 
+    /// <summary>
+    /// The fallback is not a verdict either: when the unfiltered run ran nothing too, the mutant was
+    /// never judged, and recording a survivor would lower the score for tests that were not asked.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_mutant_against_which_no_test_runs_at_all_is_not_reported_as_a_survivor(bool measureCoverage)
+    {
+        using var fixture = FixtureCopy.Create();
+
+        TestExecutionException stopped = await Assert.ThrowsAsync<TestExecutionException>(() =>
+            new MutationTestSession(
+                    new RunsNothingAgainstAMutant(new XUnitTestRunner()),
+                    "Release",
+                    timeoutPolicy: null,
+                    workerCount: 1,
+                    measureCoverage: measureCoverage,
+                    exclude: null,
+                    catalog: null,
+                    verifyKills: 0)
+                .RunAsync(fixture.Root, TestContext.Current.CancellationToken));
+
+        Assert.Contains("No test ran against mutant", stopped.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>Passes the baseline and the coverage pass through, then reports zero tests for a mutant.</summary>
+    private sealed class RunsNothingAgainstAMutant(ITestRunner inner) : ITestRunner
+    {
+        public Task<IReadOnlyList<TestName>> DiscoverAsync(
+            TestProject testProject, CancellationToken cancellationToken = default) =>
+            inner.DiscoverAsync(testProject, cancellationToken);
+
+        public Task<TestRunOutcome> RunAsync(TestRunRequest request, CancellationToken cancellationToken = default) =>
+            request.StopOnFirstFailure
+                ? Task.FromResult(new TestRunOutcome(
+                    Total: 0, Failed: 0, Errors: 0, Duration: TimeSpan.FromMilliseconds(1), TimedOut: false))
+                : inner.RunAsync(request, cancellationToken);
+    }
+
     /// <summary>Lists the tests the way a display name would: as sentences no filter accepts.</summary>
     private sealed class NamesNothingItCanRun(ITestRunner inner) : ITestRunner
     {

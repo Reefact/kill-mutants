@@ -780,7 +780,7 @@ internal sealed class MutationTestSession
         // never wrong, which is the trade the run already makes when coverage is unknown.
         if (!anyTestRan && covering is { Count: > 0 })
         {
-            (verdict, _) = await RunSuitesAsync(
+            (verdict, anyTestRan) = await RunSuitesAsync(
                     sandbox, mutant, selection: null, budget, cancellationToken)
                 .ConfigureAwait(false);
 
@@ -788,6 +788,22 @@ internal sealed class MutationTestSession
             {
                 return verdict;
             }
+        }
+
+        // Nothing ran even unfiltered. The baseline proved the unmutated suite runs tests; it did not
+        // prove the mutant still produces any - cases discovered from data the mutated library
+        // supplies can vanish, and a runner can report success for a host that ran nothing. Neither
+        // attempt judged anything, so no verdict is recorded: "survived" would lower the score for a
+        // gap in tests that were never asked, and a status of its own would widen the report's
+        // format. The run stops and says which mutant, which is a broken environment and not an
+        // ordinary mutation outcome.
+        if (!anyTestRan)
+        {
+            throw new TestExecutionException(
+                $"No test ran against mutant {mutant.Id} ({mutant.RelativePath}:{mutant.Location.Line}), " +
+                "with the covering tests selected or with the whole suite, so there is no verdict to " +
+                "report. The baseline ran tests, so the mutation changed what the test application " +
+                "discovers, or the test application stopped reporting them.");
         }
 
         return new MutantResult(mutant, MutantStatus.Survived);
