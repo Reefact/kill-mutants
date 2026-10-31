@@ -69,6 +69,7 @@ The few choices that are expensive to reverse. Each is recorded in [docs/decisio
 | DEC0019 — Numeric literals are an opt-in family, moved one step each way, that reaches the constants its project reads | [en](docs/decisions/0019-numeric-literals-are-an-opt-in-family-that-reaches-the-constants-its-project-reads-en.md) | [fr](docs/decisions/0019-numeric-literals-are-an-opt-in-family-that-reaches-the-constants-its-project-reads-fr.md) |
 | DEC0020 — A call statement is removed by a default family, and its coverage is measured by a probe placed before it | [en](docs/decisions/0020-a-call-statement-is-removed-by-a-default-family-measured-by-a-statement-probe-en.md) | [fr](docs/decisions/0020-a-call-statement-is-removed-by-a-default-family-measured-by-a-statement-probe-fr.md) |
 | DEC0021 — The developer chooses the framework the test projects run on, and an ambiguous run is refused without that choice | [en](docs/decisions/0021-the-developer-chooses-the-framework-the-test-projects-run-on-en.md) | [fr](docs/decisions/0021-the-developer-chooses-the-framework-the-test-projects-run-on-fr.md) |
+| DEC0022 — A run carries on past what fails, sets it aside with its reason, and reports what it measured and what it could not | [en](docs/decisions/0022-a-run-carries-on-past-what-fails-and-reports-what-it-measured-and-what-it-could-not-en.md) | [fr](docs/decisions/0022-a-run-carries-on-past-what-fails-and-reports-what-it-measured-and-what-it-could-not-fr.md) |
 
 ## Installing
 
