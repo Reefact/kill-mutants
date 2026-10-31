@@ -207,4 +207,30 @@ public class PatternMutatorTests
             MutatorTestBase.MutateAll(Mutator, "object? o", "bool M({0}) => o is null;"),
             candidate => Assert.Equal("Pattern", candidate.Mutator.ToString()));
     }
+
+    /// <summary>
+    /// Regression test (#50). <c>PlatformNotSupportedException</c> derives from
+    /// <c>NotSupportedException</c>, so dropping it from the <c>or</c> changes nothing that matches;
+    /// dropping the base type does narrow the test, and stays.
+    /// </summary>
+    [Fact]
+    public void An_or_keeps_a_type_its_other_arm_already_covers()
+    {
+        IReadOnlyList<string> mutated = MutatorTestBase.MutatedTexts(
+            Mutator, "System.Exception e", "bool M({0}) => e is System.NotSupportedException or System.PlatformNotSupportedException;");
+
+        Assert.DoesNotContain("System.NotSupportedException", mutated);
+        Assert.Contains("System.PlatformNotSupportedException", mutated);
+    }
+
+    /// <summary>Two unrelated types each say something the other does not, so both arms are dropped in turn.</summary>
+    [Fact]
+    public void An_or_of_unrelated_types_drops_each_arm()
+    {
+        IReadOnlyList<string> mutated = MutatorTestBase.MutatedTexts(
+            Mutator, "System.Exception e", "bool M({0}) => e is System.ArgumentException or System.InvalidOperationException;");
+
+        Assert.Contains("System.ArgumentException", mutated);
+        Assert.Contains("System.InvalidOperationException", mutated);
+    }
 }
