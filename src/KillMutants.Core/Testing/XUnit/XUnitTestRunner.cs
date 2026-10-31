@@ -251,7 +251,8 @@ internal sealed class XUnitTestRunner : ITestRunner
             Errors: ReadCount(assembly, "errors"),
             Duration: process.Duration,
             TimedOut: false,
-            FailedTests: ReadFailures(assembly));
+            FailedTests: ReadFailures(assembly),
+            FailureMessages: ReadFailureMessages(assembly));
     }
 
     /// <summary>
@@ -321,6 +322,31 @@ internal sealed class XUnitTestRunner : ITestRunner
             .Order(StringComparer.Ordinal)
             .Select(TestName.Create),
     ];
+
+    /// <summary>
+    /// The first non-blank line of each failed test's message, keyed as <see cref="ReadFailures"/>
+    /// names it; the first case of a theory to report wins.
+    /// </summary>
+    private static Dictionary<TestName, string> ReadFailureMessages(XElement assembly)
+    {
+        Dictionary<TestName, string> messages = [];
+
+        foreach (XElement test in assembly.Descendants("test")
+                     .Where(test => test.Attribute("result")?.Value is not ("Pass" or "Skip")))
+        {
+            string? first = test.Element("failure")?.Element("message")?.Value
+                .Split('\n')
+                .Select(line => line.Trim())
+                .FirstOrDefault(line => line.Length > 0);
+
+            if (Identify(test) is { } name && !string.IsNullOrWhiteSpace(name) && first is not null)
+            {
+                messages.TryAdd(TestName.Create(name), first.Length <= 300 ? first : first[..300] + "...");
+            }
+        }
+
+        return messages;
+    }
 
     /// <summary>The identity of one result, preferring what the runner can be handed back.</summary>
     private static string? Identify(XElement test)

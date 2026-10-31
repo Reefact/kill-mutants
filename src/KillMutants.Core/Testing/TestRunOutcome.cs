@@ -14,6 +14,10 @@ namespace KillMutants.Testing;
 /// The tests that did not pass, named so they can be run again. Empty when none did, or when the
 /// run produced no result file to read them from.
 /// </param>
+/// <param name="FailureMessages">
+/// The first line of what each test in <paramref name="FailedTests"/> reported, for the ones that
+/// reported anything.
+/// </param>
 public sealed record TestRunOutcome(
     int Total,
     int Failed,
@@ -21,7 +25,8 @@ public sealed record TestRunOutcome(
     TimeSpan Duration,
     bool TimedOut,
     string? CrashDetail = null,
-    IReadOnlyList<TestName>? FailedTests = null)
+    IReadOnlyList<TestName>? FailedTests = null,
+    IReadOnlyDictionary<TestName, string>? FailureMessages = null)
 {
     /// <summary>The tests that did not pass, named so they can be run again.</summary>
     /// <remarks>
@@ -32,6 +37,17 @@ public sealed record TestRunOutcome(
     /// disputed kill into an unanswerable question.
     /// </remarks>
     public IReadOnlyList<TestName> FailedTests { get; init; } = FailedTests ?? [];
+
+    /// <summary>The first line of what each failed test reported, keyed by its name.</summary>
+    /// <remarks>
+    /// Kept for the baseline, which is the one place a failure is the user's to diagnose rather than
+    /// the mutant's verdict. A count alone sent the reader of a red baseline on
+    /// <c>Reefact/first-class-errors</c> looking for a bad rebuild, when the one line xUnit had
+    /// written said <c>Could not locate FirstClassErrors.RequestBinder.csproj by walking up from
+    /// '/tmp/…'</c> (#46).
+    /// </remarks>
+    public IReadOnlyDictionary<TestName, string> FailureMessages { get; init; } =
+        FailureMessages ?? new Dictionary<TestName, string>();
 
     /// <summary>
     /// True when the test host died without reporting a result at all.
