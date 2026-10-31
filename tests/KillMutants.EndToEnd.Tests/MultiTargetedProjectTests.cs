@@ -54,4 +54,25 @@ public class MultiTargetedProjectTests
 
         Assert.Equal(MutantStatus.Killed, mutant.Status);
     }
+
+    /// <summary>
+    /// The suite is already restored, so there is a restore result - and it predates the library's
+    /// current frameworks. Trusting it names a build the library no longer offers, finds no match
+    /// among the ones it does, and falls back to the suite's own framework: the failure this whole
+    /// negotiation exists to avoid, reached by editing a project file and running without building.
+    /// </summary>
+    [Fact]
+    public async Task A_restore_result_older_than_the_library_s_frameworks_is_not_trusted()
+    {
+        using var fixture = FixtureCopy.CreateNetStandardProject();
+        fixture.LeaveTheSuiteRestoredAgainstAnEarlierLibrary();
+
+        MutationTestReport report = await MutationTesting.RunAsync(
+            fixture.Root, cancellationToken: TestContext.Current.CancellationToken);
+
+        MutantResult mutant = Assert.Single(
+            report.Results, result => result.Mutant.MutatedText == "age > 18");
+
+        Assert.Equal(MutantStatus.Killed, mutant.Status);
+    }
 }

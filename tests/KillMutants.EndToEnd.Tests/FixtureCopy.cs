@@ -504,6 +504,53 @@ internal sealed class FixtureCopy : IDisposable
     }
 
     /// <summary>
+    /// Leaves the netstandard fixture restored against a library offering <c>netstandard2.0</c> and
+    /// <c>netstandard2.1</c>, then changes the library to offer <c>netstandard2.0</c> and a Windows
+    /// build. The suite's restore result is now stale: it names a framework the library no longer
+    /// has, which is what a library edited since the last build looks like.
+    /// </summary>
+    public void LeaveTheSuiteRestoredAgainstAnEarlierLibrary()
+    {
+        string library = Path.Combine(Root, "Sample.Library", "Sample.Library.csproj");
+        string text = File.ReadAllText(library);
+
+        File.WriteAllText(
+            library,
+            text.Replace(
+                "<TargetFramework>netstandard2.0</TargetFramework>",
+                "<TargetFrameworks>netstandard2.0;netstandard2.1</TargetFrameworks>",
+                StringComparison.Ordinal));
+
+        Restore(Path.Combine(Root, "Sample.Library.Tests", "Sample.Library.Tests.csproj"));
+
+        File.WriteAllText(
+            library,
+            text.Replace(
+                "<TargetFramework>netstandard2.0</TargetFramework>",
+                "<TargetFrameworks>netstandard2.0;net10.0-windows</TargetFrameworks>" + Environment.NewLine +
+                "    <EnableWindowsTargeting>true</EnableWindowsTargeting>",
+                StringComparison.Ordinal));
+    }
+
+    private static void Restore(string project)
+    {
+        using var process = System.Diagnostics.Process.Start(
+            new System.Diagnostics.ProcessStartInfo("dotnet", ["restore", project, "-nologo"])
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            })!;
+
+        string output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
+        process.WaitForExit();
+
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException($"Restoring '{project}' failed.{Environment.NewLine}{output}");
+        }
+    }
+
+    /// <summary>
     /// Gives every test of the sample suite a sentence for a display name, the way a team that
     /// writes its tests as prose does. The method names are untouched.
     /// </summary>
