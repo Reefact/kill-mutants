@@ -41,6 +41,7 @@ public class RedBaselineMessageTests
         Assert.Contains("'/repo/Sample.Tests/bin/Release/net10.0'", message, StringComparison.Ordinal);
         Assert.Contains("'/tmp/km/Sample.Tests-0'", message, StringComparison.Ordinal);
         Assert.Contains("rebuilt the project", message, StringComparison.Ordinal);
+        Assert.Contains("not the only ones", message, StringComparison.Ordinal);
     }
 
     [Fact]

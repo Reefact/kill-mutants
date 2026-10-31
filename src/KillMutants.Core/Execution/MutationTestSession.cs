@@ -799,8 +799,10 @@ internal sealed class MutationTestSession
     /// line, and the report kept it to itself (#46).
     /// </para>
     /// <para>
-    /// So the failed tests are named with their first line, a handful of them, and both causes are
-    /// given with the two directories that tell them apart. The sandbox is gone by the time this is
+    /// So the failed tests are named with their first line, a handful of them, and the two usual
+    /// causes are given with the two directories that tell them apart - as the first places to look,
+    /// not the only ones: the runner launches the test application itself, with arguments and an
+    /// environment of its own, which <c>dotnet test</c> does not share (review of #56). The sandbox is gone by the time this is
     /// read, but its location is the clue, not its content.
     /// </para>
     /// </remarks>
@@ -829,7 +831,9 @@ internal sealed class MutationTestSession
                 $"  and {(outcome.FailedTests.Count - Shown).ToString(CultureInfo.InvariantCulture)} more.");
         }
 
-        message.AppendLine("If the suite passes under 'dotnet test', one of two things differs here:");
+        message.AppendLine(
+            "If the suite passes under 'dotnet test', check these first - the usual differences, not the only ones, " +
+            "since the test application is also launched directly, with its own arguments and environment:");
         message.AppendLine(CultureInfo.InvariantCulture,
             $"  - where it runs: a copy of '{originalOutput}' in '{inSandbox.OutputDirectory}', which a test that finds files relative to its own location will notice;");
         message.Append("  - what it runs: KillMutants rebuilt the project from MSBuild's compiler command line, " +
