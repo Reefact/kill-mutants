@@ -11,7 +11,28 @@ public sealed class WorkingTreeWatchTests : IDisposable
 {
     private readonly string _root = Directory.CreateTempSubdirectory("killmutants-watch-").FullName;
 
-    public void Dispose() => Directory.Delete(_root, recursive: true);
+    /// <remarks>
+    /// Git writes its objects read-only, and on Windows <see cref="Directory.Delete(string, bool)"/>
+    /// refuses a read-only file: the first CI run of these tests failed there in teardown, every
+    /// assertion having passed. The attribute is cleared first; whatever is still held is left, as
+    /// <c>FixtureCopy</c> leaves it.
+    /// </remarks>
+    public void Dispose()
+    {
+        try
+        {
+            foreach (string file in Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories))
+            {
+                File.SetAttributes(file, FileAttributes.Normal);
+            }
+
+            Directory.Delete(_root, recursive: true);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // A leftover temp directory is not worth failing a test over.
+        }
+    }
 
     [Fact]
     public async Task A_file_written_during_the_run_is_reported()
