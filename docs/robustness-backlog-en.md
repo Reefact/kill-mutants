@@ -1198,3 +1198,43 @@ everything on a suite whose tests all carry a sentence for a name (it fails with
 change), that a killer is still named by its method, and, on a runner whose listing returns
 sentences, that the fallback turns would-be survivors into the kills the suite makes (it fails
 without the fallback).
+
+---
+
+## RB-032 — A sandbox in the temporary directory loses the ancestors its tests walk up to · COVERED
+
+**How it was found.** Running KillMutants against `Reefact/first-class-errors` at `8f84258` (#44).
+The baseline of `FirstClassErrors.RequestBinder.UnitTests` failed 35 minutes into the run, with two
+tests out of 152, although the suite passed under `dotnet test` three times in a row.
+
+**What happens.** Both tests, in `AnalyzerDogfoodingTests`, find the project they check by walking
+up from `AppContext.BaseDirectory` until a directory holds
+`FirstClassErrors.RequestBinder/FirstClassErrors.RequestBinder.csproj`. The project's own comment
+says why it does not use `[CallerFilePath]`: a deterministic CI build maps that path to `/_/…`. The
+sandbox copied the test output to a directory under `Path.GetTempPath()`, where no ancestor holds
+the repository, so the walk found nothing and both tests threw. Copying the output directory to
+`/tmp` and running the test application there reproduces it without KillMutants.
+
+**Why it matters.** Walking up from the test assembly is a common way to reach a project file, a
+solution, a `.git` or a fixture folder, and it is the way that survives a deterministic build. A
+suite written that way could not be measured at all, and the stop came late: every project before it
+had been judged, and the report was lost with the run.
+
+**The rule.** A target's sandboxes are made beside the build output of its first test project, in a
+`killmutants` directory next to `bin/<configuration>/<framework>`, rather than in the temporary
+directory. The copy then has the ancestors the original has. It is the one place a project already
+writes to and every repository already ignores, so the working tree stays as clean as the build left
+it, which a resumed series requires (DEC0015). The directory is removed after the target, and so is
+`killmutants` when nothing else is left in it.
+
+**What it is not.** RB-023 is the other face of the same choice: a sandbox isolates the assembly but
+not the filesystem the tests reach, so concurrent workers can still meet in a shared fixture
+directory. Moving the sandbox does not change that.
+
+**What it costs.** A run that is killed now leaves its sandbox under `bin` rather than in the
+temporary directory (RB-006); deleting the build output removes it.
+
+**Our tests.** `SandboxParentTests`: the parent sits beside the first test project's build output,
+for the conventional layout and for the artifacts layout, and walking up from a sandbox copy reaches
+the repository. Checked on the real case: with only `RequestBinder.UnitTests` selected, the baseline
+passes, the sandboxes appear under `bin/Release/killmutants`, and nothing is left behind.

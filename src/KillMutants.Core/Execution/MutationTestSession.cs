@@ -350,7 +350,7 @@ internal sealed class MutationTestSession
             return;
         }
 
-        string sandboxRoot = Scratch.CreateDirectory();
+        string sandboxRoot = Scratch.CreateDirectory(SandboxParent(target));
         int workerCount = Math.Min(_workerCount, remaining.Count);
         List<TestSandbox> sandboxes = [];
 
@@ -402,6 +402,54 @@ internal sealed class MutationTestSession
             }
 
             Scratch.DeleteDirectory(sandboxRoot);
+            DeleteIfEmpty(Path.GetDirectoryName(sandboxRoot)!);
+        }
+    }
+
+    /// <summary>
+    /// Where a target's sandboxes are made: beside the build output of its first test project,
+    /// under <c>killmutants</c>, rather than in the temporary directory.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A sandbox copies the test output, and the copy keeps the files but not the ancestors. A test
+    /// that finds the repository by walking up from <c>AppContext.BaseDirectory</c> - a common way to
+    /// reach a project file or a fixture, and the one that survives a deterministic CI build, where
+    /// <c>[CallerFilePath]</c> is mapped to <c>/_/</c> - found it under <c>dotnet test</c> and found
+    /// nothing from <c>/tmp</c>. On <c>Reefact/first-class-errors</c> two such tests failed the
+    /// baseline of <c>RequestBinder.UnitTests</c> 35 minutes into the run, and the suite was green
+    /// (#45, RB-032). Beside the build output, the copy has the ancestors the original has.
+    /// </para>
+    /// <para>
+    /// The build output rather than the repository root, because it is the one place a project
+    /// already writes to and every repository already ignores: a sandbox there leaves the working
+    /// tree as clean as the build did, which a resumed series requires (DEC0015). A run that is
+    /// killed now leaves its sandbox in <c>bin</c> rather than in the temporary directory (RB-006),
+    /// where deleting the build output removes it.
+    /// </para>
+    /// </remarks>
+    internal static string SandboxParent(MutationTestTarget target)
+    {
+        string output = Path.TrimEndingDirectorySeparator(Path.GetFullPath(target.TestProjects[0].OutputDirectory));
+
+        return Path.Combine(Path.GetDirectoryName(output) ?? output, "killmutants");
+    }
+
+    private static void DeleteIfEmpty(string directory)
+    {
+        try
+        {
+            if (Directory.Exists(directory) && !Directory.EnumerateFileSystemEntries(directory).Any())
+            {
+                Directory.Delete(directory);
+            }
+        }
+        catch (IOException)
+        {
+            // Another target's sandboxes may share the parent; whoever empties it last removes it.
+        }
+        catch (UnauthorizedAccessException)
+        {
         }
     }
 
