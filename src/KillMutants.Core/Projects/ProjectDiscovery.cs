@@ -443,6 +443,55 @@ internal sealed class ProjectDiscovery
         }
     }
 
+    /// <summary>
+    /// What to do about a project MSBuild could not read: why every project is read, and the
+    /// exclusion that leaves this one out.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every project under the directory is read, because whether it is a test project is one of
+    /// the things being read. One that cannot be - a compatibility probe pinned to an SDK the
+    /// machine does not have, a missing workload - stopped the run with MSBuild's output and
+    /// nothing else. On <c>Reefact/first-class-errors</c> that was <c>tools/floor-check</c>, outside
+    /// the solution and referenced by no test, behind a nested <c>global.json</c> pinning SDK 8.0.100
+    /// (#47).
+    /// </para>
+    /// <para>
+    /// It still stops the run. Setting the project aside instead would silently drop its tests if it
+    /// holds any, and an unread project cannot say whether it does. The way out is named, with the
+    /// pattern to write, and a nested <c>global.json</c> is pointed at when there is one, since it is
+    /// the usual reason a project reads fine in its own directory and fails here.
+    /// </para>
+    /// </remarks>
+    internal static string WayOut(string projectPath, string searchDirectory)
+    {
+        string root = Path.GetFullPath(searchDirectory);
+        string relative = Path.GetRelativePath(root, Path.GetFullPath(projectPath)).Replace('\\', '/');
+        string? directory = Path.GetDirectoryName(relative)?.Replace('\\', '/');
+        string pattern = string.IsNullOrEmpty(directory) ? relative : $"{directory}/*";
+
+        string? pinned = null;
+
+        for (string? current = Path.GetDirectoryName(Path.GetFullPath(projectPath));
+             current is not null && current.Length > root.Length;
+             current = Path.GetDirectoryName(current))
+        {
+            if (File.Exists(Path.Combine(current, "global.json")))
+            {
+                pinned = Path.GetRelativePath(root, Path.Combine(current, "global.json")).Replace('\\', '/');
+                break;
+            }
+        }
+
+        string why = pinned is null
+            ? string.Empty
+            : $" It sits under its own '{pinned}', which chooses the SDK it is read with.";
+
+        return $"Every project under the directory is read, to find the test projects.{why} " +
+               $"If '{relative}' is not under test, leave it out with --exclude '{pattern}', " +
+               "or with \"exclude\" in killmutants.json.";
+    }
+
     private async Task<IReadOnlyList<ProjectFacts>> ReadProjectsAsync(
         string searchDirectory,
         CancellationToken cancellationToken)
@@ -481,9 +530,19 @@ internal sealed class ProjectDiscovery
                 MutationTestPhase.Discovering, projects.Count, paths.Length,
                 Path.GetFileNameWithoutExtension(path)));
 
-            ProjectFacts facts = await _msBuild
-                .GetProjectFactsAsync(path, cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
+            ProjectFacts facts;
+
+            try
+            {
+                facts = await _msBuild
+                    .GetProjectFactsAsync(path, cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (ProjectAnalysisException unreadable)
+            {
+                throw new ProjectAnalysisException(
+                    unreadable.Message + Environment.NewLine + WayOut(path, searchDirectory), unreadable);
+            }
 
             // A suite on several frameworks is read again for the one the developer chose: its
             // output, its references and its assembly are the chosen framework's, and the outer
