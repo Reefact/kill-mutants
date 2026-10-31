@@ -63,9 +63,20 @@ internal sealed class ConsoleProgressReporter : IProgress<MutationTestProgress>,
                 // Announced without its count: what the first report of a phase counts is how
                 // far it had got when it began, and the line written a minute later is the one
                 // that says how far it has got.
+                //
+                // And without its subject when it goes through several items: the subject then
+                // names the first of them, not the phase, and in a log it is the line still on
+                // screen when something fails. A discovery that stopped on the nineteenth project
+                // was announced as "Discovering projects — <the first>", which pointed at a project
+                // that was fine (#52). A phase of one item is still named by it.
                 _announced = value.Phase;
                 _lastWritten = _time.GetTimestamp();
-                _writer.WriteLine(Describe(value with { Completed = 0, Total = 0 }));
+                _writer.WriteLine(Describe(value with
+                {
+                    Completed = 0,
+                    Total = 0,
+                    Subject = value.Total > 1 ? null : value.Subject,
+                }));
             }
             else if (value.IsCounted && _time.GetElapsedTime(_lastWritten) >= Interval)
             {

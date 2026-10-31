@@ -105,6 +105,24 @@ public class ConsoleProgressReporterTests : IDisposable
         Assert.Equal(["Testing mutants", "Confirming timeouts — M105"], Lines());
     }
 
+    /// <summary>
+    /// Regression test (#52). A phase that goes through several projects is announced without the
+    /// first one's name: in a log, that line is still the last one standing when the nineteenth
+    /// project fails, and it named a project that was fine. The count lines that follow name the
+    /// project they are on.
+    /// </summary>
+    [Fact]
+    public void A_phase_over_several_items_is_announced_without_the_first_ones_name()
+    {
+        using ConsoleProgressReporter progress = Redirected();
+
+        progress.Report(new MutationTestProgress(MutationTestPhase.Discovering, 0, 19, "Sample.Library.Tests"));
+        _clock.Advance(ConsoleProgressReporter.Interval);
+        progress.Report(new MutationTestProgress(MutationTestPhase.Discovering, 18, 19, "FloorCheck"));
+
+        Assert.Equal(["Discovering projects", "Discovering projects 18/19 — FloorCheck"], Lines());
+    }
+
     private sealed class ManualClock : TimeProvider
     {
         private long _ticks;
