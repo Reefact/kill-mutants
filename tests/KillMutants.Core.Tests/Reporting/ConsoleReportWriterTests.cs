@@ -104,6 +104,35 @@ public class ConsoleReportWriterTests
         Assert.Single(arrowColumns.Distinct());
     }
 
+    /// <summary>
+    /// Regression test (#52). One long literal used to widen every finding of its file to its own
+    /// length; the console now shows each text on one line, at most <see cref="ConsoleReportWriter.ShownLength"/>
+    /// characters, and lines the block up on what it shows.
+    /// </summary>
+    [Fact]
+    public void A_long_literal_is_shortened_and_no_longer_widens_its_neighbours()
+    {
+        string description = new('x', 1253);
+        IReadOnlyList<Mutant> mutants = MutantsFor(
+            $"class C {{ string D() => \"{description}\"; bool M(int a) => a >= 18; }}");
+
+        string output = Render([.. mutants.Select(m => new MutantResult(m, MutantStatus.Survived))]);
+        string[] findings = [.. output.Split('\n').Where(line => line.Contains(" -> ", StringComparison.Ordinal))];
+
+        Assert.All(findings, line => Assert.True(line.Length < 160, line));
+        Assert.Contains(findings, line => line.Contains('…', StringComparison.Ordinal));
+        Assert.Single(findings.Select(line => line.IndexOf(" -> ", StringComparison.Ordinal)).Distinct());
+    }
+
+    /// <summary>A text spread over several lines is shown on one, so each finding stays one line of the table.</summary>
+    [Theory]
+    [InlineData("a\n    && b", "a && b")]
+    [InlineData("  f(\r\n\tx);  ", "f( x);")]
+    public void A_text_over_several_lines_is_shown_on_one(string text, string expected)
+    {
+        Assert.Equal(expected, ConsoleReportWriter.Shown(text));
+    }
+
     [Fact]
     public void Uncovered_mutants_are_named_too_because_untested_code_is_its_own_finding()
     {

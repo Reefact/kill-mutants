@@ -6,6 +6,12 @@ namespace KillMutants.Reporting;
 /// <summary>Writes a run's outcome to a text writer.</summary>
 public static class ConsoleReportWriter
 {
+    /// <summary>
+    /// The longest a mutant's text is shown in the console: wide enough for an ordinary expression,
+    /// and two of them beside a position still fit a wide terminal.
+    /// </summary>
+    internal const int ShownLength = 60;
+
     /// <summary>Writes the report.</summary>
     public static void Write(TextWriter writer, MutationTestReport report)
     {
@@ -268,22 +274,46 @@ public static class ConsoleReportWriter
                 .OrderBy(result => result.Mutant.Location.Line)
                 .ThenBy(result => result.Mutant.Location.Character)];
 
-            // Widths are computed per file so each block lines up without a fixed guess that a long
-            // expression would blow out.
+            // Widths are computed per file so each block lines up without a fixed guess, and on the
+            // texts as shown rather than as written: a single long literal used to widen every line
+            // of its file to its own length (#52).
             int positionWidth = ordered.Max(result => Position(result).Length);
-            int originalWidth = ordered.Max(result => result.Mutant.OriginalText.Length);
-            int mutatedWidth = ordered.Max(result => result.Mutant.MutatedText.Length);
+            int originalWidth = ordered.Max(result => Shown(result.Mutant.OriginalText).Length);
+            int mutatedWidth = ordered.Max(result => Shown(result.Mutant.MutatedText).Length);
 
             foreach (MutantResult finding in ordered)
             {
                 writer.WriteLine(
                     $"    {Position(finding).PadLeft(positionWidth)}  " +
-                    $"{finding.Mutant.OriginalText.PadRight(originalWidth)} -> " +
-                    $"{finding.Mutant.MutatedText.PadRight(mutatedWidth)}  [{finding.Mutant.Mutator}]");
+                    $"{Shown(finding.Mutant.OriginalText).PadRight(originalWidth)} -> " +
+                    $"{Shown(finding.Mutant.MutatedText).PadRight(mutatedWidth)}  [{finding.Mutant.Mutator}]");
             }
         }
 
         writer.WriteLine();
+    }
+
+    /// <summary>
+    /// A mutant's text as one line of at most <see cref="ShownLength"/> characters.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The console is for reading, and a finding is found again by its file and position. On
+    /// <c>Reefact/first-class-errors</c> one 1253-character description literal padded every
+    /// finding of its file to about 1290 columns, and 278 lines of the report passed 400 (#52). The
+    /// whole text is in the JSON report, which is where a tool reads it.
+    /// </para>
+    /// <para>
+    /// Whitespace runs, line breaks included, become one space first: <c>Statement</c> removes a
+    /// whole statement, a lambda's body and all, and a finding printed over ten lines no longer
+    /// reads as one line of a table.
+    /// </para>
+    /// </remarks>
+    internal static string Shown(string text)
+    {
+        string flat = string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+        return flat.Length <= ShownLength ? flat : string.Concat(flat.AsSpan(0, ShownLength - 1), "…");
     }
 
     private static void WriteTotals(TextWriter writer, MutationTestReport report)
