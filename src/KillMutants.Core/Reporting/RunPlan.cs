@@ -66,6 +66,12 @@ public sealed record RunPlan(
 /// The framework the developer named for the test projects, or null when none was named, which is
 /// also what a plan written before the option existed says. See DEC0021.
 /// </param>
+/// <param name="NotGenerated">
+/// The projects under test this run set aside before generating their mutants - a suite that did
+/// not build, a compilation that could not be read - relative to the directory, or null when there
+/// were none, which is also what a plan written before DEC0022 says. A later run of the series
+/// generates them as new mutants once the cause is fixed.
+/// </param>
 /// <remarks>
 /// <para>
 /// A mutant's key covers the mutation and nothing else: not the rest of the file, not the tests, not
@@ -94,7 +100,8 @@ public sealed record RunIdentity(
     IReadOnlyList<string>? TargetGraph = null,
     string? TestFramework = null,
     IReadOnlyList<string>? With = null,
-    string? TargetFramework = null)
+    string? TargetFramework = null,
+    IReadOnlyList<string>? NotGenerated = null)
 {
     /// <summary>
     /// Why this run cannot continue the one that recorded <paramref name="earlier"/>, phrased for a
@@ -192,6 +199,15 @@ public sealed record RunIdentity(
         if (Scope is not null && earlier.Scope is not null && Scope != earlier.Scope)
         {
             return "the scope differs";
+        }
+
+        // Named before the fingerprint, which it would otherwise fail with a message that says
+        // nothing of why: the earlier run generated this project's mutants and this one could not.
+        if (NotGenerated?.FirstOrDefault(project => earlier.NotGenerated?.Contains(project, StringComparer.Ordinal) != true)
+            is { } lost && earlier.Fingerprint is not null)
+        {
+            return $"'{lost}' was set aside here before its mutants could be generated, and the earlier " +
+                "run had them; fix what the report says about it and run again";
         }
 
         if (Fingerprint is not null && earlier.Fingerprint is not null &&

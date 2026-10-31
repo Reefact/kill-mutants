@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text;
 using KillMutants.Filtering;
 using KillMutants.Processes;
 using KillMutants.Reporting;
@@ -153,9 +155,9 @@ internal sealed class ProjectDiscovery
 
         if (testProjects.Length == 0)
         {
-            throw new ProjectAnalysisException(
+            throw new ProjectAnalysisException(WithWhatWasSetAside(
                 $"No xUnit test project was found under '{searchDirectory}'. " +
-                "KillMutants supports xUnit 4 - the xunit.v3 package family at version 4.");
+                "KillMutants supports xUnit 4 - the xunit.v3 package family at version 4."));
         }
 
         RequireTheFrameworkTheyRunOn(testProjects);
@@ -250,7 +252,7 @@ internal sealed class ProjectDiscovery
         // and that is the one thing this method has.
         if (testsByProject.Count == 0 && !_deferNoTargets)
         {
-            throw new ProjectAnalysisException(NoTargets);
+            throw new ProjectAnalysisException(WithWhatWasSetAside(NoTargets));
         }
 
         RejectProjectsReachedFromSeveralFrameworks(frameworksByProject);
@@ -499,6 +501,35 @@ internal sealed class ProjectDiscovery
         return $"Every project under the directory is read, to find the test projects.{why} " +
                $"If '{relative}' is not under test, leave it out with --exclude \"{pattern}\", " +
                "or with \"exclude\" in killmutants.json.";
+    }
+
+    /// <summary>
+    /// A refusal that ends discovery, followed by what it set aside on the way.
+    /// </summary>
+    /// <remarks>
+    /// A project set aside is reported in the run's report, and a refusal means there is no report:
+    /// without this, the one test project of a repository whose <c>global.json</c> names an SDK that
+    /// is not installed would be reported as "no test project", and the reason MSBuild gave - the one
+    /// the user can act on - would be lost (DEC0022).
+    /// </remarks>
+    internal string WithWhatWasSetAside(string refusal)
+    {
+        if (_setAside.Count == 0)
+        {
+            return refusal;
+        }
+
+        var message = new StringBuilder(refusal);
+
+        message.AppendLine().AppendLine().Append(CultureInfo.InvariantCulture,
+            $"{_setAside.Count} project(s) could not be read and were set aside, which may be why:");
+
+        foreach (SetAside part in _setAside)
+        {
+            message.AppendLine().AppendLine().Append(part.Name).Append(": ").Append(part.Reason);
+        }
+
+        return message.ToString();
     }
 
     private async Task<IReadOnlyList<ProjectFacts>> ReadProjectsAsync(

@@ -20,8 +20,10 @@ release rather than shipping undocumented.
   a project MSBuild cannot read, a test project that does not build, a compilation that cannot be
   reconstructed, a red baseline, a failed coverage pass. Each was a stop; now the report names them
   under "Set aside" (and `setAside` in the JSON), the score covers the part measured and says so -
-  or is withheld when a project could not be read - no gate passes, and the exit code is `2`. See
-  DEC0022.
+  or is withheld when a project could not be read - no gate passes, and the exit code is `2`. In
+  the JSON, `complete` is then `false` and `mutantsSelected` counts the mutants left unjudged. A
+  `--resume` run of the series completes what was set aside, including a target whose mutants were
+  never generated. See DEC0022.
 
 ### Added
 
