@@ -39,7 +39,8 @@ internal sealed class StatementMutator : IMutator
         if (node is not ExpressionStatementSyntax statement ||
             !IsACall(statement.Expression) ||
             WritesAnOutArgument(statement) ||
-            CallsAMethodTheCompilerDrops(statement.Expression, semanticModel))
+            CallsAMethodTheCompilerDrops(statement.Expression, semanticModel) ||
+            OnlyPermitsConcurrentAnalysis(statement.Expression, semanticModel))
         {
             yield break;
         }
@@ -93,6 +94,44 @@ internal sealed class StatementMutator : IMutator
         return method is { IsPartialDefinition: true, PartialImplementationPart: null } ||
                method.GetAttributes().Any(attribute =>
                    attribute.AttributeClass?.ToDisplayString() == "System.Diagnostics.ConditionalAttribute");
+    }
+
+    /// <summary>
+    /// True for <c>AnalysisContext.EnableConcurrentExecution()</c>, the first line of nearly every
+    /// Roslyn analyzer.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The call lets the host run an analyzer's callbacks in parallel; an analyzer has to report the
+    /// same diagnostics either way, so no assertion on what it reports can see the call go. On
+    /// <c>Reefact/first-class-errors</c> its removal survived in all 22 analyzers, a quarter of the
+    /// family's survivors there, and not one was a gap (#49).
+    /// </para>
+    /// <para>
+    /// <c>ConfigureGeneratedCodeAnalysis</c>, the line below it, keeps its mutant: without it the
+    /// analyzer reports in generated code too, which a test feeding an <c>auto-generated</c> file
+    /// sees. Bound through the compiler, overrides included, so a method of the same name elsewhere
+    /// is still removed.
+    /// </para>
+    /// </remarks>
+    private static bool OnlyPermitsConcurrentAnalysis(ExpressionSyntax expression, SemanticModel semanticModel)
+    {
+        if (Invocation(expression) is not { } invocation ||
+            semanticModel.GetSymbolInfo(invocation).Symbol is not IMethodSymbol method ||
+            method.Name != "EnableConcurrentExecution")
+        {
+            return false;
+        }
+
+        for (IMethodSymbol? candidate = method; candidate is not null; candidate = candidate.OverriddenMethod)
+        {
+            if (candidate.ContainingType.ToDisplayString() == "Microsoft.CodeAnalysis.Diagnostics.AnalysisContext")
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>The invocation a call statement makes, through <c>await</c> and <c>?.</c>.</summary>

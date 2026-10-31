@@ -208,8 +208,39 @@ internal sealed class PatternMutator : IMutator
                 continue;
             }
 
+            if (binary.IsKind(SyntaxKind.OrPattern) && AlreadyMatchesEverything(kept, dropped, semanticModel))
+            {
+                continue;
+            }
+
             yield return kept.WithoutTrivia();
         }
+    }
+
+    /// <summary>
+    /// True when the arm an <c>or</c> keeps is a type test that every value of the dropped arm's type
+    /// passes.
+    /// </summary>
+    /// <remarks>
+    /// <c>e is NotSupportedException or PlatformNotSupportedException</c> as
+    /// <c>e is NotSupportedException</c> matches exactly what it matched before: the second type
+    /// derives from the first. On <c>Reefact/first-class-errors</c> that mutant survived in a
+    /// <c>catch</c> filter and could not do otherwise (#50). The redundancy is the source's, and a
+    /// survivor is the wrong way to say so. Asked of the compiler's operation tree, which binds a name
+    /// written as a constant pattern to the type it is. Only plain type tests: a declaration
+    /// pattern's variable, or a property pattern, makes the arm say more than its type.
+    /// </remarks>
+    private static bool AlreadyMatchesEverything(PatternSyntax kept, PatternSyntax dropped, SemanticModel semanticModel)
+    {
+        if (semanticModel.GetOperation(kept) is not ITypePatternOperation keptTest ||
+            semanticModel.GetOperation(dropped) is not ITypePatternOperation droppedTest)
+        {
+            return false;
+        }
+
+        CommonConversion conversion = semanticModel.Compilation.ClassifyCommonConversion(droppedTest.MatchedType, keptTest.MatchedType);
+
+        return conversion.IsIdentity || (conversion.IsImplicit && conversion.IsReference);
     }
 
     /// <summary>
