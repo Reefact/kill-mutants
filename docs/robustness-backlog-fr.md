@@ -1280,7 +1280,7 @@ que ses tests sont faibles, et rien de ce que l'outil lui dit ne lui permet de d
    déjà quand la couverture est inconnue. C'est la leçon de RB-028 une nouvelle fois : un verdict doit
    venir d'une exécution qui a jugé quelque chose.
 
-**Ce que cela coûte.** Une run de la suite complète de plus pour un mutant dont la sélection n'a rien
+**Ce que cela coûte.** Une exécution supplémentaire de la suite complète pour un mutant dont la sélection n'a rien
 trouvé, ce qui, après la première règle, est une liste en désaccord avec le filtre et non un cas
 normal. La sélection reste par méthode, comme DEC0006 le dit déjà : les cas d'une théorie tournent
 toujours ensemble.
