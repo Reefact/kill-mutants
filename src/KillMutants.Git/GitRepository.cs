@@ -296,6 +296,32 @@ internal sealed class GitRepository
     }
 
     /// <summary>
+    /// Every untracked file of the working copy that git does not ignore, relative to its top, with
+    /// <c>/</c> as the separator.
+    /// </summary>
+    /// <remarks>
+    /// <c>--untracked-files=all</c> so a new directory is listed file by file, which is what a person
+    /// deleting what a run left behind needs to see.
+    /// </remarks>
+    public async Task<IReadOnlyList<string>> UntrackedFilesAsync(CancellationToken cancellationToken = default)
+    {
+        string output = await RunRawAsync(
+                Root,
+                ["status", "--porcelain", "-z", "--untracked-files=all", "--", "."],
+                "The state of the working tree could not be read.",
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        return
+        [
+            .. output
+                .Split('\0', StringSplitOptions.RemoveEmptyEntries)
+                .Where(entry => entry.StartsWith("?? ", StringComparison.Ordinal))
+                .Select(entry => entry[3..]),
+        ];
+    }
+
+    /// <summary>
     /// Where <paramref name="directory"/> sits under the top of this working copy, as a pathspec
     /// prefix ending in <c>/</c> - empty at the top - or null when it is not in this working copy.
     /// </summary>
