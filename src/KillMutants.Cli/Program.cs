@@ -82,6 +82,90 @@ internal static class Program
             return ExitCode.CouldNotRun;
         }
 
+        WorkingTreeWatch? watch = await WatchTheTreeAsync(settings.Directory).ConfigureAwait(false);
+
+        try
+        {
+            return await RunAndReportAsync(settings, files, stop).ConfigureAwait(false);
+        }
+        finally
+        {
+            await ReportFilesLeftInTheTreeAsync(watch, settings).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>Starts watching the working copy, or returns null when there is none to watch.</summary>
+    /// <remarks>
+    /// Never a reason to refuse a run: the watch only adds a notice at the end, and git being absent
+    /// or unreadable is an ordinary place to run from.
+    /// </remarks>
+    private static async Task<WorkingTreeWatch?> WatchTheTreeAsync(string directory)
+    {
+        try
+        {
+            return await WorkingTreeWatch.StartAsync(directory).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Names the files the run left in the working copy that were not there before it.</summary>
+    /// <remarks>
+    /// Written however the run ended, a refused baseline included, since a test can write before it
+    /// fails. On standard error, beside the run's other notices, so the report on standard output
+    /// stays the report. See <see cref="WorkingTreeWatch"/> and #51.
+    /// </remarks>
+    private static async Task ReportFilesLeftInTheTreeAsync(WorkingTreeWatch? watch, RunSettings settings)
+    {
+        if (watch is null)
+        {
+            return;
+        }
+
+        IReadOnlyList<string> left;
+
+        try
+        {
+            IEnumerable<string> own = settings.JsonReportPath is { } path ? new RunPlanStore(path).Files : [];
+
+            left = await watch.NewFilesAsync(own).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ChangeSelectionException)
+        {
+            return;
+        }
+
+        if (left.Count == 0)
+        {
+            return;
+        }
+
+        const int Shown = 10;
+
+        Console.Error.WriteLine(
+            $"This run left {left.Count.ToString(CultureInfo.InvariantCulture)} file(s) in the working tree " +
+            $"of '{watch.Root}' that were not there when it started:");
+
+        foreach (string file in left.Take(Shown))
+        {
+            Console.Error.WriteLine($"  {file}");
+        }
+
+        if (left.Count > Shown)
+        {
+            Console.Error.WriteLine($"  and {(left.Count - Shown).ToString(CultureInfo.InvariantCulture)} more.");
+        }
+
+        Console.Error.WriteLine(
+            "A test wrote them while a mutant was loaded - a snapshot library such as Verify writes a " +
+            "'.received' file next to the test's source when a snapshot does not match. They are not " +
+            "part of the code that was measured; delete them rather than commit them.");
+    }
+
+    private static async Task<int> RunAndReportAsync(RunSettings settings, ReportFiles? files, RunStop stop)
+    {
         using (files?.Log)
         {
             MutationTestReport report;
