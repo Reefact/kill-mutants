@@ -164,7 +164,8 @@ internal static class Program
                 settings.Directory, settings.Configuration, settings.WorkerCount,
                 settings.MeasureCoverage, settings.Exclude, settings.Mutators,
                 settings.WithoutMutators, settings.WithMutators, settings.VerifyKills, changes,
-                progress, files?.Log, files?.Continuation, stopToken: stopToken)
+                progress, files?.Log, files?.Continuation, stopToken: stopToken,
+                targetFramework: settings.TargetFramework)
             .ConfigureAwait(false);
 
         // Progress goes to stderr and the report to stdout, so piping the report somewhere useful
@@ -422,7 +423,8 @@ internal static class Program
             [.. settings.Mutators.Select(family => family.ToString())],
             [.. settings.WithoutMutators.Select(family => family.ToString())],
             settings.Exclude,
-            With: [.. (settings.WithMutators ?? []).Select(family => family.ToString())]);
+            With: [.. (settings.WithMutators ?? []).Select(family => family.ToString())],
+            TargetFramework: settings.TargetFramework);
 
         bool continues = false;
 
@@ -552,12 +554,18 @@ internal static class Program
             Settings:
               A project may keep its habits in killmutants.json, in the directory above. Every
               option below that states a habit has a key there - configuration, exclude, mutators,
-              with, without, parallel, coverage, breakAt, verifyKills, reportJson, stopAfter - and
+              with, without, parallel, coverage, breakAt, verifyKills, reportJson, stopAfter,
+              targetFramework - and
               anything given on the command line wins. --since and --resume say what one run is
               about, and have none.
 
             Options:
               -c, --configuration <cfg> Build configuration to analyse and run. Defaults to Release.
+                  --target-framework <tfm>
+                                        The one framework the test projects run on. Needed when a
+                                        test project targets several; a test project that does not
+                                        offer it stops the run - use --exclude to set one aside.
+                                        One framework per run: a score describes a single build.
               -e, --exclude <pattern>   Leave a project or source file alone. Repeatable. Matched
                                         against the path relative to the directory above, written
                                         with '/'. Note that '*' also matches '/', so 'tests/*'

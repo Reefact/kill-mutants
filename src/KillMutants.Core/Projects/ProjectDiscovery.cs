@@ -22,7 +22,12 @@ internal sealed class ProjectDiscovery
     private readonly bool _deferNoTargets;
 
     private readonly string _configuration;
+    private readonly string? _targetFramework;
     private readonly PathFilter _exclusions;
+
+    // The framework each multi-targeted test project is built for, by project path. A build of such a
+    // project without one builds them all, and the output the run launches is one of them.
+    private readonly Dictionary<string, string> _builtFor = new(ProjectPaths.Comparer);
     private readonly IProgress<MutationTestProgress>? _progress;
 
     /// <param name="configuration">The build configuration to analyse and run.</param>
@@ -37,16 +42,21 @@ internal sealed class ProjectDiscovery
     /// Answer with no targets instead of refusing when the test projects reach nothing. A partial
     /// run has to be able to ask why, and only the caller can tell the two answers apart.
     /// </param>
+    /// <param name="targetFramework">
+    /// The one framework the test projects run on, or null when the developer named none. See DEC0021.
+    /// </param>
     public ProjectDiscovery(
         string configuration,
         PathFilter? exclusions = null,
         IProgress<MutationTestProgress>? progress = null,
         bool readInputFiles = false,
-        bool deferNoTargets = false)
+        bool deferNoTargets = false,
+        string? targetFramework = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(configuration);
 
         _configuration = configuration;
+        _targetFramework = string.IsNullOrWhiteSpace(targetFramework) ? null : targetFramework.Trim();
         _exclusions = exclusions ?? PathFilter.None;
         _progress = progress;
         _deferNoTargets = deferNoTargets;
@@ -141,7 +151,7 @@ internal sealed class ProjectDiscovery
                 "KillMutants supports xUnit 4 - the xunit.v3 package family at version 4.");
         }
 
-        RejectMultiTargetedTestProjects(testProjects);
+        RequireTheFrameworkTheyRunOn(testProjects);
 
         TestProjects =
         [
@@ -475,6 +485,22 @@ internal sealed class ProjectDiscovery
                 .GetProjectFactsAsync(path, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
 
+            // A suite on several frameworks is read again for the one the developer chose: its
+            // output, its references and its assembly are the chosen framework's, and the outer
+            // build answers for none of them. Only a test project, and only when the choice is one it
+            // offers - a value it does not offer is refused below, with the project named.
+            if (_targetFramework is not null &&
+                facts.IsTestProject &&
+                facts.NeedsAFrameworkChoice &&
+                facts.TargetFrameworks.Contains(_targetFramework, StringComparer.OrdinalIgnoreCase))
+            {
+                facts = await _msBuild
+                    .GetProjectFactsAsync(path, _targetFramework, cancellationToken)
+                    .ConfigureAwait(false);
+
+                _builtFor[facts.ProjectPath] = _targetFramework;
+            }
+
             Record(facts);
             projects.Add(facts);
         }
@@ -483,7 +509,7 @@ internal sealed class ProjectDiscovery
     }
 
     /// <summary>
-    /// The same rule as <see cref="RejectMultiTargetedTestProjects"/>, seen from the other end: a
+    /// The same rule as <see cref="RequireTheFrameworkTheyRunOn"/>, seen from the other end: a
     /// project reached by test suites on different frameworks.
     /// </summary>
     /// <remarks>
@@ -519,33 +545,72 @@ internal sealed class ProjectDiscovery
                 string.Join(", ", entry.Value)));
 
         throw new ProjectAnalysisException(
-            "KillMutants cannot yet mutate a project that its test suites reach from different " +
-            "frameworks, because each framework would need its own run and its own score." +
+            "KillMutants cannot mutate a project that its test suites reach from different " +
+            "frameworks in one run, because each framework would have its own build and its own " +
+            "score. Run one framework at a time with --target-framework <tfm>, and --exclude the " +
+            "test projects that do not run on it:" +
             Environment.NewLine + details);
     }
 
     /// <summary>
-    /// A test project targeting several frameworks would need one run per framework, with a
-    /// separate build output and a separate verdict for each. Rather than silently picking one and
-    /// reporting a score for a framework the user did not choose, say so.
+    /// Every test project runs on the framework the developer named, or, when none was named, on the
+    /// only one it offers. See DEC0021.
     /// </summary>
-    private static void RejectMultiTargetedTestProjects(IReadOnlyList<ProjectFacts> testProjects)
+    /// <remarks>
+    /// <para>
+    /// A test project on several frameworks would need one run per framework, with a separate build
+    /// output and a separate verdict for each. Rather than silently picking one and reporting a score
+    /// for a framework nobody chose, the run stops and says how to choose.
+    /// </para>
+    /// <para>
+    /// Refused too: a test project that does not offer the chosen framework. Setting it aside would
+    /// leave the code that only it tested out of the report without the score showing it, and
+    /// <c>--exclude</c> already exists for setting a project aside on purpose.
+    /// </para>
+    /// </remarks>
+    private void RequireTheFrameworkTheyRunOn(IReadOnlyList<ProjectFacts> testProjects)
     {
-        ProjectFacts[] multiTargeted = [.. testProjects.Where(project => project.TargetsSeveralFrameworks)];
+        if (_targetFramework is null)
+        {
+            ProjectFacts[] multiTargeted = [.. testProjects.Where(project => project.NeedsAFrameworkChoice)];
 
-        if (multiTargeted.Length == 0)
+            if (multiTargeted.Length == 0)
+            {
+                return;
+            }
+
+            string details = string.Join(
+                Environment.NewLine,
+                multiTargeted.Select(project =>
+                    $"  {project.Name}: {string.Join(", ", project.TargetFrameworks)}"));
+
+            throw new ProjectAnalysisException(
+                "A test project that targets several frameworks needs to be told which one to run on, " +
+                "because each would have its own build, its own output and its own score. Pass " +
+                "--target-framework <tfm> (or 'targetFramework' in killmutants.json) with one of:" +
+                Environment.NewLine + details);
+        }
+
+        ProjectFacts[] elsewhere = [.. testProjects.Where(project =>
+            !string.Equals(project.TargetFramework, _targetFramework, StringComparison.OrdinalIgnoreCase))];
+
+        if (elsewhere.Length == 0)
         {
             return;
         }
 
-        string details = string.Join(
+        string offered = string.Join(
             Environment.NewLine,
-            multiTargeted.Select(project =>
-                $"  {project.Name}: {string.Join(", ", project.TargetFrameworks)}"));
+            elsewhere.Select(project =>
+                $"  {project.Name}: " +
+                (project.TargetsSeveralFrameworks
+                    ? string.Join(", ", project.TargetFrameworks)
+                    : project.TargetFramework)));
 
         throw new ProjectAnalysisException(
-            "KillMutants cannot yet run a test project that targets several frameworks, because each " +
-            "would need its own run and its own score." + Environment.NewLine + details);
+            $"--target-framework {_targetFramework} asks for a framework these test projects do not " +
+            "offer. Use --exclude to set a project aside on purpose, or name a framework it offers:" +
+            Environment.NewLine + offered);
     }
 
     /// <summary>
@@ -628,7 +693,9 @@ internal sealed class ProjectDiscovery
     {
         ProcessResult result = await ProcessRunner.RunAsync(
                 "dotnet",
-                ["build", projectPath, "-c", _configuration, "-nologo"],
+                _builtFor.TryGetValue(projectPath, out string? framework)
+                    ? ["build", projectPath, "-c", _configuration, "-f", framework, "-nologo"]
+                    : ["build", projectPath, "-c", _configuration, "-nologo"],
                 Path.GetDirectoryName(projectPath)!,
                 BuildBudget,
                 cancellationToken: cancellationToken)

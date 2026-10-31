@@ -504,6 +504,12 @@ internal sealed class FixtureCopy : IDisposable
     }
 
     /// <summary>
+    /// Copies the multi-targeted-suite fixture: a netstandard2.0 library and a test project built for
+    /// <c>net8.0</c> and <c>net10.0</c>, which a run cannot choose between on its own.
+    /// </summary>
+    public static FixtureCopy CreateMultiTargetedSuiteProject() => CopyOf(FixtureDirectory("multitargetsuite"));
+
+    /// <summary>
     /// Leaves the netstandard fixture restored against a library offering <c>netstandard2.0</c> and
     /// <c>netstandard2.1</c>, then changes the library to offer <c>netstandard2.0</c> and a Windows
     /// build. The suite's restore result is now stale: it names a framework the library no longer

@@ -31,6 +31,7 @@ internal sealed class MutationTestSession
     private readonly IProgress<MutationTestProgress>? _progress;
     private readonly IProgress<MutantResult>? _verdicts;
     private readonly RunContinuation? _continuation;
+    private readonly string? _targetFramework;
 
     public MutationTestSession(
         ITestRunner testRunner,
@@ -44,7 +45,8 @@ internal sealed class MutationTestSession
         IChangeSource? changes = null,
         IProgress<MutationTestProgress>? progress = null,
         IProgress<MutantResult>? verdicts = null,
-        RunContinuation? continuation = null)
+        RunContinuation? continuation = null,
+        string? targetFramework = null)
     {
         ArgumentNullException.ThrowIfNull(testRunner);
         ArgumentException.ThrowIfNullOrWhiteSpace(configuration);
@@ -72,6 +74,7 @@ internal sealed class MutationTestSession
         _progress = progress;
         _verdicts = verdicts;
         _continuation = continuation;
+        _targetFramework = targetFramework;
     }
 
     /// <summary>
@@ -213,7 +216,8 @@ internal sealed class MutationTestSession
             exclusions,
             _progress,
             readInputFiles: _changes is not null,
-            deferNoTargets: _changes is not null);
+            deferNoTargets: _changes is not null,
+            targetFramework: _targetFramework);
 
         IReadOnlyList<MutationTestTarget> targets = await discovery
             .DiscoverAsync(searchDirectory, cancellationToken)

@@ -15,6 +15,7 @@ namespace KillMutants.Cli;
 /// <param name="VerifyKills">How many of the mutants reported killed to test a second time.</param>
 /// <param name="ReportJson">Where to write the machine-readable report, relative to this file.</param>
 /// <param name="StopAfter">How long a run may take before it stops, written as <c>85m</c>.</param>
+/// <param name="TargetFramework">The framework the test projects run on, such as <c>net10.0</c>.</param>
 /// <remarks>
 /// <para>
 /// Every setting is optional and every one mirrors a command-line option, because the file exists to
@@ -39,7 +40,8 @@ internal sealed record ConfigurationFile(
     int? VerifyKills = null,
     string? ReportJson = null,
     string? StopAfter = null,
-    IReadOnlyList<string>? With = null)
+    IReadOnlyList<string>? With = null,
+    string? TargetFramework = null)
 {
     /// <summary>The file KillMutants looks for in the directory it was pointed at.</summary>
     public const string Name = "killmutants.json";
