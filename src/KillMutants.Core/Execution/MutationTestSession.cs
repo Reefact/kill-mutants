@@ -350,7 +350,7 @@ internal sealed class MutationTestSession
             return;
         }
 
-        string sandboxRoot = Scratch.CreateDirectory(SandboxParent(target));
+        (Dictionary<string, string> runRoots, string[] projectRoots) = CreateRunRoots(target);
         int workerCount = Math.Min(_workerCount, remaining.Count);
         List<TestSandbox> sandboxes = [];
 
@@ -358,9 +358,12 @@ internal sealed class MutationTestSession
         {
             for (int index = 0; index < workerCount; index++)
             {
+                string worker = index.ToString(CultureInfo.InvariantCulture);
+
                 sandboxes.Add(TestSandbox.CreateFor(
                     target,
-                    Path.Combine(sandboxRoot, index.ToString(CultureInfo.InvariantCulture))));
+                    Path.Combine(projectRoots[0], worker),
+                    [.. projectRoots.Select(root => Path.Combine(root, worker))]));
             }
 
             TimeBudget measured = await VerifyBaselineAsync(target, compilation, sandboxes[0], cancellationToken)
@@ -401,14 +404,45 @@ internal sealed class MutationTestSession
                 sandbox.Dispose();
             }
 
-            Scratch.DeleteDirectory(sandboxRoot);
-            DeleteIfEmpty(Path.GetDirectoryName(sandboxRoot)!);
+            foreach ((string parent, string runRoot) in runRoots)
+            {
+                Scratch.DeleteDirectory(runRoot);
+                DeleteIfEmpty(parent);
+            }
         }
     }
 
     /// <summary>
-    /// Where a target's sandboxes are made: beside the build output of its first test project,
-    /// under <c>killmutants</c>, rather than in the temporary directory.
+    /// Creates one run directory beside each test project's build output, and says which one each
+    /// test project's copies go into, by its position in the target.
+    /// </summary>
+    /// <remarks>
+    /// One per test project rather than one per target: a target can hold several suites in
+    /// different directories, and a suite copied beside another suite's output loses its own
+    /// ancestors - the very failure the move out of the temporary directory exists to prevent.
+    /// Found in review of #58. Suites that share a parent share its run directory.
+    /// </remarks>
+    /// <returns>The run directories by parent, and each test project's run directory.</returns>
+    internal static (Dictionary<string, string> RunRoots, string[] ProjectRoots) CreateRunRoots(MutationTestTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+
+        Dictionary<string, string> runRoots = new(ProjectPaths.Comparer);
+
+        foreach (string parent in target.TestProjects.Select(SandboxParentOf))
+        {
+            if (!runRoots.ContainsKey(parent))
+            {
+                runRoots[parent] = Scratch.CreateDirectory(parent);
+            }
+        }
+
+        return (runRoots, [.. target.TestProjects.Select(project => runRoots[SandboxParentOf(project)])]);
+    }
+
+    /// <summary>
+    /// Where a test project's sandbox copies are made: beside its own build output, under
+    /// <c>killmutants</c>, rather than in the temporary directory.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -428,9 +462,9 @@ internal sealed class MutationTestSession
     /// where deleting the build output removes it.
     /// </para>
     /// </remarks>
-    internal static string SandboxParent(MutationTestTarget target)
+    internal static string SandboxParentOf(TestProject testProject)
     {
-        string output = Path.TrimEndingDirectorySeparator(Path.GetFullPath(target.TestProjects[0].OutputDirectory));
+        string output = Path.TrimEndingDirectorySeparator(Path.GetFullPath(testProject.OutputDirectory));
 
         return Path.Combine(Path.GetDirectoryName(output) ?? output, "killmutants");
     }

@@ -1220,12 +1220,15 @@ solution, a `.git` or a fixture folder, and it is the way that survives a determ
 suite written that way could not be measured at all, and the stop came late: every project before it
 had been judged, and the report was lost with the run.
 
-**The rule.** A target's sandboxes are made beside the build output of its first test project, in a
+**The rule.** Each test project's sandbox copies are made beside its own build output, in a
 `killmutants` directory next to `bin/<configuration>/<framework>`, rather than in the temporary
-directory. The copy then has the ancestors the original has. It is the one place a project already
+directory. The copy then has the ancestors the original has. Each test project, not each target:
+a target can hold several suites in different directories, and the first version of this rule put
+them all beside the first suite's output, where the second lost its own ancestors - found in review
+of #58. It is the one place a project already
 writes to and every repository already ignores, so the working tree stays as clean as the build left
-it, which a resumed series requires (DEC0015). The directory is removed after the target, and so is
-`killmutants` when nothing else is left in it.
+it, which a resumed series requires (DEC0015). The directories are removed after the target, and so is
+each `killmutants` when nothing else is left in it.
 
 **What it is not.** RB-023 is the other face of the same choice: a sandbox isolates the assembly but
 not the filesystem the tests reach, so concurrent workers can still meet in a shared fixture
@@ -1234,7 +1237,8 @@ directory. Moving the sandbox does not change that.
 **What it costs.** A run that is killed now leaves its sandbox under `bin` rather than in the
 temporary directory (RB-006); deleting the build output removes it.
 
-**Our tests.** `SandboxParentTests`: the parent sits beside the first test project's build output,
-for the conventional layout and for the artifacts layout, and walking up from a sandbox copy reaches
-the repository. Checked on the real case: with only `RequestBinder.UnitTests` selected, the baseline
+**Our tests.** `SandboxParentTests`: the parent sits beside a test project's own build output, for
+the conventional layout and for the artifacts layout, and with two suites in distinct directories
+each copy keeps its own suite among its ancestors and not the other's (it fails when every copy goes
+beside the first suite's output). Checked on the real case: with only `RequestBinder.UnitTests` selected, the baseline
 passes, the sandboxes appear under `bin/Release/killmutants`, and nothing is left behind.

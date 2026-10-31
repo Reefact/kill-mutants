@@ -22,11 +22,14 @@ internal sealed class TestSandbox : IDisposable
 {
     private readonly string _root;
     private readonly IReadOnlyList<string> _injectionPaths;
+    private readonly IReadOnlyList<string> _copies;
 
-    private TestSandbox(string root, IReadOnlyList<TestProject> testProjects, IReadOnlyList<string> injectionPaths)
+    private TestSandbox(
+        string root, IReadOnlyList<TestProject> testProjects, IReadOnlyList<string> injectionPaths, IReadOnlyList<string> copies)
     {
         _root = root;
         _injectionPaths = injectionPaths;
+        _copies = copies;
         TestProjects = testProjects;
     }
 
@@ -37,9 +40,26 @@ internal sealed class TestSandbox : IDisposable
     public string Root => _root;
 
     /// <summary>Copies every output directory the target needs into a private location.</summary>
-    public static TestSandbox CreateFor(MutationTestTarget target, string root)
+    /// <param name="target">The target whose test output is copied.</param>
+    /// <param name="root">This sandbox's own directory, for the files no sibling may share.</param>
+    /// <param name="projectRoots">
+    /// Where each test project's copy goes, by its position in <see cref="MutationTestTarget.TestProjects"/>;
+    /// <paramref name="root"/> for all of them when omitted.
+    /// </param>
+    /// <remarks>
+    /// One directory per test project, because a copy keeps the files of the output it was taken
+    /// from and not its ancestors: a suite that walks up from its own location has to be copied
+    /// beside its own build output, not beside another suite's (#58, RB-032).
+    /// </remarks>
+    public static TestSandbox CreateFor(
+        MutationTestTarget target, string root, IReadOnlyList<string>? projectRoots = null)
     {
         ArgumentNullException.ThrowIfNull(target);
+
+        if (projectRoots is not null && projectRoots.Count != target.TestProjects.Count)
+        {
+            throw new ArgumentException("One root is needed per test project.", nameof(projectRoots));
+        }
 
         List<TestProject> rebased = [];
         List<string> injectionPaths = [];
@@ -49,7 +69,7 @@ internal sealed class TestSandbox : IDisposable
             // Several test projects can share a name only if they sit in different directories, so
             // the index keeps the copies apart without needing the full path.
             string destination = Path.Combine(
-                root,
+                projectRoots?[rebased.Count] ?? root,
                 $"{testProject.Name}-{rebased.Count.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
 
             CopyDirectory(testProject.OutputDirectory, destination);
@@ -62,7 +82,7 @@ internal sealed class TestSandbox : IDisposable
             injectionPaths.Add(Path.Combine(destination, target.ProjectUnderTest.AssemblyFileName));
         }
 
-        return new TestSandbox(root, rebased, injectionPaths);
+        return new TestSandbox(root, rebased, injectionPaths, [.. rebased.Select(project => project.OutputDirectory)]);
     }
 
     /// <summary>Writes an assembly over every copy this sandbox's test hosts will load.</summary>
@@ -77,7 +97,15 @@ internal sealed class TestSandbox : IDisposable
     }
 
     /// <summary>Deletes the copies.</summary>
-    public void Dispose() => Scratch.DeleteDirectory(_root);
+    public void Dispose()
+    {
+        foreach (string copy in _copies)
+        {
+            Scratch.DeleteDirectory(copy);
+        }
+
+        Scratch.DeleteDirectory(_root);
+    }
 
     private static void CopyDirectory(string source, string destination)
     {
