@@ -5,6 +5,7 @@
 | Date | Statut | Note | Compte rendu lié |
 |---|---|---|---|
 | 2026-08-31 | Accepté | | |
+| 2026-10-31 | Remplacé par DEC0022 | Seulement l'interruption sur un baseline rouge ; la vérification du baseline par le chemin de mutation demeure, cible par cible | |
 
 ## Contexte
 

@@ -106,7 +106,7 @@ request.
 | [DEC0002](0002-one-compilation-per-mutant-en.md) | One compilation per mutant | Accepted |
 | [DEC0003](0003-compilation-inputs-from-csc-command-line-en.md) | Take compilation inputs from MSBuild's `csc` command line | Accepted |
 | [DEC0004](0004-run-tests-by-launching-the-test-executable-en.md) | Run tests by launching the test project's executable | Accepted |
-| [DEC0005](0005-verify-the-baseline-before-mutating-en.md) | Verify the baseline through the mutation path before mutating | Accepted |
+| [DEC0005](0005-verify-the-baseline-before-mutating-en.md) | Verify the baseline through the mutation path before mutating | Superseded by DEC0022 |
 | [DEC0006](0006-identify-tests-by-name-not-by-unique-id-en.md) | Identify tests by name, not by their unique id | Accepted |
 | [DEC0007](0007-measure-coverage-with-a-type-preserving-probe-en.md) | Measure coverage with a type-preserving probe, one test at a time | Accepted |
 | [DEC0008](0008-never-reuse-a-test-host-between-mutants-en.md) | Never reuse a test host between mutants | Accepted |

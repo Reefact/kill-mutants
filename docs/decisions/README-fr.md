@@ -115,7 +115,7 @@ celle qui empêche un agent de merger une pull request.
 | [DEC0002](0002-one-compilation-per-mutant-fr.md) | Une compilation par mutant | Accepté |
 | [DEC0003](0003-compilation-inputs-from-csc-command-line-fr.md) | Prendre les entrées de compilation dans la ligne de commande `csc` de MSBuild | Accepté |
 | [DEC0004](0004-run-tests-by-launching-the-test-executable-fr.md) | Exécuter les tests en lançant l'exécutable du projet de test | Accepté |
-| [DEC0005](0005-verify-the-baseline-before-mutating-fr.md) | Vérifier le baseline par le chemin de mutation avant de muter | Accepté |
+| [DEC0005](0005-verify-the-baseline-before-mutating-fr.md) | Vérifier le baseline par le chemin de mutation avant de muter | Remplacé par DEC0022 |
 | [DEC0006](0006-identify-tests-by-name-not-by-unique-id-fr.md) | Identifier les tests par leur nom, pas par leur identifiant unique | Accepté |
 | [DEC0007](0007-measure-coverage-with-a-type-preserving-probe-fr.md) | Mesurer la couverture avec une sonde qui préserve le type, un test à la fois | Accepté |
 | [DEC0008](0008-never-reuse-a-test-host-between-mutants-fr.md) | Ne jamais réutiliser un hôte de test d'un mutant à l'autre | Accepté |
