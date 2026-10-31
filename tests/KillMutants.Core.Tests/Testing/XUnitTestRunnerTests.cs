@@ -155,6 +155,40 @@ public class XUnitTestRunnerTests
         Assert.False(outcome.AllPassed);
     }
 
+    /// <summary>
+    /// Regression test (#46). The first line a failed test wrote is kept beside its name, so a red
+    /// baseline can say what went wrong rather than how many tests it went wrong in.
+    /// </summary>
+    [Fact]
+    public void A_failed_tests_first_message_line_is_kept()
+    {
+        TestRunOutcome outcome = Read(
+            """
+            <?xml version="1.0" encoding="utf-8"?>
+            <assemblies>
+              <assembly total="2" passed="1" failed="1" errors="0" not-run="0" skipped="0">
+                <collection total="2" passed="1" failed="1">
+                  <test name="Locates the project" type="Sample.Tests.DogfoodingTests" method="Locates" result="Fail">
+                    <failure exception-type="System.IO.FileNotFoundException">
+                      <message>
+
+            System.IO.FileNotFoundException : Could not locate Sample.csproj by walking up from '/tmp/x/'.
+            second line</message>
+                    </failure>
+                  </test>
+                  <test name="Adult" type="Sample.Tests.AgesTests" method="Adult" result="Pass" />
+                </collection>
+              </assembly>
+            </assemblies>
+            """);
+
+        KeyValuePair<TestName, string> message = Assert.Single(outcome.FailureMessages);
+        Assert.Equal("Sample.Tests.DogfoodingTests.Locates", message.Key.ToString());
+        Assert.Equal(
+            "System.IO.FileNotFoundException : Could not locate Sample.csproj by walking up from '/tmp/x/'.",
+            message.Value);
+    }
+
     private static TestRunOutcome Read(string content)
     {
         string path = Path.Combine(Path.GetTempPath(), $"killmutants-test-{Guid.NewGuid():N}.xml");

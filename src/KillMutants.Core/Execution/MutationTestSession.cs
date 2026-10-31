@@ -757,8 +757,9 @@ internal sealed class MutationTestSession
 
         var total = TimeSpan.Zero;
 
-        foreach (TestProject testProject in sandbox.TestProjects)
+        for (int index = 0; index < sandbox.TestProjects.Count; index++)
         {
+            TestProject testProject = sandbox.TestProjects[index];
             TestRunOutcome outcome = await _testRunner
                 .RunAsync(new TestRunRequest(testProject, TimeSpan.FromMinutes(10)), cancellationToken)
                 .ConfigureAwait(false);
@@ -781,14 +782,60 @@ internal sealed class MutationTestSession
             if (!outcome.AllPassed)
             {
                 throw new BaselineVerificationException(
-                    $"'{testProject.Name}' does not pass against unmutated code " +
-                    $"({outcome.Failed.ToString(CultureInfo.InvariantCulture)} failed). " +
-                    "Mutation testing needs a green suite to mean anything. " +
-                    "This may also indicate that KillMutants rebuilt the project incorrectly.");
+                    DescribeRedBaseline(testProject, target.TestProjects[index].OutputDirectory, outcome));
             }
         }
 
         return _timeoutPolicy.For(total);
+    }
+
+    /// <summary>Says which tests a red baseline failed, what they said, and the two places to look.</summary>
+    /// <remarks>
+    /// <para>
+    /// A count was all this said, with a single suggested cause - a bad rebuild. On
+    /// <c>Reefact/first-class-errors</c> the suite was green under <c>dotnet test</c> and the cause
+    /// was the other one: two tests found the repository by walking up from their own directory,
+    /// and the sandbox had copied that directory out of it. The message xUnit wrote said so in one
+    /// line, and the report kept it to itself (#46).
+    /// </para>
+    /// <para>
+    /// So the failed tests are named with their first line, a handful of them, and both causes are
+    /// given with the two directories that tell them apart. The sandbox is gone by the time this is
+    /// read, but its location is the clue, not its content.
+    /// </para>
+    /// </remarks>
+    internal static string DescribeRedBaseline(TestProject inSandbox, string originalOutput, TestRunOutcome outcome)
+    {
+        const int Shown = 5;
+        var message = new System.Text.StringBuilder();
+
+        message.Append(CultureInfo.InvariantCulture,
+            $"'{inSandbox.Name}' does not pass against unmutated code ({outcome.WhyNotGreen()}). ");
+        message.AppendLine("Mutation testing needs a green suite to mean anything.");
+
+        foreach (TestName failed in outcome.FailedTests.Take(Shown))
+        {
+            message.AppendLine(CultureInfo.InvariantCulture, $"  {failed}");
+
+            if (outcome.FailureMessages.TryGetValue(failed, out string? said))
+            {
+                message.AppendLine(CultureInfo.InvariantCulture, $"    {said}");
+            }
+        }
+
+        if (outcome.FailedTests.Count > Shown)
+        {
+            message.AppendLine(CultureInfo.InvariantCulture,
+                $"  and {(outcome.FailedTests.Count - Shown).ToString(CultureInfo.InvariantCulture)} more.");
+        }
+
+        message.AppendLine("If the suite passes under 'dotnet test', one of two things differs here:");
+        message.AppendLine(CultureInfo.InvariantCulture,
+            $"  - where it runs: a copy of '{originalOutput}' in '{inSandbox.OutputDirectory}', which a test that finds files relative to its own location will notice;");
+        message.Append("  - what it runs: KillMutants rebuilt the project from MSBuild's compiler command line, " +
+                       "and the rebuild may differ from MSBuild's own.");
+
+        return message.ToString();
     }
 
     private async Task<MutantResult> TestMutantAsync(
@@ -907,8 +954,9 @@ internal sealed class MutationTestSession
     {
         bool anyTestRan = false;
 
-        foreach (TestProject testProject in sandbox.TestProjects)
+        for (int index = 0; index < sandbox.TestProjects.Count; index++)
         {
+            TestProject testProject = sandbox.TestProjects[index];
             TestRunOutcome outcome = await _testRunner
                 .RunAsync(
                     new TestRunRequest(
