@@ -68,14 +68,48 @@ public sealed class ReferencedFrameworkTests : IDisposable
         Assert.False(ReferencedFramework.Declares(library, "net8.0"));
     }
 
-    private string WriteAssets(string libraryFramework)
+    [Theory]
+    [InlineData("net10.0-windows", "net10.0-windows7.0", "net10.0-windows")]
+    [InlineData("net10.0", "net10.0", "net10.0")]
+    [InlineData("net10.0-android", "net10.0-android36.0", "net10.0")]
+    public void A_platform_build_is_chosen_only_for_a_suite_on_that_platform(
+        string suite, string target, string expected)
+    {
+        ProjectFacts tests = Facts("Tests", suite, assets: WriteAssets(".NETCoreApp,Version=v10.0", target));
+        ProjectFacts library = Facts("Lib", frameworks: ["net10.0", "net10.0-windows"]);
+
+        // The restore result names net10.0 for all three: it never carries the platform.
+        Assert.Equal(expected, ReferencedFramework.For(tests, library));
+    }
+
+    [Fact]
+    public void Two_builds_that_cannot_be_told_apart_leave_the_choice_to_the_caller()
+    {
+        ProjectFacts tests = Facts("Tests", "net10.0-ios", assets: WriteAssets(".NETCoreApp,Version=v10.0", "net10.0-ios18.0"));
+        ProjectFacts library = Facts("Lib", frameworks: ["net10.0-windows", "net10.0-android"]);
+
+        Assert.Null(ReferencedFramework.For(tests, library));
+    }
+
+    [Fact]
+    public void A_library_written_with_the_plural_property_and_one_entry_still_names_its_framework()
+    {
+        ProjectFacts tests = Facts("Tests", "net10.0", assets: string.Empty);
+        ProjectFacts library = Facts("Lib", frameworks: ["netstandard2.0"]) with { TargetFramework = string.Empty };
+
+        Assert.Equal("netstandard2.0", ReferencedFramework.For(tests, library));
+        Assert.True(ReferencedFramework.Declares(library, "netstandard2.0"));
+        Assert.False(ReferencedFramework.Declares(library, "net10.0"));
+    }
+
+    private string WriteAssets(string libraryFramework, string target = "net10.0")
     {
         string path = Path.Combine(_root, "Tests", "obj", "project.assets.json");
 
         File.WriteAllText(path, $$"""
             {
               "version": 3,
-              "targets": { "net10.0": { "Lib/1.0.0": { "type": "project", "framework": "{{libraryFramework}}" } } },
+              "targets": { "{{target}}": { "Lib/1.0.0": { "type": "project", "framework": "{{libraryFramework}}" } } },
               "libraries": { "Lib/1.0.0": { "type": "project", "path": "../Lib/Lib.csproj" } }
             }
             """);

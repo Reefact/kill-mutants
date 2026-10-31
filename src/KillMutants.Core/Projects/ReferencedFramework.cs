@@ -28,8 +28,18 @@ internal static class ReferencedFramework
     /// case that build is the one a suite on that framework loads and nothing needs negotiating.
     /// </summary>
     public static bool Declares(ProjectFacts library, string framework) =>
-        (library.TargetsSeveralFrameworks ? library.TargetFrameworks : [library.TargetFramework])
-        .Any(candidate => string.Equals(candidate, framework, StringComparison.OrdinalIgnoreCase));
+        FrameworksOf(library).Any(candidate =>
+            string.Equals(candidate, framework, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Every framework <paramref name="library"/> is built for. A project written with the plural
+    /// property and one entry, <c>&lt;TargetFrameworks&gt;net10.0&lt;/TargetFrameworks&gt;</c>, has no
+    /// singular answer in the evaluation that read it, so the one entry is the framework.
+    /// </summary>
+    private static IReadOnlyList<string> FrameworksOf(ProjectFacts library) =>
+        library.TargetFrameworks.Count > 0
+            ? library.TargetFrameworks
+            : string.IsNullOrEmpty(library.TargetFramework) ? [] : [library.TargetFramework];
 
     /// <summary>
     /// The target framework moniker, among those <paramref name="library"/> declares, that
@@ -41,12 +51,12 @@ internal static class ReferencedFramework
         // when NuGet's file has no entry for the library: the project graph MSBuild walks and the one
         // NuGet restored are not always the same graph (a reference under a condition, or one that
         // the restore leaves out), and a library reached only the first way still has to be built.
-        if (!library.TargetsSeveralFrameworks)
-        {
-            return library.TargetFramework;
-        }
+        IReadOnlyList<string> candidates = FrameworksOf(library);
 
-        string[] candidates = [.. library.TargetFrameworks];
+        if (candidates.Count <= 1)
+        {
+            return candidates.Count == 1 ? candidates[0] : null;
+        }
 
         if (testProject.ProjectAssetsFile.Length == 0 || !File.Exists(testProject.ProjectAssetsFile))
         {
@@ -60,8 +70,40 @@ internal static class ReferencedFramework
             return null;
         }
 
-        return candidates.FirstOrDefault(candidate =>
-            string.Equals(WithoutPlatform(candidate), negotiated, StringComparison.OrdinalIgnoreCase));
+        string[] sharingTheBase = [.. candidates.Where(candidate =>
+            string.Equals(WithoutPlatform(candidate), negotiated, StringComparison.OrdinalIgnoreCase))];
+
+        if (sharingTheBase.Length <= 1)
+        {
+            return sharingTheBase.FirstOrDefault();
+        }
+
+        // net10.0 and net10.0-windows both reduce to net10.0, and the restore result does not say
+        // which was chosen: its framework for a reference never carries the platform, measured with a
+        // net10.0-windows suite over a library offering both. NuGet's own order is the suite's platform
+        // first, then the platform-neutral build, which is compatible with any suite. Anything else is
+        // ambiguous, and the caller keeps the suite's framework rather than have this pick the first.
+        string platform = PlatformOf(testProject.TargetFramework);
+
+        string[] samePlatform = [.. sharingTheBase.Where(candidate =>
+            string.Equals(PlatformOf(candidate), platform, StringComparison.OrdinalIgnoreCase))];
+
+        if (samePlatform.Length == 1)
+        {
+            return samePlatform[0];
+        }
+
+        string[] neutral = [.. sharingTheBase.Where(candidate => PlatformOf(candidate).Length == 0)];
+
+        return neutral.Length == 1 ? neutral[0] : null;
+    }
+
+    /// <summary>The platform part of a framework, without its version: <c>windows</c> for <c>net10.0-windows7.0</c>.</summary>
+    private static string PlatformOf(string framework)
+    {
+        int dash = framework.IndexOf('-', StringComparison.Ordinal);
+
+        return dash < 0 ? string.Empty : framework[(dash + 1)..].TrimEnd('.', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9');
     }
 
     private static string? NegotiatedFramework(ProjectFacts testProject, ProjectFacts library)
