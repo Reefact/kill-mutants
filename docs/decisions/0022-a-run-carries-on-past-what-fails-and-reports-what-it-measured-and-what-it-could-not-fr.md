@@ -20,6 +20,13 @@ mutants soient testés. Une baseline rouge sur une cible met toujours fin à tou
 
 Les échecs sous le niveau de la cible sont déjà contenus. Un hôte de test qui plante coûte un mutant,
 pas l'exécution (RB-003), et un mutant qui ne compile pas est mis de côté sans rien arrêter (RB-011).
+Ce sont deux issues d'un mutant à l'intérieur du périmètre mesuré : le rapport compte un mutant qui ne
+peut pas être testé comme non testable, et selon DEC0009 aucune des deux ne change le code de sortie.
+
+La découverte lit chaque projet sous le répertoire pour savoir lesquels sont des projets de test. Un
+projet qu'elle ne peut pas lire peut donc être un projet de test, et rien ne dit alors quel code de
+production lui seul atteint : ces mutants peuvent se lire comme non couverts, ou leur cible peut ne pas
+être sélectionnée du tout.
 
 Sur `Reefact/first-class-errors` à `8f84258` (#44), deux arrêts de ce type sont survenus avant
 qu'aucun résultat ne soit rapporté :
@@ -52,12 +59,13 @@ voudrait plutôt que l'exécution s'arrête au premier échec.
 
 ## Décision
 
-Dans ce contexte, une exécution met de côté ce qui échoue à n'importe quel niveau - un projet qu'elle
-ne peut pas lire, une cible qu'elle ne peut pas construire ou dont la baseline n'est pas verte, un
-mutant qu'elle ne peut pas juger - avec sa raison, poursuit sur tout le reste, ne s'arrête plus tôt
-que lorsque plus rien ne peut avancer, et se termine par un rapport de ce qu'elle a mesuré et de ce
-qu'elle n'a pas pu mesurer, un score étiqueté par la partie qu'il couvre, aucun seuil passé, et le
-code de sortie `2` lorsque quoi que ce soit a été mis de côté.
+Dans ce contexte, une exécution met de côté toute partie de son périmètre qu'elle ne peut pas mesurer
+- un projet qu'elle ne peut pas lire, une cible qu'elle ne peut pas construire ou dont la baseline
+n'est pas verte - avec sa raison, poursuit sur tout le reste, ne s'arrête plus tôt que lorsque plus
+rien ne peut avancer, et se termine par un rapport de ce qu'elle a mesuré et de ce qu'elle n'a pas pu
+mesurer, un score seulement lorsque la population qu'il couvre peut être établie et étiqueté par cette
+partie, aucun seuil passé, et le code de sortie `2`, tandis qu'un mutant qui ne peut pas être jugé
+reste une issue à l'intérieur du périmètre mesuré.
 
 ## Justification
 
@@ -79,11 +87,20 @@ construction.
 
 La même règle vaut déjà sous la cible, où un hôte qui plante ou un mutant qui ne compile pas coûte ce
 mutant et rien de plus (RB-003, RB-011). L'étendre aux projets et aux cibles donne une seule règle
-pour tous les niveaux, ce qui est l'attente formulée par le mainteneur.
+pour tous les niveaux, ce qui est l'attente formulée par le mainteneur. Un mutant qui ne peut pas être
+jugé ne laisse aucune partie du périmètre non mesurée : c'est une issue du périmètre, comptée comme
+non testable, et la traiter comme un échec de l'exécution laisserait un mutant ordinaire faire passer
+au rouge une exécution complète. Seul ce qui laisse une partie du périmètre prévu non mesurée est mis
+de côté.
 
 Un score sur la partie mesurée est utile, et ne trompe que s'il se lit comme le tout ; étiqueté par la
-partie qu'il couvre et imprimé à côté de ce qui a été mis de côté, il dit ce qu'il est. Aucun seuil
-n'est passé, parce qu'un seuil est une affirmation sur tous les mutants de son périmètre - la règle de
+partie qu'il couvre et imprimé à côté de ce qui a été mis de côté, il dit ce qu'il est. Cela ne vaut
+que lorsque la partie couverte est connue. Une cible mise de côté après la découverte laisse les
+populations des autres cibles telles qu'elles étaient ; un projet mis de côté à la découverte a pu
+être la seule suite à atteindre du code, ce qui laisse alors la population elle-même inconnue, et un
+pourcentage sur une population inconnue est la lecture erronée que refusent DEC0010 et DEC0013. Un
+score n'est donc imprimé que lorsque rien n'a été mis de côté à la découverte. Aucun seuil n'est
+passé, parce qu'un seuil est une affirmation sur tous les mutants de son périmètre - la règle de
 DEC0013 pour une exécution qui n'a pas tout jugé.
 
 Le code de sortie `2`, parce que DEC0009 le donne à une exécution qui n'a pas pu avoir lieu et cite
@@ -121,7 +138,8 @@ Une cible mise de côté laisse ses mutants sans verdict, ce qui est exactement 
 * **Description :** comme décidé, mais seulement avec les comptes de ce qui a été jugé, jamais un
   pourcentage.
 * **Pourquoi rejetée :** elle retient le bilan que la partie mesurée permet, que le mainteneur a
-  demandé ; une étiquette nommant la partie couverte supprime la raison de le retenir.
+  demandé ; lorsque la partie couverte est connue, une étiquette qui la nomme supprime la raison de le
+  retenir.
 
 ### Alternative 4 — Une option pour s'arrêter au premier échec
 
@@ -135,18 +153,20 @@ Une cible mise de côté laisse ses mutants sans verdict, ce qui est exactement 
 ### Positives
 
 * Aucun verdict correctement mesuré n'est perdu à cause d'un échec ailleurs dans l'exécution.
-* Une seule règle pour tous les niveaux, du projet au mutant : ce qui échoue est mis de côté avec sa
-  raison.
+* Une seule règle pour tous les niveaux au-dessus du mutant : ce qui ne peut pas être mesuré est mis
+  de côté avec sa raison, comme l'est déjà un mutant qui ne peut pas être jugé au sein de sa cible.
 * Le rapport dit ce qui n'a pas pu être mesuré et pourquoi, là où l'utilisateur le lit, au lieu d'une
   erreur unique qui cache tout le reste.
 * Un projet que la découverte ne peut pas lire, comme `FloorCheck.csproj`, n'empêche plus de mesurer
-  le reste du dépôt.
+  le reste du dépôt, et le rapport le nomme avec la raison pour laquelle il n'a pas pu être lu.
 * Une exécution reprise complète une série dont l'exécution précédente a mis quelque chose de côté.
 
 ### Négatives
 
 * Une exécution aux résultats utiles sort désormais avec `2`, qu'un job de CI qui ne lit que le code
   de sortie traite comme une panne de l'outil ; il faut lire le rapport pour voir ce qui a été mesuré.
+* Un seul projet que la découverte ne peut pas lire, n'importe où sous le répertoire, retient le score
+  de toute l'exécution jusqu'à ce qu'il soit exclu ou corrigé.
 * L'interruption de DEC0005 et le sens d'une baseline rouge selon DEC0009 changent, si bien que le
   README, le document d'architecture et les messages qui les décrivent doivent changer aussi.
 * Le rapport gagne une section pour ce qui a été mis de côté, et le score une mention de ce qu'il
@@ -156,9 +176,6 @@ Une cible mise de côté laisse ses mutants sans verdict, ce qui est exactement 
 
 * Un score sur une partie du code peut malgré tout être cité comme le score du projet, quoi que dise
   son étiquette.
-* Un projet que la découverte ne peut pas lire peut être un projet de test ; les mutants que lui seul
-  atteint se liraient alors comme non couverts plutôt que comme non mesurés, et c'est la mention de
-  mise de côté qui permet de distinguer les deux.
 * Une cause commune à toutes les cibles est rapportée une fois par cible, ce qui peut noyer le seul
   message qui compte.
 
