@@ -460,7 +460,9 @@ internal sealed class ProjectDiscovery
     /// It still stops the run. Setting the project aside instead would silently drop its tests if it
     /// holds any, and an unread project cannot say whether it does. The way out is named, with the
     /// pattern to write, and a nested <c>global.json</c> is pointed at when there is one, since it is
-    /// the usual reason a project reads fine in its own directory and fails here.
+    /// the usual reason a project reads fine in its own directory and fails here. The pattern is in
+    /// double quotes, as the README writes it: <c>cmd.exe</c> passes single quotes through, and a
+    /// pattern copied from the message would then match nothing (review of #57).
     /// </para>
     /// </remarks>
     internal static string WayOut(string projectPath, string searchDirectory)
@@ -488,7 +490,7 @@ internal sealed class ProjectDiscovery
             : $" It sits under its own '{pinned}', which chooses the SDK it is read with.";
 
         return $"Every project under the directory is read, to find the test projects.{why} " +
-               $"If '{relative}' is not under test, leave it out with --exclude '{pattern}', " +
+               $"If '{relative}' is not under test, leave it out with --exclude \"{pattern}\", " +
                "or with \"exclude\" in killmutants.json.";
     }
 

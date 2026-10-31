@@ -20,7 +20,7 @@ public sealed class UnreadableProjectTests : IDisposable
 
         string wayOut = ProjectDiscovery.WayOut(project, _root);
 
-        Assert.Contains("--exclude 'tools/floor-check/*'", wayOut, StringComparison.Ordinal);
+        Assert.Contains("--exclude \"tools/floor-check/*\"", wayOut, StringComparison.Ordinal);
         Assert.Contains("'tools/floor-check/FloorCheck.csproj'", wayOut, StringComparison.Ordinal);
         Assert.DoesNotContain("global.json", wayOut, StringComparison.Ordinal);
     }
@@ -49,7 +49,7 @@ public sealed class UnreadableProjectTests : IDisposable
     {
         string project = Create("Probe.csproj");
 
-        Assert.Contains("--exclude 'Probe.csproj'", ProjectDiscovery.WayOut(project, _root), StringComparison.Ordinal);
+        Assert.Contains("--exclude \"Probe.csproj\"", ProjectDiscovery.WayOut(project, _root), StringComparison.Ordinal);
     }
 
     private string Create(string relative)
