@@ -5,6 +5,7 @@
 | Date | Status | Note | Related minutes |
 |---|---|---|---|
 | 2026-08-31 | Accepted | | |
+| 2026-10-31 | Superseded by DEC0022 | Only the abort on a red baseline; verifying the baseline through the mutation path stands, target by target | |
 
 ## Context
 
