@@ -17,16 +17,18 @@ public sealed class WorkingTreeWatchTests : IDisposable
     /// assertion having passed. The attribute is cleared first; whatever is still held is left, as
     /// <c>FixtureCopy</c> leaves it.
     /// </remarks>
-    public void Dispose()
+    public void Dispose() => DeleteDirectory(_root);
+
+    private static void DeleteDirectory(string directory)
     {
         try
         {
-            foreach (string file in Directory.EnumerateFiles(_root, "*", SearchOption.AllDirectories))
+            foreach (string file in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories))
             {
                 File.SetAttributes(file, FileAttributes.Normal);
             }
 
-            Directory.Delete(_root, recursive: true);
+            Directory.Delete(directory, recursive: true);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -73,6 +75,40 @@ public sealed class WorkingTreeWatchTests : IDisposable
         Assert.Empty(await watch.NewFilesAsync([report], TestContext.Current.CancellationToken));
     }
 
+    /// <summary>
+    /// Review of #59. A file written inside a submodule shows in the outer status only as the
+    /// submodule being modified; it is found by asking the submodule, and named from the outer top.
+    /// </summary>
+    [Fact]
+    public async Task A_file_written_inside_a_submodule_is_reported_from_the_outer_tree()
+    {
+        string component = Directory.CreateTempSubdirectory("killmutants-component-").FullName;
+
+        try
+        {
+            File.WriteAllText(Path.Combine(component, "Library.cs"), "x");
+            await GitAsync(component, "init", "-q");
+            await GitAsync(component, "add", "-A");
+            await GitAsync(component, "commit", "-q", "-m", "component");
+
+            await CommittedWorkingCopyAsync();
+            await GitAsync(_root, "-c", "protocol.file.allow=always", "submodule", "add", "-q", component, "component");
+            await GitAsync(_root, "commit", "-q", "-m", "submodule");
+
+            WorkingTreeWatch watch = (await WorkingTreeWatch.StartAsync(_root, TestContext.Current.CancellationToken))!;
+
+            Write("component/Snapshot.received.txt");
+
+            Assert.Equal(
+                ["component/Snapshot.received.txt"],
+                await watch.NewFilesAsync([], TestContext.Current.CancellationToken));
+        }
+        finally
+        {
+            DeleteDirectory(component);
+        }
+    }
+
     [Fact]
     public async Task Outside_a_working_copy_there_is_nothing_to_watch()
     {
@@ -83,9 +119,9 @@ public sealed class WorkingTreeWatchTests : IDisposable
     {
         Write("src/Library.cs");
         await File.WriteAllTextAsync(Path.Combine(_root, ".gitignore"), "bin/\nobj/\n", TestContext.Current.CancellationToken);
-        await GitAsync("init", "-q");
-        await GitAsync("add", "-A");
-        await GitAsync("commit", "-q", "-m", "fixture");
+        await GitAsync(_root, "init", "-q");
+        await GitAsync(_root, "add", "-A");
+        await GitAsync(_root, "commit", "-q", "-m", "fixture");
     }
 
     private string Write(string relative)
@@ -97,12 +133,14 @@ public sealed class WorkingTreeWatchTests : IDisposable
         return path;
     }
 
-    private async Task GitAsync(params string[] arguments)
+    private Task GitAsync(params string[] arguments) => GitAsync(_root, arguments);
+
+    private static async Task GitAsync(string directory, params string[] arguments)
     {
         var startInfo = new ProcessStartInfo
         {
             FileName = "git",
-            WorkingDirectory = _root,
+            WorkingDirectory = directory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,

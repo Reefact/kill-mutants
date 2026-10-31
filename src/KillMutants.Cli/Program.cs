@@ -111,11 +111,17 @@ internal static class Program
         }
     }
 
-    /// <summary>Names the files the run left in the working copy that were not there before it.</summary>
+    /// <summary>Names the untracked files that appeared in the working copy while the run was going.</summary>
     /// <remarks>
     /// Written however the run ended, a refused baseline included, since a test can write before it
     /// fails. On standard error, beside the run's other notices, so the report on standard output
     /// stays the report. See <see cref="WorkingTreeWatch"/> and #51.
+    /// <para>
+    /// Two snapshots say a file appeared, not who wrote it or whether a mutant was loaded at the
+    /// time: the baseline runs before any mutant, and another process may write in the same tree.
+    /// So the message names a likely cause without asserting it, and asks for each file to be
+    /// looked at before it is deleted (review of #59).
+    /// </para>
     /// </remarks>
     private static async Task ReportFilesLeftInTheTreeAsync(WorkingTreeWatch? watch, RunSettings settings)
     {
@@ -145,8 +151,8 @@ internal static class Program
         const int Shown = 10;
 
         Console.Error.WriteLine(
-            $"This run left {left.Count.ToString(CultureInfo.InvariantCulture)} file(s) in the working tree " +
-            $"of '{watch.Root}' that were not there when it started:");
+            $"{left.Count.ToString(CultureInfo.InvariantCulture)} new untracked file(s) appeared in the working tree " +
+            $"of '{watch.Root}' while this run was going:");
 
         foreach (string file in left.Take(Shown))
         {
@@ -159,9 +165,10 @@ internal static class Program
         }
 
         Console.Error.WriteLine(
-            "A test wrote them while a mutant was loaded - a snapshot library such as Verify writes a " +
-            "'.received' file next to the test's source when a snapshot does not match. They are not " +
-            "part of the code that was measured; delete them rather than commit them.");
+            "The run cannot tell who wrote them. A common cause is a test's snapshot output - Verify writes a " +
+            "'.received' file next to the test's source when a snapshot does not match, which a mutant or a " +
+            "red baseline can cause - but another process may have written them too. Look at each one " +
+            "before deleting it, and do not commit what the run produced.");
     }
 
     private static async Task<int> RunAndReportAsync(RunSettings settings, ReportFiles? files, RunStop stop)

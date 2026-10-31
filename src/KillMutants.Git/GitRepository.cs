@@ -305,9 +305,57 @@ internal sealed class GitRepository
     /// </remarks>
     public async Task<IReadOnlyList<string>> UntrackedFilesAsync(CancellationToken cancellationToken = default)
     {
-        string output = await RunRawAsync(
+        List<string> untracked = [.. await UntrackedFilesInAsync(Root, cancellationToken).ConfigureAwait(false)];
+
+        // An untracked file inside a submodule shows in the outer status only as the submodule
+        // being modified, which the "??" filter drops, so a suite that lives in a submodule left
+        // its files unseen (review of #59). Each initialised submodule, nested ones included, is
+        // asked on its own, and its paths are prefixed with where it sits in this tree.
+        string listing = await RunRawAsync(
                 Root,
-                ["status", "--porcelain", "-z", "--untracked-files=all", "--", "."],
+                ["submodule", "status", "--recursive"],
+                "The submodules of the working tree could not be listed.",
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        foreach (string line in listing.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            // "<flag><sha> <path> (<describe>)", where the flag '-' marks a submodule that is not
+            // initialised and so has no working tree to read.
+            int afterHash = line.IndexOf(' ', 1);
+
+            if (line[0] == '-' || afterHash < 0)
+            {
+                continue;
+            }
+
+            // Past the hash by finding its end rather than counting 40 characters, which a
+            // repository using SHA-256 object names would not match.
+            string rest = line[(afterHash + 1)..];
+            int describe = rest.LastIndexOf(" (", StringComparison.Ordinal);
+            string path = (describe >= 0 ? rest[..describe] : rest).Trim();
+            string directory = Path.Combine(Root, path);
+
+            if (path.Length == 0 || !Directory.Exists(directory))
+            {
+                continue;
+            }
+
+            foreach (string inside in await UntrackedFilesInAsync(directory, cancellationToken).ConfigureAwait(false))
+            {
+                untracked.Add($"{path}/{inside}");
+            }
+        }
+
+        return untracked;
+    }
+
+    private static async Task<IReadOnlyList<string>> UntrackedFilesInAsync(
+        string workingDirectory, CancellationToken cancellationToken)
+    {
+        string output = await RunRawAsync(
+                workingDirectory,
+                ["status", "--porcelain", "-z", "--untracked-files=all", "--ignore-submodules=all", "--", "."],
                 "The state of the working tree could not be read.",
                 cancellationToken)
             .ConfigureAwait(false);
