@@ -168,6 +168,33 @@ internal sealed record ProjectFacts(
     public bool TargetsSeveralFrameworks => TargetFrameworks.Count > 1;
 
     /// <summary>
+    /// The framework a project must be read again for before its output, references and assembly can
+    /// be trusted, or null when this reading already says which.
+    /// </summary>
+    /// <remarks>
+    /// An outer build answers for no framework, and that is true of a project written
+    /// <c>&lt;TargetFrameworks&gt;net10.0&lt;/TargetFrameworks&gt;</c> with one entry just as of one with
+    /// two: <c>TargetFramework</c> is empty either way. The only entry is the framework; among
+    /// several, it is the one the developer chose, if the project offers it (DEC0021).
+    /// </remarks>
+    public string? FrameworkToReadFor(string? chosen)
+    {
+        if (!string.IsNullOrEmpty(TargetFramework) || TargetFrameworks.Count == 0)
+        {
+            return null;
+        }
+
+        if (TargetFrameworks.Count == 1)
+        {
+            return TargetFrameworks[0];
+        }
+
+        return chosen is not null && TargetFrameworks.Contains(chosen, StringComparer.OrdinalIgnoreCase)
+            ? chosen
+            : null;
+    }
+
+    /// <summary>
     /// True when the project targets several frameworks and this reading does not say which. The
     /// property of an outer build is empty; a reading made for a framework carries it, whatever the
     /// list says.

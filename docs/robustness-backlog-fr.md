@@ -229,7 +229,10 @@ plusieurs est refusé avec un message les nommant ainsi que l'option qui lève l
 choisir un en silence et de rapporter un score pour un framework que l'utilisateur n'a pas choisi —
 chacun demanderait sa propre exécution, sa propre sortie et son propre verdict. `--target-framework`
 nomme celui sur lequel il tourne (DEC0021) ; un projet de test qui n'offre pas la valeur arrête
-l'exécution lui aussi, au lieu de sortir du rapport sans qu'on le voie.
+l'exécution lui aussi, au lieu de sortir du rapport sans qu'on le voie. Une exécution partielle lit
+l'état antérieur d'une telle suite pour le même framework : la compilation externe n'a pas de
+`TargetFramework`, donc une référence qui en dépend en est absente, et un changement qui retire cet
+arc passerait sans que la bibliothèque ait été vue perdre sa suite.
 
 **Le framework est celui pour lequel le projet de test charge la bibliothèque, pas le sien.** Une
 suite `net10.0` qui référence une bibliothèque visant `netstandard2.0` seulement charge le build

@@ -234,7 +234,7 @@ internal sealed class MutationTestSession
             : await ChangeSelection
                 .ResolveAsync(
                     _changes, searchDirectory, _configuration, discovery.Everything(targets),
-                    exclusions, _progress, cancellationToken)
+                    exclusions, _progress, _targetFramework, cancellationToken)
                 .ConfigureAwait(false);
 
         RunScope scope = selection?.Scope ?? RunScope.WholeCodebase;

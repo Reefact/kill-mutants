@@ -510,6 +510,67 @@ internal sealed class FixtureCopy : IDisposable
     public static FixtureCopy CreateMultiTargetedSuiteProject() => CopyOf(FixtureDirectory("multitargetsuite"));
 
     /// <summary>
+    /// Writes the suite's framework with the plural property and one entry, which is how a project
+    /// that expects to gain a second one is often written. Its outer build has no
+    /// <c>TargetFramework</c> any more than a project with two.
+    /// </summary>
+    public void WriteTheSuiteFrameworkWithThePluralProperty()
+    {
+        string suite = Path.Combine(Root, "Sample.Library.Tests", "Sample.Library.Tests.csproj");
+
+        File.WriteAllText(
+            suite,
+            File.ReadAllText(suite).Replace(
+                "<TargetFramework>net10.0</TargetFramework>",
+                "<TargetFrameworks>net10.0</TargetFrameworks>",
+                StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Makes the suite reach the library only when it is built for <c>net10.0</c>, the way a project
+    /// supporting two frameworks does when the second cannot use the library.
+    /// </summary>
+    public void ReferenceTheLibraryOnlyOnNet10()
+    {
+        string suite = Path.Combine(Root, "Sample.Library.Tests", "Sample.Library.Tests.csproj");
+
+        File.WriteAllText(
+            suite,
+            File.ReadAllText(suite).Replace(
+                """<ProjectReference Include="../Sample.Library/Sample.Library.csproj" />""",
+                """<ProjectReference Include="../Sample.Library/Sample.Library.csproj" Condition="'$(TargetFramework)' == 'net10.0'" />""",
+                StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Removes the conditional reference and rewrites the suite so it still compiles, which is the
+    /// change a partial run has to notice took the library's only suite away.
+    /// </summary>
+    public void DropTheLibraryFromTheSuite()
+    {
+        string suite = Path.Combine(Root, "Sample.Library.Tests", "Sample.Library.Tests.csproj");
+
+        File.WriteAllText(
+            suite,
+            File.ReadAllText(suite).Replace(
+                """<ProjectReference Include="../Sample.Library/Sample.Library.csproj" Condition="'$(TargetFramework)' == 'net10.0'" />""",
+                string.Empty,
+                StringComparison.Ordinal));
+
+        File.WriteAllText(
+            Path.Combine(Root, "Sample.Library.Tests", "AgesTests.cs"),
+            """
+            namespace Sample.Library.Tests;
+
+            public class AgesTests
+            {
+                [Fact]
+                public void Nothing_is_asserted_about_ages_any_more() => Assert.True(true);
+            }
+            """);
+    }
+
+    /// <summary>
     /// Leaves the netstandard fixture restored against a library offering <c>netstandard2.0</c> and
     /// <c>netstandard2.1</c>, then changes the library to offer <c>netstandard2.0</c> and a Windows
     /// build. The suite's restore result is now stale: it names a framework the library no longer
