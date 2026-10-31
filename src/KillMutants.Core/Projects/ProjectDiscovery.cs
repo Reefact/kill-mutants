@@ -489,16 +489,18 @@ internal sealed class ProjectDiscovery
             // output, its references and its assembly are the chosen framework's, and the outer
             // build answers for none of them. Only a test project, and only when the choice is one it
             // offers - a value it does not offer is refused below, with the project named.
-            if (_targetFramework is not null &&
-                facts.IsTestProject &&
-                facts.NeedsAFrameworkChoice &&
-                facts.TargetFrameworks.Contains(_targetFramework, StringComparer.OrdinalIgnoreCase))
+            if (facts.IsTestProject && facts.FrameworkToReadFor(_targetFramework) is { } framework)
             {
+                bool several = facts.TargetsSeveralFrameworks;
+
                 facts = await _msBuild
-                    .GetProjectFactsAsync(path, _targetFramework, cancellationToken)
+                    .GetProjectFactsAsync(path, framework, cancellationToken)
                     .ConfigureAwait(false);
 
-                _builtFor[facts.ProjectPath] = _targetFramework;
+                if (several)
+                {
+                    _builtFor[facts.ProjectPath] = framework;
+                }
             }
 
             Record(facts);

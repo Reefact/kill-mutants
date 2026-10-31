@@ -212,7 +212,10 @@ that reaches it, pinned explicitly on both MSBuild queries. A *test* project tha
 refused with a message naming them and the option that lifts the refusal, rather than silently picking
 one and reporting a score for a framework the user did not choose — each would need its own run, its
 own output and its own verdict. `--target-framework` names the one it runs on (DEC0021); a test project
-that does not offer the value stops the run too, instead of dropping out of the report unseen.
+that does not offer the value stops the run too, instead of dropping out of the report unseen. A
+partial run reads the earlier state of such a suite for the same framework: the outer build has no
+`TargetFramework`, so a reference conditioned on one is absent from it, and a change removing that
+edge would otherwise pass without the library having been seen to lose its suite.
 
 **The framework is the one the test project loads the library for, not its own.** A `net10.0` suite
 referencing a library built for `netstandard2.0` alone loads the `netstandard2.0` build, and asking

@@ -69,4 +69,39 @@ public class TargetFrameworkTests
         Assert.Contains("net10.0", refused.Message, StringComparison.Ordinal);
         Assert.Contains("--exclude", refused.Message, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// <c>&lt;TargetFrameworks&gt;net10.0&lt;/TargetFrameworks&gt;</c> is one framework spelled with the
+    /// plural property, and its outer build has no <c>TargetFramework</c> any more than a project
+    /// with two. The only entry is the framework, with or without the option.
+    /// </summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("net10.0")]
+    public async Task A_test_project_with_one_entry_in_the_plural_property_runs_on_it(string? chosen)
+    {
+        using var fixture = FixtureCopy.CreateNetStandardProject();
+        fixture.WriteTheSuiteFrameworkWithThePluralProperty();
+
+        MutationTestReport report = await MutationTesting.RunAsync(
+            fixture.Root, targetFramework: chosen, cancellationToken: TestContext.Current.CancellationToken);
+
+        MutantResult mutant = Assert.Single(
+            report.Results, result => result.Mutant.MutatedText == "age > 18");
+
+        Assert.Equal(MutantStatus.Killed, mutant.Status);
+    }
+
+    [Fact]
+    public async Task A_framework_other_than_the_only_entry_stops_the_run()
+    {
+        using var fixture = FixtureCopy.CreateNetStandardProject();
+        fixture.WriteTheSuiteFrameworkWithThePluralProperty();
+
+        ProjectAnalysisException refused = await Assert.ThrowsAsync<ProjectAnalysisException>(() =>
+            MutationTesting.RunAsync(
+                fixture.Root, targetFramework: "net8.0", cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.Contains("Sample.Library.Tests", refused.Message, StringComparison.Ordinal);
+    }
 }

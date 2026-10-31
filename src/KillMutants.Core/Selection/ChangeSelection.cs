@@ -234,6 +234,10 @@ internal sealed class ChangeSelection
     /// <param name="exclusions">What the run was told to leave alone.</param>
     /// <param name="progress">Told when the earlier state is being read, which is the slow part.</param>
     /// <param name="cancellationToken">Cancels the resolution.</param>
+    /// <param name="targetFramework">
+    /// The framework the test projects run on, or null when none was named, so the earlier state is
+    /// read for the same one as the current. See DEC0021.
+    /// </param>
     /// <exception cref="ChangeSelectionException">
     /// The change, or the earlier state's project graph, could not be read - or the change touches
     /// the run's own configuration, which a partial run cannot judge.
@@ -245,6 +249,7 @@ internal sealed class ChangeSelection
         DiscoveredProjects discovered,
         PathFilter exclusions,
         IProgress<MutationTestProgress>? progress = null,
+        string? targetFramework = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
@@ -265,7 +270,8 @@ internal sealed class ChangeSelection
             Path.GetFullPath(searchDirectory),
             discovered,
             exclusions,
-            progress);
+            progress,
+            targetFramework);
 
         return await resolver.ResolveAsync(scope, change.Changes, cancellationToken).ConfigureAwait(false);
     }
@@ -353,7 +359,8 @@ internal sealed class ChangeSelection
         string searchDirectory,
         DiscoveredProjects discovered,
         PathFilter exclusions,
-        IProgress<MutationTestProgress>? progress)
+        IProgress<MutationTestProgress>? progress,
+        string? targetFramework)
     {
         /// <summary>Whether the earlier state's suites reached any production project at all.</summary>
         private bool _earlierStateReachedProduction;
@@ -703,7 +710,7 @@ internal sealed class ChangeSelection
             // it could not lay out has to outlive it to reach the verdict.
             _unreadComponents = before.Missing;
 
-            using BaseProjectGraph graph = BaseProjectGraph.Open(before, comparedFrom, configuration);
+            using BaseProjectGraph graph = BaseProjectGraph.Open(before, comparedFrom, configuration, targetFramework);
 
             // Files that belong to no test project now may belong to one in the earlier state -
             // the coverage edge vanishing one layer further out again. Asked of the graph, which

@@ -33,15 +33,18 @@ internal sealed class BaseProjectGraph : IDisposable
     private readonly ICodeSnapshot _snapshot;
     private readonly string _root;
     private readonly string _label;
+    private readonly string? _targetFramework;
     private readonly Dictionary<(string Project, string Framework), ProjectFacts?> _facts;
 
     private BaseProjectGraph(
         MsBuildQuery msBuild,
         ICodeSnapshot snapshot,
         string label,
-        IReadOnlyCollection<string> projectFiles)
+        IReadOnlyCollection<string> projectFiles,
+        string? targetFramework)
     {
         _msBuild = msBuild;
+        _targetFramework = targetFramework;
         _snapshot = snapshot;
         _root = snapshot.Root;
         _label = label;
@@ -59,7 +62,13 @@ internal sealed class BaseProjectGraph : IDisposable
     /// </param>
     /// <param name="label">What to call that state in a message.</param>
     /// <param name="configuration">The build configuration to evaluate against.</param>
-    public static BaseProjectGraph Open(ICodeSnapshot snapshot, string label, string configuration)
+    /// <param name="targetFramework">
+    /// The framework the test projects run on, or null when none was named. A multi-targeted test
+    /// project is read for it, as the current side is: the outer build has no framework, so every
+    /// item conditioned on one is absent from it. See DEC0021.
+    /// </param>
+    public static BaseProjectGraph Open(
+        ICodeSnapshot snapshot, string label, string configuration, string? targetFramework = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
 
@@ -72,7 +81,8 @@ internal sealed class BaseProjectGraph : IDisposable
                 .Select(path => path!)
                 .Order(StringComparer.Ordinal)];
 
-            return new BaseProjectGraph(new MsBuildQuery(configuration), snapshot, label, projects);
+            return new BaseProjectGraph(
+                new MsBuildQuery(configuration), snapshot, label, projects, targetFramework);
         }
         catch
         {
@@ -86,8 +96,33 @@ internal sealed class BaseProjectGraph : IDisposable
     public async Task<bool> IsTestProjectAsync(
         string relativePath,
         CancellationToken cancellationToken = default) =>
-        await FactsOfAsync(relativePath, null, cancellationToken).ConfigureAwait(false)
+        await TestProjectFactsAsync(relativePath, cancellationToken).ConfigureAwait(false)
             is { IsTestProject: true };
+
+    /// <summary>
+    /// A test project as the current side reads it: for the one framework it runs on.
+    /// </summary>
+    /// <remarks>
+    /// Read without a framework first, because that is the only way to learn what it offers. A
+    /// project that offers several, or one written with the plural property and a single entry, is
+    /// then read again for the framework it runs on; its outer reading would lose every reference
+    /// conditioned on it, and a change removing such an edge would pass without the earlier state
+    /// ever having shown it.
+    /// </remarks>
+    private async Task<ProjectFacts?> TestProjectFactsAsync(
+        string relativePath,
+        CancellationToken cancellationToken)
+    {
+        ProjectFacts? outer = await FactsOfAsync(relativePath, null, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (outer is null || !outer.IsTestProject || outer.FrameworkToReadFor(_targetFramework) is not { } framework)
+        {
+            return outer;
+        }
+
+        return await FactsOfAsync(relativePath, framework, cancellationToken).ConfigureAwait(false) ?? outer;
+    }
 
     /// <summary>
     /// Every mutable project a test project reached before the change, by relative path.
@@ -104,7 +139,7 @@ internal sealed class BaseProjectGraph : IDisposable
         string relativePath,
         CancellationToken cancellationToken = default)
     {
-        ProjectFacts? testProject = await FactsOfAsync(relativePath, null, cancellationToken)
+        ProjectFacts? testProject = await TestProjectFactsAsync(relativePath, cancellationToken)
             .ConfigureAwait(false);
 
         if (testProject is null)
