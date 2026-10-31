@@ -1293,3 +1293,46 @@ l'exécution de la suite complète sur une suite dont tous les tests portent une
 changement de liste), un tueur est toujours nommé par sa méthode, et, sur un runner dont la liste
 rend des phrases, le repli permet de détecter les mutants que la suite élimine (il échoue sans
 le repli).
+
+---
+
+## RB-032 — Un bac à sable dans le répertoire temporaire perd les ancêtres que ses tests remontent · COUVERT
+
+**Comment il a été trouvé.** En lançant KillMutants sur `Reefact/first-class-errors` à `8f84258`
+(#44). La baseline de `FirstClassErrors.RequestBinder.UnitTests` a échoué au bout de 35 minutes de
+run, sur deux tests sur 152, alors que la suite passait sous `dotnet test` trois fois de suite.
+
+**Ce qui se passe.** Les deux tests, dans `AnalyzerDogfoodingTests`, trouvent le projet qu'ils
+vérifient en remontant depuis `AppContext.BaseDirectory` jusqu'à un répertoire qui contient
+`FirstClassErrors.RequestBinder/FirstClassErrors.RequestBinder.csproj`. Le commentaire du projet dit
+pourquoi il n'utilise pas `[CallerFilePath]` : un build CI déterministe réécrit ce chemin en `/_/…`.
+Le bac à sable copiait la sortie des tests dans un répertoire sous `Path.GetTempPath()`, dont aucun
+ancêtre ne contient le dépôt ; la remontée ne trouvait rien et les deux tests levaient une
+exception. Copier le répertoire de sortie dans `/tmp` et y lancer l'application de test le reproduit
+sans KillMutants.
+
+**Pourquoi c'est important.** Remonter depuis l'assembly de test est une manière courante d'atteindre
+un fichier de projet, une solution, un `.git` ou un répertoire de fixtures, et c'est celle qui
+résiste à un build déterministe. Une suite écrite ainsi ne pouvait pas être mesurée du tout, et
+l'arrêt arrivait tard : tous les projets précédents avaient été jugés, et le rapport était perdu avec
+le run.
+
+**La règle.** Les bacs à sable d'une cible sont créés à côté de la sortie de build de son premier
+projet de test, dans un répertoire `killmutants` voisin de `bin/<configuration>/<framework>`, plutôt
+que dans le répertoire temporaire. La copie a alors les ancêtres de l'original. C'est le seul endroit
+où un projet écrit déjà et que tout dépôt ignore déjà : l'arbre de travail reste aussi propre que le
+build l'a laissé, ce qu'exige une série reprise (DEC0015). Le répertoire est supprimé après la cible,
+et `killmutants` aussi lorsqu'il ne contient plus rien.
+
+**Ce que ce n'est pas.** RB-023 est l'autre face du même choix : un bac à sable isole l'assembly mais
+pas le système de fichiers que les tests atteignent, si bien que des workers concurrents peuvent
+toujours se croiser dans un répertoire de fixtures partagé. Déplacer le bac à sable n'y change rien.
+
+**Ce que cela coûte.** Un run interrompu laisse désormais son bac à sable sous `bin` plutôt que dans
+le répertoire temporaire (RB-006) ; supprimer la sortie de build l'efface.
+
+**Nos tests.** `SandboxParentTests` : le parent se trouve à côté de la sortie de build du premier
+projet de test, pour la disposition classique comme pour la disposition `artifacts`, et remonter
+depuis une copie du bac à sable atteint le dépôt. Vérifié sur le cas réel : avec seulement
+`RequestBinder.UnitTests` sélectionné, la baseline passe, les bacs à sable apparaissent sous
+`bin/Release/killmutants`, et rien ne reste ensuite.

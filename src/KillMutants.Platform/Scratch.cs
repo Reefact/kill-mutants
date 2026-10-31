@@ -47,6 +47,19 @@ public static class Scratch
     /// <exception cref="IOException">No free name was found in <see cref="Attempts"/> draws.</exception>
     public static string CreateDirectory() => CreateDirectory(Path.GetTempPath(), ScratchNames.Draw);
 
+    /// <summary>
+    /// Creates a directory of the run's own under <paramref name="parent"/>, which is created first
+    /// if it does not exist yet - for the directories that must live somewhere in particular.
+    /// </summary>
+    /// <returns>The directory's full path. It exists, and nothing else owns it.</returns>
+    /// <exception cref="IOException">No free name was found in <see cref="Attempts"/> draws.</exception>
+    public static string CreateDirectory(string parent)
+    {
+        Directory.CreateDirectory(parent);
+
+        return CreateDirectory(parent, ScratchNames.Draw);
+    }
+
     /// <summary>The search, with the parent and the draw handed in so a test can script both.</summary>
     internal static string CreateDirectory(string parent, Func<string> draw)
     {
