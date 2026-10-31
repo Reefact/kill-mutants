@@ -50,10 +50,10 @@ public class FilesLeftInTheTreeTests
         await GitAsync(fixture.Root, "add", "-A");
         await GitAsync(fixture.Root, "commit", "-q", "-m", "fixture");
 
-        (int exitCode, string error) = await RunAsync(fixture.Root);
+        (int exitCode, string output, string error) = await RunAsync(fixture.Root);
 
         Assert.Equal(CouldNotRun, exitCode);
-        Assert.Contains("does not pass against unmutated code", error, StringComparison.Ordinal);
+        Assert.Contains("does not pass against unmutated code", output, StringComparison.Ordinal);
         Assert.Contains("new untracked file(s) appeared", error, StringComparison.Ordinal);
         Assert.Contains("Sample.Library.Tests/Leftover.received.txt", error, StringComparison.Ordinal);
         Assert.Contains("cannot tell who wrote them", error, StringComparison.Ordinal);
@@ -61,7 +61,7 @@ public class FilesLeftInTheTreeTests
         Assert.DoesNotContain("while a mutant was loaded", error, StringComparison.Ordinal);
     }
 
-    private static async Task<(int ExitCode, string Error)> RunAsync(string directory)
+    private static async Task<(int ExitCode, string Output, string Error)> RunAsync(string directory)
     {
         var startInfo = new ProcessStartInfo
         {
@@ -80,9 +80,8 @@ public class FilesLeftInTheTreeTests
         Task<string> error = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
 
         await process.WaitForExitAsync(TestContext.Current.CancellationToken);
-        await output;
 
-        return (process.ExitCode, await error);
+        return (process.ExitCode, await output, await error);
     }
 
     private static string CommandLinePath([CallerFilePath] string sourceFilePath = "")

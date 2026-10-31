@@ -29,6 +29,7 @@ internal sealed class ProjectDiscovery
     // project without one builds them all, and the output the run launches is one of them.
     private readonly Dictionary<string, string> _builtFor = new(ProjectPaths.Comparer);
     private readonly IProgress<MutationTestProgress>? _progress;
+    private readonly List<SetAside> _setAside = [];
 
     /// <param name="configuration">The build configuration to analyse and run.</param>
     /// <param name="exclusions">Paths to leave alone.</param>
@@ -126,6 +127,12 @@ internal sealed class ProjectDiscovery
     public IReadOnlyDictionary<string, IReadOnlyList<string>> AnalyzerConsumers =>
         _analyzerConsumers.ToDictionary(
             entry => entry.Key, entry => (IReadOnlyList<string>)entry.Value, ProjectPaths.Comparer);
+
+    /// <summary>
+    /// The projects discovery could not read and the test projects that would not build, each with
+    /// its reason, in the order they were met (DEC0022).
+    /// </summary>
+    public IReadOnlyList<SetAside> SetAside => _setAside;
 
     /// <summary>
     /// Discovers everything to mutate under <paramref name="searchDirectory"/>.
@@ -540,10 +547,18 @@ internal sealed class ProjectDiscovery
                     .GetProjectFactsAsync(path, cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
             }
-            catch (ProjectAnalysisException unreadable)
+            catch (ProjectAnalysisException unreadable) when (!cancellationToken.IsCancellationRequested)
             {
-                throw new ProjectAnalysisException(
-                    unreadable.Message + Environment.NewLine + WayOut(path, searchDirectory), unreadable);
+                // Set aside rather than stopping the run (DEC0022): the rest of the directory is as
+                // readable as it was, and the report names this one with the reason and the way out.
+                // Nothing is known of what it holds, which is why a project set aside here withholds
+                // the run's score - it may have been the only suite reaching some code.
+                _setAside.Add(new SetAside(
+                    SetAsideStage.Discovery,
+                    Path.GetRelativePath(searchDirectory, path).Replace('\\', '/'),
+                    unreadable.Message + Environment.NewLine + WayOut(path, searchDirectory)));
+
+                continue;
             }
 
             // A suite on several frameworks is read again for the one the developer chose: its
@@ -685,11 +700,17 @@ internal sealed class ProjectDiscovery
     /// already existing, and long before injection: both <c>dotnet build</c> and <c>dotnet test</c>
     /// copy the pristine assembly back over a mutant.
     /// </remarks>
-    public async Task BuildTestProjectsAsync(
-        IEnumerable<MutationTestTarget> targets,
+    /// <returns>
+    /// The targets whose test projects all built. A target with one that did not is set aside with
+    /// the build's output (DEC0022): its measurement would rest on a suite that is not there.
+    /// </returns>
+    public async Task<IReadOnlyList<MutationTestTarget>> BuildTestProjectsAsync(
+        IReadOnlyList<MutationTestTarget> targets,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(targets);
+
+        Dictionary<string, string> failed = new(ProjectPaths.Comparer);
 
         string[] projectPaths = [.. targets
             .SelectMany(target => target.TestProjects)
@@ -704,10 +725,41 @@ internal sealed class ProjectDiscovery
                 MutationTestPhase.Building, index, projectPaths.Length,
                 Path.GetFileNameWithoutExtension(projectPaths[index])));
 
-            await BuildAsync(projectPaths[index], cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await BuildAsync(projectPaths[index], cancellationToken).ConfigureAwait(false);
+            }
+            catch (ProjectAnalysisException broken) when (!cancellationToken.IsCancellationRequested)
+            {
+                failed[projectPaths[index]] = broken.Message;
+            }
         }
 
-        VerifyTestFramework(targets);
+        List<MutationTestTarget> built = [];
+
+        foreach (MutationTestTarget target in targets)
+        {
+            string[] reasons =
+            [
+                .. target.TestProjects
+                    .Where(test => failed.ContainsKey(test.ProjectPath))
+                    .Select(test => failed[test.ProjectPath]),
+            ];
+
+            if (reasons.Length == 0)
+            {
+                built.Add(target);
+
+                continue;
+            }
+
+            _setAside.Add(new SetAside(
+                SetAsideStage.Build, target.ProjectUnderTest.Name, string.Join(Environment.NewLine, reasons)));
+        }
+
+        VerifyTestFramework(built);
+
+        return built;
     }
 
     /// <summary>

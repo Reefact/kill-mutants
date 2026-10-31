@@ -186,6 +186,16 @@ internal sealed class MutationTestSession
         // re-test at a time: a run stopped part way through a sample has re-tested some of it, and
         // a disagreement it found is in the report, so the count has to be there too.
         public int KillsReVerified { get; set; }
+
+        // Discovery keeps what it set aside itself - an unreadable project, a suite that would not
+        // build - and the session adds what it sets aside later. Both are reported, a stopped run's
+        // included (DEC0022).
+        public ProjectDiscovery? Discovery { get; set; }
+
+        public List<SetAside> SetAside { get; } = [];
+
+        public IReadOnlyList<SetAside> EverythingSetAside() =>
+            [.. Discovery?.SetAside ?? [], .. SetAside];
     }
 
     private MutationTestReport Report(RunSoFar run, TimeSpan elapsed, EarlyStop? stopped) =>
@@ -200,7 +210,8 @@ internal sealed class MutationTestSession
             stopped,
             run.Plan?.Series(run.Verdicts),
             run.Selection?.Widened,
-            run.Selection is { } selection ? selection.Touches : null);
+            run.Selection is { } selection ? selection.Touches : null,
+            run.EverythingSetAside());
 
     private async Task<MutationTestReport> RunToTheEndAsync(
         string searchDirectory,
@@ -218,6 +229,8 @@ internal sealed class MutationTestSession
             readInputFiles: _changes is not null,
             deferNoTargets: _changes is not null,
             targetFramework: _targetFramework);
+
+        run.Discovery = discovery;
 
         IReadOnlyList<MutationTestTarget> targets = await discovery
             .DiscoverAsync(searchDirectory, cancellationToken)
@@ -273,25 +286,44 @@ internal sealed class MutationTestSession
             // the coverage the change took away - which is a verdict, not an empty run.
             return new MutationTestReport(
                 [], stopwatch.Elapsed, RunEnvironment.Describe(_workerCount, null, [], 0), scope,
-                selection.CoverageLost, selection.UnreadComponents, widened: selection.Widened);
+                selection.CoverageLost, selection.UnreadComponents, widened: selection.Widened,
+                setAside: run.EverythingSetAside());
         }
 
         // The real build comes first and nothing may run MSBuild after injection, so every
         // compilation is read in between. Reading one relies on the build having already produced
         // the intermediate assembly - see MsBuildQuery.GetCscCommandLineAsync.
-        await discovery.BuildTestProjectsAsync(targets, cancellationToken).ConfigureAwait(false);
+        IReadOnlyList<MutationTestTarget> built = await discovery
+            .BuildTestProjectsAsync(targets, cancellationToken)
+            .ConfigureAwait(false);
 
+        List<MutationTestTarget> analysed = [];
         List<ProjectCompilation> compilations = [];
 
-        foreach (MutationTestTarget target in targets)
+        for (int index = 0; index < built.Count; index++)
         {
-            _progress?.Report(new MutationTestProgress(
-                MutationTestPhase.Analysing, compilations.Count, targets.Count,
-                target.ProjectUnderTest.Name));
+            MutationTestTarget target = built[index];
 
-            compilations.Add(await BuildCompilationAsync(target.ProjectUnderTest, cancellationToken)
-                .ConfigureAwait(false));
+            _progress?.Report(new MutationTestProgress(
+                MutationTestPhase.Analysing, index, built.Count, target.ProjectUnderTest.Name));
+
+            try
+            {
+                compilations.Add(await BuildCompilationAsync(target.ProjectUnderTest, cancellationToken)
+                    .ConfigureAwait(false));
+                analysed.Add(target);
+            }
+            catch (ProjectAnalysisException unreadable) when (!cancellationToken.IsCancellationRequested)
+            {
+                // A compilation that cannot be reconstructed - a generator that did not run, a
+                // command line that does not parse - leaves this target unmeasurable and the others
+                // as they were (DEC0022). Its mutants are never generated, so it adds nothing to the
+                // population the plan records.
+                run.SetAside.Add(new SetAside(SetAsideStage.Analysis, target.ProjectUnderTest.Name, unreadable.Message));
+            }
         }
+
+        targets = analysed;
 
         // One generator for the whole session, so mutant identifiers never repeat across projects.
         //
@@ -320,9 +352,26 @@ internal sealed class MutationTestSession
 
         for (int index = 0; index < targets.Count; index++)
         {
-            await TestTargetAsync(
-                    targets[index], compilations[index], mutantsOf[index], run, cancellationToken)
-                .ConfigureAwait(false);
+            try
+            {
+                await TestTargetAsync(
+                        targets[index], compilations[index], mutantsOf[index], run, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (BaselineVerificationException red) when (!cancellationToken.IsCancellationRequested)
+            {
+                // The suite does not pass against unmutated code here, which says nothing about a
+                // target whose own baseline is green (DEC0022): each target's is verified before its
+                // mutants, so the guarantee DEC0005 exists for holds target by target. This target's
+                // mutants stay without a verdict, which is what a later --resume judges once the
+                // cause is fixed. Not when a stop was asked for: stopping ends the hosts the run is
+                // waiting on, and a baseline cut short that way is the stop's, handled above (DEC0013).
+                run.SetAside.Add(new SetAside(SetAsideStage.Baseline, targets[index].ProjectUnderTest.Name, red.Message));
+            }
+            catch (CoverageException unmeasured) when (!cancellationToken.IsCancellationRequested)
+            {
+                run.SetAside.Add(new SetAside(SetAsideStage.Coverage, targets[index].ProjectUnderTest.Name, unmeasured.Message));
+            }
 
             // After every project rather than once at the end, because the end is what a run that is
             // killed never reaches, and a plan that says how far the series got is what the next run

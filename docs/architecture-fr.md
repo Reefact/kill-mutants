@@ -62,7 +62,10 @@ Concrètement, une exécution se déroule ainsi :
    `CSharpCompilation`.
 3. **Vérifier le baseline** : émettre la compilation *non mutée*, l'injecter, exécuter les tests,
    exiger le vert. Ce n'est pas optionnel — voir
-   [DEC0005](decisions/0005-verify-the-baseline-before-mutating-fr.md).
+   [DEC0005](decisions/0005-verify-the-baseline-before-mutating-fr.md). Il est exigé cible par
+   cible : une cible dont le baseline n'est pas vert est mise de côté avec sa raison, et les autres
+   sont mesurées — voir
+   [DEC0022](decisions/0022-a-run-carries-on-past-what-fails-and-reports-what-it-measured-and-what-it-could-not-fr.md).
 4. **Générer** les mutants en parcourant les arbres syntaxiques avec le catalogue de mutateurs.
 5. Pour chaque mutant : remplacer l'arbre syntaxique, émettre, écrire l'assembly dans le répertoire
    de sortie du projet de test, exécuter l'application de test, classer le résultat, restaurer

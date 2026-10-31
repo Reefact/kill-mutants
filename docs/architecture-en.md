@@ -55,6 +55,8 @@ Concretely, one run is:
 2. **Analyse**: ask MSBuild for the exact `csc` command line, turn it into a `CSharpCompilation`.
 3. **Verify the baseline**: emit the *unmutated* compilation, inject it, run the tests, require
    green. This is not optional — see [DEC0005](decisions/0005-verify-the-baseline-before-mutating-en.md).
+   It is required per target: a target whose baseline is not green is set aside with the reason,
+   and the others are measured — see [DEC0022](decisions/0022-a-run-carries-on-past-what-fails-and-reports-what-it-measured-and-what-it-could-not-en.md).
 4. **Generate** mutants by walking the syntax trees with the mutator catalog.
 5. For each mutant: replace the syntax tree, emit, write the assembly into the test project's
    output directory, run the test executable, classify the outcome, restore the original.

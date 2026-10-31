@@ -14,6 +14,15 @@ release rather than shipping undocumented.
 
 ## [Unreleased]
 
+### Changed
+
+- A part of the run that cannot be measured is set aside with its reason, and the run carries on:
+  a project MSBuild cannot read, a test project that does not build, a compilation that cannot be
+  reconstructed, a red baseline, a failed coverage pass. Each was a stop; now the report names them
+  under "Set aside" (and `setAside` in the JSON), the score covers the part measured and says so -
+  or is withheld when a project could not be read - no gate passes, and the exit code is `2`. See
+  DEC0022.
+
 ### Added
 
 - `--target-framework <tfm>` (and `targetFramework` in `killmutants.json`) names the one framework the

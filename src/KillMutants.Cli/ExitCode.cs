@@ -28,7 +28,16 @@ internal static class ExitCode
     /// </remarks>
     public const int GateNotPassed = 1;
 
-    /// <summary>KillMutants could not complete the run.</summary>
+    /// <summary>
+    /// KillMutants could not complete the run, or completed it with part of its scope set aside.
+    /// </summary>
+    /// <remarks>
+    /// The second cause is DEC0022's: a project that could not be read, a suite that would not build
+    /// or whose baseline is red, is set aside and the rest is measured. Part of the run could not
+    /// happen, for a reason to fix in the environment or the suite rather than in the tests, which
+    /// is what this code already meant; <see cref="GateNotPassed"/> would tell a job that the tests
+    /// got weaker, and they did not.
+    /// </remarks>
     public const int CouldNotRun = 2;
 
     /// <summary>The command line was not understood.</summary>
