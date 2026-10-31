@@ -1,3 +1,4 @@
+using KillMutants.Mutations;
 using KillMutants.Mutations.Mutators;
 using Microsoft.CodeAnalysis;
 
@@ -73,6 +74,39 @@ public class StatementMutatorTests
         (SyntaxTree tree, SemanticModel model) = TestCompilation.WithModel(
             "public partial class C { partial void OnChanged(); partial void OnChanged() { } " +
             "public void M() { OnChanged(); } }");
+
+        Assert.Single(tree.GetRoot(TestContext.Current.CancellationToken)
+            .DescendantNodes()
+            .SelectMany(node => Mutator.Mutate(node, model)));
+    }
+
+    /// <summary>
+    /// Regression test (#49). <c>EnableConcurrentExecution()</c> only lets the host run an analyzer's
+    /// callbacks in parallel, which no assertion on its diagnostics can see; the line beside it,
+    /// <c>ConfigureGeneratedCodeAnalysis</c>, changes what is reported and keeps its mutant.
+    /// </summary>
+    [Fact]
+    public void An_analyzers_EnableConcurrentExecution_is_left_alone()
+    {
+        (SyntaxTree tree, SemanticModel model) = TestCompilation.WithModel(
+            "using Microsoft.CodeAnalysis.Diagnostics; " +
+            "public class C { public void Initialize(AnalysisContext context) { " +
+            "context.EnableConcurrentExecution(); " +
+            "context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None); } }");
+
+        MutationCandidate candidate = Assert.Single(tree.GetRoot(TestContext.Current.CancellationToken)
+            .DescendantNodes()
+            .SelectMany(node => Mutator.Mutate(node, model)));
+        Assert.Contains("ConfigureGeneratedCodeAnalysis", candidate.Original.ToString(), StringComparison.Ordinal);
+    }
+
+    /// <summary>A method that is only called <c>EnableConcurrentExecution</c> is someone's code, and its call is removed.</summary>
+    [Fact]
+    public void An_EnableConcurrentExecution_of_another_type_is_removed()
+    {
+        (SyntaxTree tree, SemanticModel model) = TestCompilation.WithModel(
+            "public class Pool { public void EnableConcurrentExecution() { } } " +
+            "public class C { public void M(Pool pool) { pool.EnableConcurrentExecution(); } }");
 
         Assert.Single(tree.GetRoot(TestContext.Current.CancellationToken)
             .DescendantNodes()
