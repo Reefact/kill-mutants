@@ -177,6 +177,8 @@ internal sealed class ProjectDiscovery
         // that excludes directories nothing references pays nothing for it.
         Dictionary<string, ProjectFacts?> beyondExclusions = new(ProjectPaths.Comparer);
 
+        HashSet<string> restored = new(ProjectPaths.Comparer);
+
         foreach (ProjectFacts testProject in testProjects)
         {
             var runnable = new TestProject(
@@ -205,11 +207,14 @@ internal sealed class ProjectDiscovery
                     !ReferencedFramework.Declares(library, framework))
                 {
                     // Only a library with a choice needs NuGet's verdict, which is in the suite's
-                    // assets file - and a run that has not built anything yet does not have it.
-                    // Restoring is what the build would do first.
-                    if (library.TargetsSeveralFrameworks)
+                    // assets file. That file is as old as the last restore: a library edited since
+                    // names frameworks the file has never heard of, and trusting it finds no match
+                    // and falls back to the very framework this block exists to avoid. So the suite
+                    // is restored, for the configuration the run uses, whether or not the file is
+                    // there - once per suite, and a no-op when nothing changed.
+                    if (library.TargetsSeveralFrameworks && restored.Add(testProject.ProjectPath))
                     {
-                        await RestoreIfMissingAsync(testProject, cancellationToken).ConfigureAwait(false);
+                        await RestoreAsync(testProject, cancellationToken).ConfigureAwait(false);
                     }
 
                     framework = ReferencedFramework.For(testProject, library) ?? framework;
@@ -601,16 +606,11 @@ internal sealed class ProjectDiscovery
         }
     }
 
-    private static async Task RestoreIfMissingAsync(ProjectFacts project, CancellationToken cancellationToken)
+    private async Task RestoreAsync(ProjectFacts project, CancellationToken cancellationToken)
     {
-        if (project.ProjectAssetsFile.Length == 0 || File.Exists(project.ProjectAssetsFile))
-        {
-            return;
-        }
-
         ProcessResult result = await ProcessRunner.RunAsync(
                 "dotnet",
-                ["restore", project.ProjectPath, "-nologo"],
+                ["restore", project.ProjectPath, $"-p:Configuration={_configuration}", "-nologo"],
                 project.Directory,
                 BuildBudget,
                 cancellationToken: cancellationToken)

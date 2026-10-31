@@ -218,8 +218,10 @@ that library to be analysed "for `net10.0`" stopped the run with NETSDK1005 on a
 Any `netstandard2.0` library under a modern suite met it. The framework is now the one NuGet
 negotiated, read from the suite's `project.assets.json` — transitive references included — and only
 when the library does not declare the suite's own framework, where an exact match wins and nothing
-is read. A suite not yet restored is restored first, as its build would have done. When the file
-cannot answer, the suite's framework is used, as before.
+is read. The suite is restored first, for the run's configuration and whether or not a restore result
+exists: one left by an earlier build names frameworks a library edited since no longer offers, and
+trusting it falls back to the very framework this negotiation exists to avoid. When the file cannot
+answer, the suite's framework is used, as before.
 
 **This entry was wrong for a while, and that is worth recording.** "Pinned explicitly on the MSBuild
 query" was true of the query for a project's *facts* and false of the query for its *compiler command
