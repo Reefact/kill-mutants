@@ -211,7 +211,8 @@ internal sealed class MutationTestSession
             run.Plan?.Series(run.Verdicts),
             run.Selection?.Widened,
             run.Selection is { } selection ? selection.Touches : null,
-            run.EverythingSetAside());
+            run.EverythingSetAside(),
+            run.Verdicts.Selected);
 
     private async Task<MutationTestReport> RunToTheEndAsync(
         string searchDirectory,
@@ -273,7 +274,7 @@ internal sealed class MutationTestSession
             selection.CoverageLost.Count == 0 &&
             !selection.EarlierStateHadSomethingToMutate)
         {
-            throw new ProjectAnalysisException(ProjectDiscovery.NoTargets);
+            throw new ProjectAnalysisException(discovery.WithWhatWasSetAside(ProjectDiscovery.NoTargets));
         }
 
         if (selection is { SelectsNothing: true } || (selection is not null && targets.Count == 0))
@@ -293,6 +294,7 @@ internal sealed class MutationTestSession
         // The real build comes first and nothing may run MSBuild after injection, so every
         // compilation is read in between. Reading one relies on the build having already produced
         // the intermediate assembly - see MsBuildQuery.GetCscCommandLineAsync.
+        IReadOnlyList<MutationTestTarget> discovered = targets;
         IReadOnlyList<MutationTestTarget> built = await discovery
             .BuildTestProjectsAsync(targets, cancellationToken)
             .ConfigureAwait(false);
@@ -317,8 +319,8 @@ internal sealed class MutationTestSession
             {
                 // A compilation that cannot be reconstructed - a generator that did not run, a
                 // command line that does not parse - leaves this target unmeasurable and the others
-                // as they were (DEC0022). Its mutants are never generated, so it adds nothing to the
-                // population the plan records.
+                // as they were (DEC0022). Its mutants are never generated; the plan names it, so that
+                // a resumed run generates them as new ones once the cause is fixed.
                 run.SetAside.Add(new SetAside(SetAsideStage.Analysis, target.ProjectUnderTest.Name, unreadable.Message));
             }
         }
@@ -348,7 +350,14 @@ internal sealed class MutationTestSession
         // The one moment the whole population is known, and so the one moment the plan can list it
         // and an earlier run's verdicts be inherited against it (DEC0015, DEC0016). Before any mutant
         // is tested, so that a run refused here has changed nothing on disk.
-        run.Plan?.Begin(all, targets, scope, searchDirectory, TestFrameworkOf(targets), run.Verdicts);
+        run.Plan?.Begin(
+            targets,
+            mutantsOf,
+            [.. discovered.Except(targets)],
+            scope,
+            searchDirectory,
+            TestFrameworkOf(targets),
+            run.Verdicts);
 
         for (int index = 0; index < targets.Count; index++)
         {

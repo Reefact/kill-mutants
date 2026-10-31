@@ -1,5 +1,10 @@
+using KillMutants.Execution;
 using KillMutants.Mutations;
+using KillMutants.Mutations.Mutators;
+using KillMutants.Projects;
 using KillMutants.Reporting;
+using KillMutants.Testing;
+using KillMutants.Testing.XUnit;
 
 namespace KillMutants.EndToEnd.Tests;
 
@@ -83,5 +88,63 @@ public class SetAsideTests
 
         Assert.NotEmpty(report.Results);
         Assert.False(report.HasScore);
+    }
+
+    /// <summary>
+    /// When the only test project is the one that cannot be read, discovery cannot go on and there is
+    /// no report to name it in: the refusal carries the reason MSBuild gave, rather than replacing it
+    /// with "no test project", which would send the user looking for one that is there.
+    /// </summary>
+    [Fact]
+    public async Task A_refusal_at_discovery_carries_what_was_set_aside_on_the_way()
+    {
+        using var fixture = FixtureCopy.Create();
+        await File.WriteAllTextAsync(
+            Path.Combine(fixture.Root, "Sample.Library.Tests", "Sample.Library.Tests.csproj"),
+            "<Project Sdk=\"Microsoft.NET.Sdk\">",
+            TestContext.Current.CancellationToken);
+
+        ProjectAnalysisException refused = await Assert.ThrowsAsync<ProjectAnalysisException>(() =>
+            MutationTesting.RunAsync(
+                fixture.Root, mutators: Families, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.StartsWith("No xUnit test project was found", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("1 project(s) could not be read and were set aside", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("Sample.Library.Tests/Sample.Library.Tests.csproj: ", refused.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Listing the tests is part of measuring coverage: a listing that fails sets the target aside
+    /// at that stage, and the run reports rather than ending without a report.
+    /// </summary>
+    [Fact]
+    public async Task A_test_listing_that_fails_sets_the_target_aside_at_coverage()
+    {
+        using var fixture = FixtureCopy.Create();
+
+        MutationTestReport report = await new MutationTestSession(
+                new ListingFailsRunner(new XUnitTestRunner()),
+                "Release",
+                workerCount: 1,
+                measureCoverage: true,
+                catalog: MutatorCatalog.Of(Families))
+            .RunAsync(fixture.Root, TestContext.Current.CancellationToken);
+
+        SetAside unlisted = Assert.Single(report.SetAside);
+        Assert.Equal(SetAsideStage.Coverage, unlisted.Stage);
+        Assert.Contains("could not list the tests", unlisted.Reason, StringComparison.Ordinal);
+        Assert.Contains("timed out", unlisted.Reason, StringComparison.Ordinal);
+        Assert.Empty(report.Results);
+    }
+
+    /// <summary>Runs every test as asked, and fails every listing as a listing that timed out does.</summary>
+    private sealed class ListingFailsRunner(ITestRunner inner) : ITestRunner
+    {
+        public Task<IReadOnlyList<TestName>> DiscoverAsync(
+            TestProject testProject, CancellationToken cancellationToken = default) =>
+            throw new TestExecutionException($"Listing the tests in '{testProject.Name}' timed out.");
+
+        public Task<TestRunOutcome> RunAsync(TestRunRequest request, CancellationToken cancellationToken = default) =>
+            inner.RunAsync(request, cancellationToken);
     }
 }

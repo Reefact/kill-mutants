@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using KillMutants.Execution;
 using KillMutants.Mutations;
+using KillMutants.Mutations.Mutators;
 using KillMutants.Projects;
 using KillMutants.Reporting;
 using KillMutants.Testing;
@@ -549,6 +550,55 @@ public class ResumedRunTests
         Assert.Equal([0, 2], completed.Series.Runs.Select(run => run.LogLinesBefore));
         Assert.Equal(completed.Total, completed.Series.Runs.Sum(run => run.Verdicts));
         Assert.Equal([2, 27], store.ReadPlan()!.Runs.Select(run => run.Verdicts));
+    }
+
+    /// <summary>
+    /// A target set aside before its mutants were generated - here a suite that did not build - is
+    /// what a resumed run exists to complete (DEC0022): once the cause is gone, the next run of the
+    /// series generates its mutants as new ones, inherits the rest, and the series has a score.
+    /// </summary>
+    [Fact]
+    public async Task A_target_set_aside_before_generation_is_completed_by_the_next_run_of_the_series()
+    {
+        using var fixture = FixtureCopy.CreateMultiProject();
+        RunPlanStore store = StoreIn(fixture);
+        string broken = Path.Combine(fixture.Root, "Core.Tests", "DoesNotBuild.cs");
+        MutatorCatalog comparison = MutatorCatalog.Of([MutatorName.Create("Comparison"), MutatorName.Create("Arithmetic")]);
+
+        await File.WriteAllTextAsync(broken, "this does not compile", TestContext.Current.CancellationToken);
+
+        MutationTestReport first;
+
+        using (VerdictLog log = VerdictLog.Create(store.LogPath))
+        {
+            first = await new MutationTestSession(
+                    new XUnitTestRunner(), "Release", workerCount: 1, measureCoverage: false,
+                    catalog: comparison, verdicts: log, continuation: Start("nightly", store))
+                .RunAsync(fixture.Root, TestContext.Current.CancellationToken);
+        }
+
+        SetAside core = Assert.Single(first.SetAside);
+        Assert.Equal(SetAsideStage.Build, core.Stage);
+        Assert.Equal("Core", core.Name);
+        Assert.Equal(["Core/Core.csproj"], store.ReadPlan()!.Identity.NotGenerated);
+
+        File.Delete(broken);
+
+        MutationTestReport resumed;
+
+        using (VerdictLog log = VerdictLog.Append(store.LogPath))
+        {
+            resumed = await new MutationTestSession(
+                    new XUnitTestRunner(), "Release", workerCount: 1, measureCoverage: false,
+                    catalog: comparison, verdicts: log, continuation: Continue("nightly", store))
+                .RunAsync(fixture.Root, TestContext.Current.CancellationToken);
+        }
+
+        Assert.True(resumed.MeasuredEverything);
+        Assert.True(resumed.HasScore);
+        Assert.Equal(first.Total, Assert.IsType<RunSeries>(resumed.Series).Inherited);
+        Assert.True(resumed.Total > first.Total);
+        Assert.Null(store.ReadPlan()!.Identity.NotGenerated);
     }
 
     /// <summary>

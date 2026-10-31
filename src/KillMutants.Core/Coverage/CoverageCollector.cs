@@ -38,7 +38,9 @@ internal sealed class CoverageCollector
     }
 
     /// <summary>Measures what each test reaches.</summary>
-    /// <exception cref="CoverageException">The instrumented build could not be produced.</exception>
+    /// <exception cref="CoverageException">
+    /// The instrumented build could not be produced, or the tests could not be listed.
+    /// </exception>
     public async Task<CoverageMap> CollectAsync(
         IReadOnlyList<TestSandbox> sandboxes,
         ProjectCompilation compilation,
@@ -67,8 +69,22 @@ internal sealed class CoverageCollector
 
         await VerifyInstrumentedBuildAsync(sandboxes[0], cancellationToken).ConfigureAwait(false);
 
-        IReadOnlyList<(TestProject Project, TestName Test)> tests =
-            await DiscoverAsync(sandboxes[0], cancellationToken).ConfigureAwait(false);
+        IReadOnlyList<(TestProject Project, TestName Test)> tests;
+
+        try
+        {
+            tests = await DiscoverAsync(sandboxes[0], cancellationToken).ConfigureAwait(false);
+        }
+        catch (TestExecutionException unlisted)
+        {
+            // Listing the tests is part of measuring coverage, and failing at it leaves this target
+            // unmeasured and the others as they were: a coverage failure, which a run sets aside
+            // (DEC0022). Translated here, at the edge of the stage, so a TestExecutionException
+            // raised while a mutant is judged still ends the run as the broken environment it is.
+            throw new CoverageException(
+                "KillMutants could not list the tests to measure what each one reaches. " + unlisted.Message,
+                unlisted);
+        }
 
         var pending = new ConcurrentQueue<(TestProject Project, TestName Test)>(tests);
         var observed = new ConcurrentBag<CoverageObservation>();

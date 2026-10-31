@@ -87,20 +87,37 @@ internal sealed class PlanKeeper
     /// to continue a series it would not continue honestly, inherits what may be inherited, and
     /// writes the plan.
     /// </summary>
+    /// <param name="targets">The targets whose mutants were generated.</param>
+    /// <param name="mutantsOf">Each target's mutants, in the order of <paramref name="targets"/>.</param>
+    /// <param name="notGenerated">
+    /// The targets discovery found but this run set aside before generating their mutants, at the
+    /// build or the analysis (DEC0022).
+    /// </param>
+    /// <param name="scope">What population the run inspects.</param>
+    /// <param name="root">The directory the run was pointed at.</param>
+    /// <param name="testFramework">The xUnit the test applications were built on.</param>
+    /// <param name="ledger">The verdicts, which inherit what may be inherited.</param>
     /// <exception cref="ResumeException">The series cannot be continued by this run.</exception>
     public void Begin(
-        IReadOnlyList<Mutant> all,
         IReadOnlyList<MutationTestTarget> targets,
+        IReadOnlyList<IReadOnlyList<Mutant>> mutantsOf,
+        IReadOnlyList<MutationTestTarget> notGenerated,
         RunScope scope,
         string root,
         string? testFramework,
         VerdictLedger ledger)
     {
-        ArgumentNullException.ThrowIfNull(all);
         ArgumentNullException.ThrowIfNull(targets);
+        ArgumentNullException.ThrowIfNull(mutantsOf);
+        ArgumentNullException.ThrowIfNull(notGenerated);
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(ledger);
 
+        IReadOnlyList<Mutant> all = [.. mutantsOf.SelectMany(mutants => mutants)];
+
+        // The graph is discovery's, set-aside targets included: a target whose build failed is still
+        // a project the suites reach, and leaving it out would make the run that recovers it look
+        // like another codebase. Its mutants are what this run cannot know, and the plan says whose.
         RunIdentity identity = _continuation.Identity with
         {
             Scope = new PlannedScope(
@@ -109,8 +126,13 @@ internal sealed class PlanKeeper
                 scope.ComparedTo,
                 scope.ComparedToIsExact),
             Fingerprint = RunIdentity.FingerprintOf(all.Select(mutant => mutant.Key.ToString())),
-            TargetGraph = GraphOf(targets, root),
+            TargetGraph = GraphOf([.. targets, .. notGenerated], root),
             TestFramework = testFramework,
+            NotGenerated = notGenerated.Count == 0
+                ? null
+                : [.. notGenerated
+                    .Select(target => Relative(target.ProjectUnderTest.ProjectPath, root))
+                    .Order(StringComparer.Ordinal)],
         };
 
         if (_continuation.Earlier is { } earlier)
@@ -118,7 +140,23 @@ internal sealed class PlanKeeper
             // Everything known before the run matched, or the caller would not have continued the
             // log. What differs here can only come from the build or the generation, and the user
             // did not cause it - so the files stay as they are, and the message names it.
-            if (identity.WhyNotContinuedBy(earlier.Identity) is { } why)
+            // A target the earlier run set aside before generating its mutants is the part a
+            // resumed run exists to complete (DEC0022): its mutants are compared as new ones, and
+            // the rest of the population has to be exactly what the earlier run selected.
+            HashSet<string> recovered = new(earlier.Identity.NotGenerated ?? [], StringComparer.Ordinal);
+            RunIdentity compared = recovered.Count == 0
+                ? identity
+                : identity with
+                {
+                    Fingerprint = RunIdentity.FingerprintOf(
+                        targets
+                            .Zip(mutantsOf)
+                            .Where(pair => !recovered.Contains(Relative(pair.First.ProjectUnderTest.ProjectPath, root)))
+                            .SelectMany(pair => pair.Second)
+                            .Select(mutant => mutant.Key.ToString())),
+                };
+
+            if (compared.WhyNotContinuedBy(earlier.Identity) is { } why)
             {
                 throw new ResumeException(
                     $"The series '{_continuation.Series}' cannot be continued by this run: {why}. " +

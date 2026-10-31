@@ -85,6 +85,20 @@ public class SetAsideReportTests
         Assert.Equal(JsonValueKind.Null, withheld.RootElement.GetProperty("score").ValueKind);
     }
 
+    /// <summary>
+    /// A target set aside at its baseline keeps its mutants selected and gives them no verdict, in a
+    /// run that was not stopped: the JSON says the run did not judge everything, and counts them.
+    /// </summary>
+    [Fact]
+    public void The_json_counts_the_mutants_a_set_aside_target_left_unjudged()
+    {
+        using JsonDocument json = Json(new MutationTestReport(Results(), setAside: [RedBaseline], selected: 5));
+
+        Assert.False(json.RootElement.GetProperty("complete").GetBoolean());
+        Assert.Equal(5, json.RootElement.GetProperty("mutantsSelected").GetInt32());
+        Assert.Equal(2, json.RootElement.GetProperty("totals").GetProperty("mutants").GetInt32());
+    }
+
     [Fact]
     public void A_run_that_measured_everything_reports_as_it_always_has()
     {
@@ -97,5 +111,7 @@ public class SetAsideReportTests
 
         using JsonDocument json = Json(report);
         Assert.Empty(json.RootElement.GetProperty("setAside").EnumerateArray());
+        Assert.True(json.RootElement.GetProperty("complete").GetBoolean());
+        Assert.Equal(2, json.RootElement.GetProperty("mutantsSelected").GetInt32());
     }
 }

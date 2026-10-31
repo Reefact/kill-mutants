@@ -95,13 +95,14 @@ public static class JsonReportWriter
         hasUndetected = report.HasUndetected,
         inconclusive = report.IsInconclusive,
 
-        // Whether every mutant the run selected reached a verdict, published beside the verdict for
-        // the reason comparisonIsIncomplete is: on a stopped run hasUndetected false means "none
-        // found among those judged", and a consumer that reads it without reading this acts on a
-        // run that never got to the rest. mutantsSelected is null when the run stopped before it had
-        // selected anything, and equals the number judged when the run is complete.
-        complete = report.IsComplete,
-        mutantsSelected = report.Stopped is { } stopped ? stopped.Selected : report.Total,
+        // Whether the run judged everything it set out to, published beside the verdict for the
+        // reason comparisonIsIncomplete is: on a stopped run hasUndetected false means "none found
+        // among those judged", and a consumer that reads it without reading this acts on a run that
+        // never got to the rest. A run that set something aside (DEC0022) is in the same place,
+        // stopped or not. mutantsSelected is null when the run stopped before it had selected
+        // anything, and counts the selected mutants a set-aside target left unjudged too.
+        complete = report.IsComplete && report.MeasuredEverything,
+        mutantsSelected = report.Selected,
 
         // What the run could not measure and why (DEC0022). Empty when it measured everything; when
         // it is not, no gate passes and the exit code is 2, and `score` covers the measured part

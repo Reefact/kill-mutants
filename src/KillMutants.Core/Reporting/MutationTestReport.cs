@@ -32,6 +32,11 @@ public sealed class MutationTestReport
     /// project was widened. Null when nothing was.
     /// </param>
     /// <param name="setAside">What the run could not measure, and why. Empty when it measured everything.</param>
+    /// <param name="selected">
+    /// How many mutants the run selected, when that differs from the verdicts reached without the
+    /// run having been stopped - a target set aside at its baseline or its coverage keeps its mutants
+    /// selected and gives them none (DEC0022). Null reads as <paramref name="results"/>' count.
+    /// </param>
     public MutationTestReport(
         IReadOnlyList<MutantResult> results,
         TimeSpan duration = default,
@@ -43,7 +48,8 @@ public sealed class MutationTestReport
         RunSeries? series = null,
         IReadOnlyList<WidenedProject>? widened = null,
         Func<string, bool>? inTheChange = null,
-        IReadOnlyList<SetAside>? setAside = null)
+        IReadOnlyList<SetAside>? setAside = null,
+        int? selected = null)
     {
         ArgumentNullException.ThrowIfNull(results);
 
@@ -57,6 +63,7 @@ public sealed class MutationTestReport
         Series = series;
         Widened = widened ?? [];
         SetAside = setAside ?? [];
+        Selected = stopped is not null ? stopped.Selected : selected ?? results.Count;
         Killed = Count(MutantStatus.Killed);
         Survived = Count(MutantStatus.Survived);
         TimedOut = Count(MutantStatus.Timeout);
@@ -263,8 +270,18 @@ public sealed class MutationTestReport
     /// </remarks>
     public EarlyStop? Stopped { get; }
 
-    /// <summary>True when every mutant the run selected has a verdict.</summary>
+    /// <summary>True when the run was not stopped: it went through everything it did not set aside.</summary>
+    /// <remarks>
+    /// Not "every selected mutant has a verdict": a target set aside at its baseline keeps its
+    /// mutants selected and unjudged in a run that still went to the end. Whether everything was
+    /// judged is this and <see cref="MeasuredEverything"/> together (DEC0022).
+    /// </remarks>
     public bool IsComplete => Stopped is null;
+
+    /// <summary>
+    /// How many mutants the run selected, or null when it was stopped before it had selected any.
+    /// </summary>
+    public int? Selected { get; }
 
     /// <summary>The parts of the scope the run could not measure, each with its reason (DEC0022).</summary>
     public IReadOnlyList<SetAside> SetAside { get; }
