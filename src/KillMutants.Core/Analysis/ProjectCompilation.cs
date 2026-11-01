@@ -27,6 +27,17 @@ internal sealed class ProjectCompilation
     private readonly CompilerAnalyzerConfig _analyzerConfig;
     private readonly IReadOnlyList<AdditionalText> _additionalTexts;
 
+    /// <summary>
+    /// Every file the compiler reads from disk for this project, as full paths: the sources, the
+    /// additional files and the analyzer configuration the command line names.
+    /// </summary>
+    /// <remarks>
+    /// Kept so a series can check that none of them is a file it was told to ignore (DEC0025).
+    /// Embedded resources are left out: the command line names what MSBuild produced under
+    /// <c>obj</c>, never the file a person edits.
+    /// </remarks>
+    public IReadOnlyList<string> InputFiles { get; private init; } = [];
+
     private ProjectCompilation(
         CSharpCompilation sourceCompilation,
         Compilation generatedCompilation,
@@ -124,7 +135,15 @@ internal sealed class ProjectCompilation
             arguments.ManifestResources,
             generators,
             analyzerConfig,
-            additionalTexts);
+            additionalTexts)
+        {
+            InputFiles =
+            [
+                .. arguments.SourceFiles.Select(file => file.Path),
+                .. arguments.AdditionalFiles.Select(file => file.Path),
+                .. arguments.AnalyzerConfigPaths,
+            ],
+        };
     }
 
     /// <summary>Emits the compilation exactly as it stands, with no mutation applied.</summary>

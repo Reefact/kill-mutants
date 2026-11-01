@@ -16,6 +16,13 @@ namespace KillMutants.Execution;
 /// </param>
 /// <param name="EarlierVerdicts">The verdicts the log beside that plan holds; empty when it starts afresh.</param>
 /// <param name="Store">Where the plan is written.</param>
+/// <param name="IgnoreUntracked">
+/// The patterns this run was given with <c>--ignore-untracked</c>, or null for none (DEC0025).
+/// </param>
+/// <param name="IgnoredUntracked">
+/// The untracked files those patterns left out of the code state, or null for none. The run refuses
+/// to go on if the compiler reads one of them, and records them in the plan and the report.
+/// </param>
 /// <remarks>
 /// The caller decides whether the series continues, because the caller is the one that opened the
 /// log - continued or emptied - before the run began, and the two decisions have to be the same one.
@@ -27,4 +34,6 @@ public sealed record RunContinuation(
     RunIdentity Identity,
     RunPlan? Earlier,
     IReadOnlyList<LoggedVerdict> EarlierVerdicts,
-    RunPlanStore Store);
+    RunPlanStore Store,
+    IReadOnlyList<string>? IgnoreUntracked = null,
+    IReadOnlyList<IgnoredFile>? IgnoredUntracked = null);

@@ -33,6 +33,14 @@ release rather than shipping undocumented.
 
 ### Added
 
+- `--ignore-untracked <pattern>` (and `ignoreUntracked` in `killmutants.json`) names the untracked
+  files a `--resume` series does not count when it reads its tree, such as the `.received` files a
+  snapshot test writes beside its source. Each file ignored is named on standard error and recorded
+  per run in the report's `series.runs` (`ignoreUntracked`, `ignoredUntracked`). A pattern that could
+  cover a source or build file is refused before the run, and a run whose compiler reads an ignored
+  file is refused once the build has named its inputs. See DEC0025.
+- A series refused for a dirty tree names the untracked files that appeared since it began, as
+  likely written by its own run, and says whether tracked files differ too (#66).
 - A run that finds no xUnit test project names the projects that reference xUnit but were never
   restored, and asks for `dotnet restore`, before what it set aside: a test project that leaves its
   output type to a package such as `Microsoft.NET.Test.Sdk` is only an executable once restored, and

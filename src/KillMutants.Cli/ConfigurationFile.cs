@@ -16,6 +16,10 @@ namespace KillMutants.Cli;
 /// <param name="ReportJson">Where to write the machine-readable report, relative to this file.</param>
 /// <param name="StopAfter">How long a run may take before it stops, written as <c>85m</c>.</param>
 /// <param name="TargetFramework">The framework the test projects run on, such as <c>net10.0</c>.</param>
+/// <param name="IgnoreUntracked">
+/// The untracked files a series does not count when it reads its tree, such as the
+/// <c>*.received.html</c> a snapshot test writes. Used only by a run that names a series.
+/// </param>
 /// <remarks>
 /// <para>
 /// Every setting is optional and every one mirrors a command-line option, because the file exists to
@@ -41,7 +45,8 @@ internal sealed record ConfigurationFile(
     string? ReportJson = null,
     string? StopAfter = null,
     IReadOnlyList<string>? With = null,
-    string? TargetFramework = null)
+    string? TargetFramework = null,
+    IReadOnlyList<string>? IgnoreUntracked = null)
 {
     /// <summary>The file KillMutants looks for in the directory it was pointed at.</summary>
     public const string Name = "killmutants.json";

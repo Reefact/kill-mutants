@@ -31,6 +31,10 @@ namespace KillMutants.Cli;
 /// <param name="TargetFramework">
 /// The one framework the test projects run on, or null when none was named. See DEC0021.
 /// </param>
+/// <param name="IgnoreUntracked">
+/// The untracked files a series does not count when it reads its tree, already validated; null or
+/// empty for a run that names no series, whatever the file says. See DEC0025.
+/// </param>
 internal sealed record RunSettings(
     string Directory,
     string Configuration,
@@ -46,7 +50,8 @@ internal sealed record RunSettings(
     TimeSpan? StopAfter = null,
     string? Resume = null,
     IReadOnlyList<MutatorName>? WithMutators = null,
-    string? TargetFramework = null)
+    string? TargetFramework = null,
+    IReadOnlyList<string>? IgnoreUntracked = null)
 {
     /// <summary>Resolves what was asked against what the project keeps in its file.</summary>
     /// <param name="options">What the command line asked for.</param>
@@ -85,6 +90,8 @@ internal sealed record RunSettings(
         RejectReportNamedLikeItsLog(jsonReportPath, fromFile: options.JsonReportPath is null);
         RejectResumeWithoutItsFiles(options, jsonReportPath);
 
+        IReadOnlyList<string> ignoreUntracked = IgnoredUntracked(options, file);
+
         return new RunSettings(
             options.Directory,
             options.Configuration ?? file?.Configuration ?? "Release",
@@ -100,7 +107,52 @@ internal sealed record RunSettings(
             options.StopAfterCleared ? null : options.StopAfter ?? StopAfterIn(file),
             options.Resume,
             with,
-            options.TargetFramework ?? NamedFramework(file?.TargetFramework));
+            options.TargetFramework ?? NamedFramework(file?.TargetFramework),
+            ignoreUntracked);
+    }
+
+    /// <summary>
+    /// The untracked files a series does not count, from the command line or else the file, refused
+    /// when a pattern could cover code - or none for a run that names no series.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The option means nothing outside a series: only a series refuses a dirty tree, and every other
+    /// run records whether it was exact and carries on. Given on the command line without
+    /// <c>--resume</c>, it is a mistake to say; kept in the file, it is a project's habit, which waits
+    /// for the run it applies to, as the record decided.
+    /// </para>
+    /// <para>
+    /// Refused before anything runs, from either source, with the reason in the message: a pattern
+    /// that could cover a source or build file would let a series inherit verdicts reached on other
+    /// code. See <see cref="Filtering.UntrackedPatterns"/> and DEC0025.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<string> IgnoredUntracked(CommandLineOptions options, ConfigurationFile? file)
+    {
+        if (options.IgnoreUntracked is not null && options.Resume is null)
+        {
+            throw new ArgumentException(
+                "'--ignore-untracked' needs '--resume': it names the untracked files a series does not " +
+                "count when it reads its tree, and a run that names no series refuses no tree.");
+        }
+
+        IReadOnlyList<string> patterns = options.IgnoreUntracked ?? file?.IgnoreUntracked ?? [];
+
+        // Checked from the file even on a run that will not use it, so that a pattern a project
+        // keeps is refused on the first run that reads it rather than on the night it first matters.
+        try
+        {
+            Filtering.UntrackedPatterns.Validate(patterns);
+        }
+        catch (ArgumentException refused) when (options.IgnoreUntracked is null && file is not null)
+        {
+            throw new ArgumentException(
+                $"'ignoreUntracked' in '{Path.Combine(file.Directory, ConfigurationFile.Name)}': {refused.Message}",
+                refused);
+        }
+
+        return options.Resume is null ? [] : patterns;
     }
 
     /// <summary>
