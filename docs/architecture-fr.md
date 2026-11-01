@@ -152,8 +152,6 @@ ci-dessous a été mesuré en passant le catalogue sur chaque forme, pas lu dans
 | Motifs d'un `switch` | **Non pris en charge pour l'instant.** Modifier un bras peut rendre un bras suivant inatteignable, ce que le compilateur refuse pour tout le `switch` (CS8510), et qu'aucune vérification limitée à un nœud ne peut détecter - DEC0018. |
 | Affectations et flux de contrôle en tant qu'instructions | **Candidat futur.** Supprimer `x = f();`, `return;`, `throw`, `break` ou `yield break` peut laisser une variable locale non assignée ou changer l'atteignabilité, ce qui demande une analyse de flux que `Statement` ne fait pas ; un `yield return` ne demande ni l'un ni l'autre et est supprimé (#62) ; les affectations à des champs sont les premières à réexaminer - DEC0020. |
 | Bras de `switch` | **Non supportés.** Réordonner ou supprimer un bras est une mutation structurelle, pas une mutation d'opérateur, et demande un autre raisonnement sur l'exhaustivité. |
-| Un argument de capacité - `new StringBuilder(n * 4)`, `new List<T>(n + 1)`, `EnsureCapacity(n)` - sur un type sous `System` | **Pas un site.** Une capacité change le moment où le tampon grandit, jamais ce qu'il contient, donc chacun de ses mutants est équivalent ; reconnue au nom du paramètre, que la BCL lui réserve - RB-033. |
-
 Trois propriétés valent pour toutes. Chaque remplacement est un **nouveau nœud du bon type**, pas un
 jeton échangé ([RB-001](robustness-backlog-fr.md)). Chacune demande au compilateur si le remplacement
 se lierait avant de le proposer : un mutant qui ne compile pas n'est jamais engendré

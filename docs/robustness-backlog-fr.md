@@ -1363,43 +1363,49 @@ l'autre (il échoue quand toutes les copies vont à côté de la sortie de la pr
 
 ---
 
-## RB-033 — Un argument de capacité produit des mutants que rien ne peut tuer · COUVERT
+## RB-033 — Un argument de capacité produit un mutant que son appelant ne peut pas tuer · OUVERT
 
 **Comment il a été trouvé.** En lançant KillMutants `13b0229` sur `Reefact/enum-member-name-binding`
 à `bc6eda9`, à côté de Stryker.NET 5.0.0 sur le même commit (#76). Sur les 26 survivants, cinq se
 lisaient comme équivalents, et celui-ci figurait dans les deux rapports :
 `EnumMemberNameSchemaTransformer.cs:233`, `StringBuilder escaped = new(name.Length * 4);`, où
-`Arithmetic` a produit `name.Length / 4`.
+`Arithmetic` a produit `name.Length / 4`. La capacité du builder change le moment où il grandit,
+jamais ce qu'il contient, et cet appelant ne lit que ce qu'il contient : aucun test de cet appelant
+ne peut tuer le mutant.
 
-**Ce qui se passe.** Une capacité est la taille à laquelle un tampon démarre. Elle change le moment
-où le tampon grandit, jamais ce qu'il contient : un mutant de la capacité calcule les mêmes chaînes,
-les mêmes listes et les mêmes dictionnaires que l'original. Aucun test ne peut les distinguer, et
-aucun ne devrait essayer : la trouvaille est lue, examinée, et n'apprend qu'une chose, que le rapport
-n'est pas fiable.
+**Une règle a été tentée, et retirée en revue (#81).** La première version de cette entrée faisait
+de tout nœud sous un argument lié à un paramètre nommé `capacity` d'un type sous `System` un
+non-site, comme une constante. La revue a trouvé quatre raisons pour lesquelles elle ne tient pas,
+chacune un vrai mutant que la règle aurait perdu :
 
-**Pourquoi celui-ci, et pas les quatre autres.** Les autres survivants lus comme équivalents sur ce
-projet — un `inherit: false` sur un attribut qu'un enum ne peut pas hériter, une borne de boucle à
-`char.MaxValue` où U+FFFF n'a pas d'autre casse, un `Remove` dont l'appelant ne relit jamais l'effet,
-un `Length > 0` là où le constructeur a un argument — sont équivalents pour des raisons que la syntaxe
-seule ne voit pas ; un autre attribut, une autre borne, un autre appelant, et chacun est un vrai
-mutant. Une capacité est équivalente par ce qu'elle est, et ce qu'elle est se lit sur l'appel : la
-BCL nomme `capacity` chacun de ces paramètres, et rien d'autre de ce nom.
+- Une capacité est observable à travers l'API qui la reçoit : `new StringBuilder(n * 4).Capacity` et
+  `new List<int>(n + 1).Capacity` exposent la valeur, et une capacité mutée en négatif change si le
+  constructeur lève `ArgumentOutOfRangeException`. Le survivant mesuré est équivalent *dans son
+  appelant* ; le constructeur n'est pas équivalent dans tout appelant, et une règle syntaxique ne
+  peut pas distinguer les deux.
+- Le nom ne signifie pas allocation partout sous `System` :
+  `Channel.CreateBounded<T>(capacity: n * 2)` décide combien d'écritures réussissent avant que le
+  canal bloque, ce que les tests observent.
+- Le sous-arbre de l'argument peut avoir des effets propres : dans `new List<int>(++n); return n;`,
+  le mutant de l'incrément change ce qui est retourné, quoi que la liste fasse de la valeur.
+- Un espace de noms n'est pas une propriété : du code utilisateur peut déclarer
+  `namespace System.Custom`, et un paramètre `capacity` qui s'y trouve est une valeur métier que la
+  règle aurait fait taire.
 
-**La règle.** Un nœud sous un argument qui se lie à un paramètre nommé `capacity` d'un type déclaré
-sous `System` n'est pas un site de mutation, comme une constante n'en est pas un. Par nom quand
-l'argument est nommé, par position sinon. Chaque argument au-dessus du nœud est interrogé, jusqu'au
-membre, parce que ce qui alimente une capacité — `Math.Max(n, 1) * 2`, une lambda qui compte — est
-aussi inobservable que la capacité elle-même. Limitée au framework : un `capacity` de l'utilisateur
-peut vouloir dire n'importe quoi, et reste muté. Pas rapporté comme `Ignored` : ce statut est pour
-ce que le développeur a fait taire (DEC0026), et ceci est un site qui n'a jamais existé.
-L'instruction qui passe une capacité, `b.EnsureCapacity(n);`, reste un appel que `Statement`
-supprime, et `--ignore-calls` est le moyen de la faire taire.
+**Où on en est.** Un faux trou de cette forme est une affirmation sur un appelant, ce que
+`--ignore-calls` permet déjà à un projet de faire (DEC0026) : nommer le constructeur fait taire les
+mutants de ses arguments et les rapporte comme `Ignored`, hors du score et comptés. Aucune règle de
+catalogue ne remplace cela tant qu'une règle ne voit pas ce que l'appelant fait de l'objet, ce
+qu'aucune ne fait ici.
 
-**Nos tests.** `MutationSiteTests.A_capacity_argument_is_not_mutated` sur un `StringBuilder`, un
-`new` à type cible, une `List<T>` par position, un `Dictionary<K, V>` par nom et un `EnsureCapacity`
-alimenté par un `Math.Max`, chacun vérifiant que la comparaison voisine de la capacité est toujours
-mutée ; et `An_argument_that_is_not_a_framework_capacity_is_still_mutated`, pour un `capacity` de
-l'utilisateur et un paramètre de la BCL d'un autre nom.
+**Les quatre autres lus comme équivalents sur ce projet** — un `inherit: false` sur un attribut
+qu'un enum ne peut pas hériter, une borne de boucle à `char.MaxValue` où U+FFFF n'a pas d'autre
+casse, un `Remove` dont l'appelant ne relit jamais l'effet, un `Length > 0` là où le constructeur a
+un argument — sont équivalents eux aussi pour des raisons que la syntaxe seule ne voit pas, et
+relèvent de la même réponse.
+
+**Nos tests.** Aucun : rien n'est couvert. L'entrée consigne la mesure et pourquoi la règle évidente
+est fausse, pour que la prochaine tentative parte des quatre cas ci-dessus.
 
 ---
 

@@ -139,8 +139,6 @@ was measured by running the catalogue over each form rather than read off the la
 | Patterns of a `switch` | **Not supported for now.** Changing one arm can make a later arm unreachable, which the compiler refuses for the whole switch (CS8510) and no check of a single node can see - DEC0018. |
 | Assignments and control flow as statements | **Future candidate.** Removing `x = f();`, `return;`, `throw`, `break` or `yield break` can leave a local unassigned or change reachability, which needs a flow analysis `Statement` does not make; a `yield return` needs neither and is removed (#62); assignments to fields are the first to revisit - DEC0020. |
 | `switch` arms | **Not supported.** Reordering or removing arms is a structural mutation, not an operator one, and needs a different kind of reasoning about exhaustiveness. |
-| A capacity argument - `new StringBuilder(n * 4)`, `new List<T>(n + 1)`, `EnsureCapacity(n)` - on a type under `System` | **Not a site.** A capacity changes when the buffer grows, never what it holds, so every mutant of it is equivalent; recognised by the parameter's name, which the BCL reserves for it - RB-033. |
-
 Three properties hold across all of them. Each replacement is a **new node of the target kind**, not
 a swapped token ([RB-001](robustness-backlog-en.md)). Each asks the compiler whether the replacement
 would bind before proposing it, so a mutant that cannot compile is never generated

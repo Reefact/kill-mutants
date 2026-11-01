@@ -143,51 +143,6 @@ public class MutationSiteTests
     }
 
     /// <summary>
-    /// RB-033 (#76). A capacity changes when a buffer grows, never what it holds, so a mutant in one
-    /// survives whatever the tests check. The argument is not a site; what is beside it still is.
-    /// </summary>
-    [Theory]
-    // a StringBuilder's initial capacity, the shape measured on enum-member-name-binding
-    [InlineData("class C { string M(int n) { var b = new System.Text.StringBuilder(n * 4); return b.Append(n >= 1).ToString(); } }",
-                "n * 4")]
-    // the same through a target-typed new, which binds the constructor all the same
-    [InlineData("class C { string M(int n) { System.Text.StringBuilder b = new(n * 4); return b.Append(n >= 1).ToString(); } }",
-                "n * 4")]
-    // a collection's, by position
-    [InlineData("class C { int M(int n) { var l = new System.Collections.Generic.List<int>(n + 1); return n >= 1 ? l.Count : 0; } }",
-                "n + 1")]
-    // and by name
-    [InlineData("class C { int M(int n) { var d = new System.Collections.Generic.Dictionary<int, int>(capacity: n * 4); return n >= 1 ? d.Count : 0; } }",
-                "n * 4")]
-    // what feeds a capacity is as unobservable as the capacity
-    [InlineData("class C { int M(int n, System.Text.StringBuilder b) { b.EnsureCapacity(System.Math.Max(n, 1) * 4); return n >= 1 ? b.Length : 0; } }",
-                "System.Math.Max(n, 1) * 4")]
-    public void A_capacity_argument_is_not_mutated(string source, string capacity)
-    {
-        IReadOnlyList<Mutant> mutants = Generate(source);
-
-        // Not the statement that passes it: removing the call is a question for the developer to
-        // silence (DEC0026), not a capacity.
-        Assert.DoesNotContain(
-            mutants.Where(mutant => mutant.Mutator.ToString() != "Statement"),
-            mutant => mutant.OriginalText.Contains(capacity, StringComparison.Ordinal));
-        Assert.Contains(mutants, mutant => mutant.OriginalText == "n >= 1");
-    }
-
-    /// <summary>
-    /// The rule reads a name, so it is kept to the types whose naming it knows: a parameter of the
-    /// user's own called <c>capacity</c> may mean anything, and one of the BCL's called otherwise
-    /// is not a capacity.
-    /// </summary>
-    [Theory]
-    [InlineData("class C { int M(int n) => Take(n * 4); static int Take(int capacity) => capacity; }")]
-    [InlineData("class C { string M(int n) => new string('a', n * 4); }")]
-    public void An_argument_that_is_not_a_framework_capacity_is_still_mutated(string source)
-    {
-        Assert.Contains(Generate(source), mutant => mutant.OriginalText == "n * 4");
-    }
-
-    /// <summary>
     /// An <c>out</c> in a left operand runs every time, so the rule must leave its expression alone.
     /// </summary>
     [Fact]
