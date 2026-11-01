@@ -23,6 +23,8 @@ namespace KillMutants.Cli;
 /// <param name="IgnoreUntracked">
 /// The untracked files a series does not count, or null when the option was not given.
 /// </param>
+/// <param name="Progress">What the console shows while the run runs, or null when it was not given.</param>
+/// <param name="Slow">How long a mutant runs before it is named as slow, or null when not given.</param>
 /// <remarks>
 /// Every setting is nullable, and that is the point: <c>--configuration Release</c> and saying
 /// nothing must be told apart, because a project's <c>killmutants.json</c> sits between them.
@@ -47,7 +49,9 @@ internal sealed record CommandLineOptions(
     string? Resume = null,
     IReadOnlyList<MutatorName>? WithMutators = null,
     string? TargetFramework = null,
-    IReadOnlyList<string>? IgnoreUntracked = null)
+    IReadOnlyList<string>? IgnoreUntracked = null,
+    ProgressMode? Progress = null,
+    TimeSpan? Slow = null)
 {
     /// <summary>
     /// Parses the command line. The defaults are chosen so that <c>dotnet killmutants</c> with no
@@ -82,6 +86,8 @@ internal sealed record CommandLineOptions(
         string? resume = null;
         string? targetFramework = null;
         List<string>? ignoreUntracked = null;
+        ProgressMode? progress = null;
+        TimeSpan? slow = null;
 
         for (int index = 0; index < args.Count; index++)
         {
@@ -255,6 +261,25 @@ internal sealed record CommandLineOptions(
 
                     break;
 
+                case "--progress":
+                    index++;
+                    progress = ProgressModeOf(index < args.Count ? args[index] : null)
+                        ?? throw new ArgumentException($"'{argument}' needs {ProgressModes}.");
+
+                    break;
+
+                case "--slow":
+                    index++;
+
+                    if (index >= args.Count || !Duration.TryParse(args[index], out TimeSpan after) || after <= TimeSpan.Zero)
+                    {
+                        throw new ArgumentException($"'{argument}' needs {Duration.Expected}, longer than nothing.");
+                    }
+
+                    slow = after;
+
+                    break;
+
                 case "--stop-after":
                     index++;
 
@@ -347,8 +372,26 @@ internal sealed record CommandLineOptions(
             resume,
             withMutators,
             targetFramework,
-            ignoreUntracked);
+            ignoreUntracked,
+            progress,
+            slow);
     }
+
+    /// <summary>The values <c>--progress</c> takes, for messages refusing one.</summary>
+    public const string ProgressModes = "one of log, live or none";
+
+    /// <summary>Reads a progress mode, as the command line and the file write it, or null.</summary>
+    /// <remarks>
+    /// The three names are the contract DEC0023 holds, so they are matched exactly, ignoring case,
+    /// rather than through the enum's own parsing, which would also accept a number.
+    /// </remarks>
+    public static ProgressMode? ProgressModeOf(string? text) => text?.Trim().ToLowerInvariant() switch
+    {
+        "log" => ProgressMode.Log,
+        "live" => ProgressMode.Live,
+        "none" => ProgressMode.None,
+        _ => null,
+    };
 
     /// <summary>Parses a comma-separated list of mutator family names.</summary>
     /// <remarks>

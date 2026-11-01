@@ -453,7 +453,8 @@ public class CommandLineTests
                 {
                     error.AppendLine(line);
 
-                    if (line.StartsWith("Testing mutants", StringComparison.Ordinal))
+                    // Contains rather than StartsWith: the log dates each line (#65).
+                    if (line.Contains("Testing mutants", StringComparison.Ordinal))
                     {
                         testing.TrySetResult();
                     }

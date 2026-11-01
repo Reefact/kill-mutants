@@ -19,10 +19,19 @@ public class ConsoleProgressReporterTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    private ConsoleProgressReporter Redirected() => new(_log, rewritesInPlace: false, _clock);
+    private ConsoleProgressReporter Redirected() => Reporter(ProgressMode.Log);
 
-    private string[] Lines() =>
+    private ConsoleProgressReporter Reporter(ProgressMode mode, int width = 0) =>
+        new(_log, mode, _clock, TimeSpan.FromSeconds(30), () => width, watchForSlowMutants: false);
+
+    /// <summary>The lines written, without the time each one starts with - see <see cref="Each_line_of_the_log_is_dated"/>.</summary>
+    private string[] Lines() => [.. Dated().Select(line => line.Length >= 10 && line[2] == ':' ? line[10..] : line.TrimStart())];
+
+    private string[] Dated() =>
         _log.ToString().ReplaceLineEndings("\n").Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+    private static MutantInProgress Mutant(string id, int line = 440) =>
+        new(id, "Conditional", "Rendering/Renderer.cs", line, Budget: TimeSpan.FromSeconds(11));
 
     private static MutationTestProgress Testing(int completed) =>
         new(MutationTestPhase.TestingMutants, completed, 816);
@@ -137,13 +146,186 @@ public class ConsoleProgressReporterTests : IDisposable
         Assert.Equal(["Discovering projects"], Lines());
     }
 
+    /// <summary>#65: a phase that stops writing says when it stopped, so every line carries its time.</summary>
+    [Fact]
+    public void Each_line_of_the_log_is_dated()
+    {
+        using ConsoleProgressReporter progress = Redirected();
+
+        progress.Report(Testing(1));
+        _clock.Advance(ConsoleProgressReporter.Interval);
+        progress.Report(Testing(95));
+
+        Assert.Equal(["01:37:16  Testing mutants", "01:38:16  Testing mutants 95/816"], Dated());
+    }
+
+    /// <summary>#65: a counter that stops moving says nothing until it names the mutant in progress.</summary>
+    [Fact]
+    public void A_count_in_the_log_names_the_mutant_in_progress()
+    {
+        using ConsoleProgressReporter progress = Redirected();
+
+        progress.Report(Testing(0) with { Mutant = Mutant("M1") });
+        progress.Report(Testing(1) with { Mutant = Mutant("M1") with { Status = Mutations.MutantStatus.Killed } });
+        progress.Report(Testing(1) with { Mutant = Mutant("M2", line: 97) });
+        _clock.Advance(ConsoleProgressReporter.Interval);
+        progress.Report(Testing(1) with { Mutant = Mutant("M3", line: 12) });
+
+        Assert.Equal(
+            ["Testing mutants", "Testing mutants 1/816  Conditional  Rendering/Renderer.cs:12"],
+            Lines());
+    }
+
+    /// <summary>
+    /// #65: a part set aside (DEC0022) is written the moment it happens, with the first line of its
+    /// reason, in every mode - the final report is too late to learn it.
+    /// </summary>
+    [Theory]
+    [InlineData("log")]
+    [InlineData("live")]
+    [InlineData("none")]
+    public void A_part_set_aside_is_written_at_once_in_every_mode(string mode)
+    {
+        using ConsoleProgressReporter progress = Reporter(CommandLineOptions.ProgressModeOf(mode)!.Value);
+
+        progress.Report(new MutationTestProgress(
+            MutationTestPhase.Discovering,
+            SetAside: new SetAside(
+                SetAsideStage.Discovery,
+                "tools/floor-check/FloorCheck.csproj",
+                "requested SDK 8.0.100 is not installed\nInstall it, or leave the project out.")));
+
+        Assert.Contains("01:37:16  Set aside — tools/floor-check/FloorCheck.csproj (could not be read)", Dated());
+        Assert.Contains("requested SDK 8.0.100 is not installed; the report has the rest", Lines());
+    }
+
+    [Fact]
+    public void None_writes_nothing_else()
+    {
+        using ConsoleProgressReporter progress = Reporter(ProgressMode.None);
+
+        progress.Report(Testing(0) with { Mutant = Mutant("M1") });
+        _clock.Advance(TimeSpan.FromMinutes(5));
+        progress.Report(Testing(1));
+        progress.CheckForSlowMutants();
+
+        Assert.Empty(_log.ToString());
+    }
+
+    /// <summary>
+    /// #65: a mutant running past the threshold is named once, with its budget, and one that finished
+    /// in time is never named - which is what tells a slow mutant from a stuck run.
+    /// </summary>
+    [Fact]
+    public void A_slow_mutant_is_named_once_with_its_budget()
+    {
+        using ConsoleProgressReporter progress = Redirected();
+
+        progress.Report(Testing(0) with { Mutant = Mutant("M1") });
+        progress.Report(Testing(0) with { Mutant = Mutant("M2", line: 97) });
+        _clock.Advance(TimeSpan.FromSeconds(29));
+        progress.CheckForSlowMutants();
+        progress.Report(Testing(1) with { Mutant = Mutant("M2", line: 97) with { Status = Mutations.MutantStatus.Survived } });
+        _clock.Advance(TimeSpan.FromSeconds(1));
+        progress.CheckForSlowMutants();
+        _clock.Advance(TimeSpan.FromSeconds(30));
+        progress.CheckForSlowMutants();
+
+        Assert.Equal(
+            ["Testing mutants", "Slow — Conditional  Rendering/Renderer.cs:440  running for 30s (budget 11s)"],
+            Lines());
+    }
+
+    /// <summary>
+    /// #65: the live line is rewritten in place - no line break - with a bar of plain characters, the
+    /// count, the mutant in progress and the verdicts so far.
+    /// </summary>
+    [Fact]
+    public void The_live_line_is_rewritten_in_place_with_the_mutant_in_progress()
+    {
+        using (ConsoleProgressReporter progress = Reporter(ProgressMode.Live))
+        {
+            progress.Report(new MutationTestProgress(MutationTestPhase.TestingMutants, 0, 4, Mutant: Mutant("M1")));
+            _clock.Advance(TimeSpan.FromSeconds(10));
+            progress.Report(new MutationTestProgress(
+                MutationTestPhase.TestingMutants, 1, 4, Mutant: Mutant("M1") with { Status = Mutations.MutantStatus.Killed }));
+            progress.Report(new MutationTestProgress(MutationTestPhase.TestingMutants, 1, 4, Mutant: Mutant("M2", line: 97)));
+
+            string drawn = _log.ToString();
+            string last = drawn[(drawn.LastIndexOf('\r') + 1)..];
+
+            Assert.DoesNotContain('\n', drawn);
+            Assert.StartsWith(
+                "Testing mutants  [#####---------------] 1/4  25%  10s  ~30s left  Conditional  Rendering/Renderer.cs:97  killed 1",
+                last,
+                StringComparison.Ordinal);
+        }
+
+        Assert.EndsWith("\r", _log.ToString(), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// With several workers, finishing the mutant started last leaves the line naming the one still
+    /// running, not nothing.
+    /// </summary>
+    [Fact]
+    public void The_live_line_names_a_mutant_still_running_when_the_last_one_started_finishes()
+    {
+        using ConsoleProgressReporter progress = Reporter(ProgressMode.Live);
+
+        progress.Report(new MutationTestProgress(MutationTestPhase.TestingMutants, 0, 4, Mutant: Mutant("M1")));
+        _clock.Advance(TimeSpan.FromSeconds(1));
+        progress.Report(new MutationTestProgress(MutationTestPhase.TestingMutants, 0, 4, Mutant: Mutant("M2", line: 97)));
+        progress.Report(new MutationTestProgress(
+            MutationTestPhase.TestingMutants, 1, 4, Mutant: Mutant("M2", line: 97) with { Status = Mutations.MutantStatus.Killed }));
+
+        string drawn = _log.ToString();
+
+        Assert.Contains("Rendering/Renderer.cs:440", drawn[(drawn.LastIndexOf('\r') + 1)..], StringComparison.Ordinal);
+    }
+
+    /// <summary>A line wider than the terminal would wrap, and a wrapped line cannot be rewritten.</summary>
+    [Fact]
+    public void The_live_line_fits_the_terminal()
+    {
+        using ConsoleProgressReporter progress = Reporter(ProgressMode.Live, width: 30);
+
+        progress.Report(new MutationTestProgress(MutationTestPhase.TestingMutants, 0, 4, Mutant: Mutant("M1")));
+
+        Assert.Equal(29, _log.ToString().TrimStart('\r').Length);
+    }
+
+    /// <summary>A notice is written above the live line, which is then drawn again below it.</summary>
+    [Fact]
+    public void A_notice_in_live_mode_is_written_above_the_line_which_comes_back()
+    {
+        using ConsoleProgressReporter progress = Reporter(ProgressMode.Live);
+
+        progress.Report(new MutationTestProgress(MutationTestPhase.TestingMutants, 0, 4, Mutant: Mutant("M1")));
+        _clock.Advance(TimeSpan.FromSeconds(31));
+        progress.CheckForSlowMutants();
+
+        // Split on the writer's own line break: a lone carriage return is how the live line is
+        // rewritten, and treating it as a line ending would hide exactly what is being tested.
+        string[] lines = _log.ToString().Split(_log.NewLine);
+
+        Assert.EndsWith("01:37:47  Slow — Conditional  Rendering/Renderer.cs:440  running for 31s (budget 11s)", lines[0], StringComparison.Ordinal);
+        Assert.StartsWith("Testing mutants", lines[1].TrimStart('\r'), StringComparison.Ordinal);
+    }
+
     private sealed class ManualClock : TimeProvider
     {
+        private static readonly DateTimeOffset Start = new(2026, 11, 1, 1, 37, 16, TimeSpan.Zero);
+
         private long _ticks;
 
         public override long TimestampFrequency => TimeSpan.TicksPerSecond;
 
+        public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
+
         public override long GetTimestamp() => _ticks;
+
+        public override DateTimeOffset GetUtcNow() => Start.AddTicks(_ticks);
 
         public void Advance(TimeSpan by) => _ticks += by.Ticks;
     }

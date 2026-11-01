@@ -391,7 +391,20 @@ an outcome inside the scope, counted as untestable. A run still stops when nothi
 test project at all, a command line or configuration it cannot act on.
 
 Progress is written to standard error and the report to standard output, so redirecting the report
-does not drag the progress line along with it.
+does not drag the progress along with it. What standard error shows is chosen with `--progress`
+(`progress` in `killmutants.json`); nothing about the terminal is detected
+([DEC0023](docs/decisions/0023-the-console-progress-is-chosen-by-an-option-and-defaults-to-a-log-that-reads-anywhere-en.md)):
+
+| Mode | For | What it shows |
+|---|---|---|
+| `log`, the default | a CI log, a file, a pipe, and anyone who asked for nothing | dated lines: each phase once, then its count and the mutant in progress at most once a minute |
+| `live` | a person at a terminal | one line rewritten in place: a bar, the count, the time left, the mutant in progress and the verdicts so far |
+| `none` | a tool that reads the JSON report | nothing but the parts set aside |
+
+Two events are written the moment they happen rather than at the next count: a part set aside, with
+the first line of its reason, in every mode; and, except under `none`, a mutant still running after
+`--slow` (30 seconds by default), once, with the budget it was given. These lines are for people and
+may change between versions; a tool reads `--report-json`.
 
 ## Licence
 

@@ -20,6 +20,8 @@ namespace KillMutants.Cli;
 /// The untracked files a series does not count when it reads its tree, such as the
 /// <c>*.received.html</c> a snapshot test writes. Used only by a run that names a series.
 /// </param>
+/// <param name="Progress">What the console shows while the run runs: <c>log</c>, <c>live</c> or <c>none</c>.</param>
+/// <param name="Slow">How long a mutant runs before it is named as slow, written as <c>30s</c>.</param>
 /// <remarks>
 /// <para>
 /// Every setting is optional and every one mirrors a command-line option, because the file exists to
@@ -46,7 +48,9 @@ internal sealed record ConfigurationFile(
     string? StopAfter = null,
     IReadOnlyList<string>? With = null,
     string? TargetFramework = null,
-    IReadOnlyList<string>? IgnoreUntracked = null)
+    IReadOnlyList<string>? IgnoreUntracked = null,
+    string? Progress = null,
+    string? Slow = null)
 {
     /// <summary>The file KillMutants looks for in the directory it was pointed at.</summary>
     public const string Name = "killmutants.json";

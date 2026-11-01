@@ -321,7 +321,7 @@ internal sealed class MutationTestSession
                 // command line that does not parse - leaves this target unmeasurable and the others
                 // as they were (DEC0022). Its mutants are never generated; the plan names it, so that
                 // a resumed run generates them as new ones once the cause is fixed.
-                run.SetAside.Add(new SetAside(SetAsideStage.Analysis, target.ProjectUnderTest.Name, unreadable.Message));
+                SetAsideNow(run, new SetAside(SetAsideStage.Analysis, target.ProjectUnderTest.Name, unreadable.Message));
             }
         }
 
@@ -376,11 +376,11 @@ internal sealed class MutationTestSession
                 // mutants stay without a verdict, which is what a later --resume judges once the
                 // cause is fixed. Not when a stop was asked for: stopping ends the hosts the run is
                 // waiting on, and a baseline cut short that way is the stop's, handled above (DEC0013).
-                run.SetAside.Add(new SetAside(SetAsideStage.Baseline, targets[index].ProjectUnderTest.Name, red.Message));
+                SetAsideNow(run, new SetAside(SetAsideStage.Baseline, targets[index].ProjectUnderTest.Name, red.Message));
             }
             catch (CoverageException unmeasured) when (!cancellationToken.IsCancellationRequested)
             {
-                run.SetAside.Add(new SetAside(SetAsideStage.Coverage, targets[index].ProjectUnderTest.Name, unmeasured.Message));
+                SetAsideNow(run, new SetAside(SetAsideStage.Coverage, targets[index].ProjectUnderTest.Name, unmeasured.Message));
             }
 
             // After every project rather than once at the end, because the end is what a run that is
@@ -546,6 +546,27 @@ internal sealed class MutationTestSession
         }
     }
 
+    /// <summary>Sets a part of the run aside, and says so at once to whoever follows the progress.</summary>
+    /// <remarks>
+    /// The report names every part set aside, but the report comes at the end: a run that set a target
+    /// aside at minute five said so at minute seventy-five (#65).
+    /// </remarks>
+    private void SetAsideNow(RunSoFar run, SetAside part)
+    {
+        run.SetAside.Add(part);
+        _progress?.Report(new MutationTestProgress(PhaseOf(part.Stage), SetAside: part));
+    }
+
+    /// <summary>The phase a part set aside at <paramref name="stage"/> was set aside in.</summary>
+    internal static MutationTestPhase PhaseOf(SetAsideStage stage) => stage switch
+    {
+        SetAsideStage.Discovery => MutationTestPhase.Discovering,
+        SetAsideStage.Build => MutationTestPhase.Building,
+        SetAsideStage.Analysis => MutationTestPhase.Analysing,
+        SetAsideStage.Baseline => MutationTestPhase.VerifyingBaseline,
+        _ => MutationTestPhase.MeasuringCoverage,
+    };
+
     /// <summary>
     /// Tests every mutant, one per worker at a time, each worker in its own sandbox.
     /// </summary>
@@ -572,6 +593,13 @@ internal sealed class MutationTestSession
         {
             while (pending.TryDequeue(out int index))
             {
+                // Started as well as finished: a reader of a stalled run asks which mutant has been
+                // running for too long, and only the start says which one that is (#65).
+                MutantInProgress started = MutantInProgress.Started(mutants[index], budget);
+
+                _progress?.Report(new MutationTestProgress(
+                    MutationTestPhase.TestingMutants, Volatile.Read(ref tested), mutants.Count, Mutant: started));
+
                 MutantResult result = await TestMutantAsync(
                         compilation, sandbox, mutants[index], coverage, budget, cancellationToken)
                     .ConfigureAwait(false);
@@ -586,7 +614,8 @@ internal sealed class MutationTestSession
                 }
 
                 _progress?.Report(new MutationTestProgress(
-                    MutationTestPhase.TestingMutants, Interlocked.Increment(ref tested), mutants.Count));
+                    MutationTestPhase.TestingMutants, Interlocked.Increment(ref tested), mutants.Count,
+                    Mutant: started with { Status = result.Status }));
             }
         }
 
