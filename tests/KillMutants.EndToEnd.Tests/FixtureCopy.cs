@@ -599,6 +599,25 @@ internal sealed class FixtureCopy : IDisposable
                 StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// Takes <c>&lt;OutputType&gt;Exe&lt;/OutputType&gt;</c> out of the sample suite, as a project
+    /// that leaves its output type to a package such as <c>Microsoft.NET.Test.Sdk</c> is written.
+    /// Nothing here sets it back, so the suite is no test project restored or not; what differs is
+    /// whether it has a restore result, which is what the refusal speaks about (#66).
+    /// </summary>
+    public void LeaveTheSuitesOutputTypeToAPackage()
+    {
+        string project = Path.Combine(Root, "Sample.Library.Tests", "Sample.Library.Tests.csproj");
+
+        File.WriteAllText(
+            project,
+            File.ReadAllText(project).Replace("<OutputType>Exe</OutputType>", string.Empty, StringComparison.Ordinal));
+    }
+
+    /// <summary>Restores the sample suite, as <c>dotnet restore</c> on a fresh clone does.</summary>
+    public void RestoreTheSuite() =>
+        Restore(Path.Combine(Root, "Sample.Library.Tests", "Sample.Library.Tests.csproj"));
+
     private static void Restore(string project)
     {
         using var process = System.Diagnostics.Process.Start(

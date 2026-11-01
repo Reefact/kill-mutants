@@ -157,7 +157,8 @@ internal sealed class ProjectDiscovery
         {
             throw new ProjectAnalysisException(WithWhatWasSetAside(
                 $"No xUnit test project was found under '{searchDirectory}'. " +
-                "KillMutants supports xUnit 4 - the xunit.v3 package family at version 4."));
+                "KillMutants supports xUnit 4 - the xunit.v3 package family at version 4." +
+                WhatWasNotRestored(projects)));
         }
 
         RequireTheFrameworkTheyRunOn(testProjects);
@@ -501,6 +502,59 @@ internal sealed class ProjectDiscovery
         return $"Every project under the directory is read, to find the test projects.{why} " +
                $"If '{relative}' is not under test, leave it out with --exclude \"{pattern}\", " +
                "or with \"exclude\" in killmutants.json.";
+    }
+
+    /// <summary>
+    /// What a refusal for finding no test project adds when projects that reference xUnit have never
+    /// been restored: the likelier cause, and the command that removes it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A test project is recognised by being an executable, and a project that does not say
+    /// <c>&lt;OutputType&gt;Exe&lt;/OutputType&gt;</c> itself is often made one by a package:
+    /// measured, a project referencing only <c>Microsoft.NET.Test.Sdk</c> evaluates as
+    /// <c>Library</c> before <c>dotnet restore</c> and as <c>Exe</c> after it, because the property
+    /// arrives through the imports NuGet generates. On a fresh clone of
+    /// <c>Reefact/first-class-errors</c>, whose test projects are written that way, no test project
+    /// was found at all, and the refusal pointed at the one project it had set aside, which was not
+    /// the cause (#66).
+    /// </para>
+    /// <para>
+    /// Said only of projects that reference an xUnit test application and have no restore result,
+    /// and before what was set aside: it names the likelier cause first without claiming it is the
+    /// only one.
+    /// </para>
+    /// </remarks>
+    private static string WhatWasNotRestored(IReadOnlyList<ProjectFacts> projects)
+    {
+        string[] unrestored =
+        [
+            .. projects
+                .Where(project => !project.IsTestSupport && project.ReferencesATestApplicationPackage && !project.IsRestored)
+                .Select(project => project.Name)
+                .Order(StringComparer.Ordinal),
+        ];
+
+        if (unrestored.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        var message = new StringBuilder();
+
+        message.AppendLine().AppendLine().Append(
+            unrestored.Length.ToString(CultureInfo.InvariantCulture) +
+            " project(s) reference xUnit but have not been restored, which is the " +
+            "likelier cause: a test project is recognised by being an executable, and a package such as " +
+            "Microsoft.NET.Test.Sdk only makes it one once NuGet has restored it. Run 'dotnet restore' " +
+            "and try again:");
+
+        foreach (string name in unrestored)
+        {
+            message.AppendLine().Append("  ").Append(name);
+        }
+
+        return message.ToString();
     }
 
     /// <summary>

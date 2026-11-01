@@ -27,6 +27,11 @@ release rather than shipping undocumented.
 
 ### Added
 
+- A run that finds no xUnit test project names the projects that reference xUnit but were never
+  restored, and asks for `dotnet restore`, before what it set aside: a test project that leaves its
+  output type to a package such as `Microsoft.NET.Test.Sdk` is only an executable once restored, and
+  the refusal used to point at an unrelated project it had set aside (#66).
+
 - `--target-framework <tfm>` (and `targetFramework` in `killmutants.json`) names the one framework the
   test projects run on. A test project targeting several frameworks was refused outright; it is
   now refused only without the option, and the message lists what it offers. See DEC0021.

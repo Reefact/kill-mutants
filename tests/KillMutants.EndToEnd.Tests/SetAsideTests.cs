@@ -114,6 +114,43 @@ public class SetAsideTests
     }
 
     /// <summary>
+    /// #66. On a fresh clone whose test projects leave their output type to a package, no test
+    /// project is recognised until NuGet has restored them, and the refusal pointed at a project it
+    /// had set aside. It now names the unrestored projects and the command, first.
+    /// </summary>
+    [Fact]
+    public async Task A_refusal_for_no_test_project_names_those_that_were_never_restored()
+    {
+        using var fixture = FixtureCopy.Create();
+        fixture.LeaveTheSuitesOutputTypeToAPackage();
+
+        ProjectAnalysisException refused = await Assert.ThrowsAsync<ProjectAnalysisException>(() =>
+            MutationTesting.RunAsync(
+                fixture.Root, mutators: Families, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.StartsWith("No xUnit test project was found", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("1 project(s) reference xUnit but have not been restored", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("Run 'dotnet restore'", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("  Sample.Library.Tests", refused.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>Once restored, the restore is not what is wrong, and the refusal does not say it is.</summary>
+    [Fact]
+    public async Task A_refusal_for_no_test_project_does_not_blame_a_restore_that_happened()
+    {
+        using var fixture = FixtureCopy.Create();
+        fixture.LeaveTheSuitesOutputTypeToAPackage();
+        fixture.RestoreTheSuite();
+
+        ProjectAnalysisException refused = await Assert.ThrowsAsync<ProjectAnalysisException>(() =>
+            MutationTesting.RunAsync(
+                fixture.Root, mutators: Families, cancellationToken: TestContext.Current.CancellationToken));
+
+        Assert.StartsWith("No xUnit test project was found", refused.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("not been restored", refused.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Listing the tests is part of measuring coverage: a listing that fails sets the target aside
     /// at that stage, and the run reports rather than ending without a report.
     /// </summary>
