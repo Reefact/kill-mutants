@@ -124,3 +124,4 @@ request.
 | [DEC0020](0020-a-call-statement-is-removed-by-a-default-family-measured-by-a-statement-probe-en.md) | A call statement is removed by a default family, and its coverage is measured by a probe placed before it | Accepted |
 | [DEC0021](0021-the-developer-chooses-the-framework-the-test-projects-run-on-en.md) | The developer chooses the framework the test projects run on, and an ambiguous run is refused without that choice | Accepted |
 | [DEC0022](0022-a-run-carries-on-past-what-fails-and-reports-what-it-measured-and-what-it-could-not-en.md) | A run carries on past what fails, sets it aside with its reason, and reports what it measured and what it could not | Accepted |
+| [DEC0023](0023-the-console-progress-is-chosen-by-an-option-and-defaults-to-a-log-that-reads-anywhere-en.md) | The console progress is chosen by an option, not detected, and its default is a log that reads anywhere | Accepted |
