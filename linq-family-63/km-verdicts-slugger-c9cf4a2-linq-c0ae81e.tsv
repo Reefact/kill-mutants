@@ -1,0 +1,44 @@
+key	status	mutator	path:line:col	original	mutated
+083b0004f59bda0a	S	Linq	src/Slugger/Domain/Validation/ThemeValidator.cs:345:29	DeadPairs(theme).Order(StringComparer.Ordinal)	DeadPairs(theme).OrderDescending(StringComparer.Ordinal)
+084ec37a344d0c24	S	Linq	src/Slugger/Domain/Analysis/ThemeAnalyzer.cs:212:16	theme.Adjectives.Keys .Concat(theme.Participles.Keys) .Distinct(StringComparer.Ordinal) .Where(categ	theme.Adjectives.Keys .Concat(theme.Participles.Keys) .Distinct(StringComparer.Ordinal) .Where(categ
+0c1aa72ecc4536c8	K	Linq	src/Slugger/Infrastructure/Serialization/KeySpelling.cs:71:28	Math.Min(best, distance[row - 2][column - 2] + 1)	Math.Max(best, distance[row - 2][column - 2] + 1)
+11e1188bdeee71f9	K	Linq	src/Slugger/Application/UseCases/GenerateSlugsUseCase.cs:141:37	Math.Max(1, session.Count ?? 1)	Math.Min(1, session.Count ?? 1)
+13663d85bab0addb	S	Linq	src/Slugger/Domain/Analysis/ThemeAnalyzer.cs:195:16	theme.Nouns .GroupBy(noun => noun.Value, StringComparer.Ordinal) .Where(group => group.Count() > 1) 	theme.Nouns .GroupBy(noun => noun.Value, StringComparer.Ordinal) .Where(group => group.Count() > 1) 
+156ad77af361c0ba	K	Linq	src/Slugger/Domain/Validation/ThemeValidator.cs:315:29	theme.Adjectives.Keys .Concat(theme.Participles.Keys)	theme.Adjectives.Keys .Except(theme.Participles.Keys)
+16b7fe096c7b2978	S	Linq	src/Slugger.Cli/Rendering/ThemeAnalysisRenderer.cs:377:37	offenders.Take(MaxNamed)	offenders.Skip(MaxNamed)
+19e332a297157d5d	K	Linq	src/Slugger.Cli/CommandLine/SluggerApp.cs:94:26	arguments.Skip(read)	arguments.Take(read)
+27cff58ce09d096e	K	Linq	src/Slugger/Infrastructure/ThemeCatalogs/EmbeddedThemeCatalog.cs:88:16	ResourceAssembly .GetManifestResourceNames() .Where(resource => resource.StartsWith(ResourcePrefix, 	ResourceAssembly .GetManifestResourceNames() .Where(resource => resource.StartsWith(ResourcePrefix, 
+2923d45422a16b7b	S	Linq	src/Slugger/Infrastructure/ThemeCatalogs/FileSystemThemeStore.cs:87:33	Directory.EnumerateFiles(DirectoryPath, "*.json").Order(StringComparer.Ordinal)	Directory.EnumerateFiles(DirectoryPath, "*.json").OrderDescending(StringComparer.Ordinal)
+3a8b2b32c0ea059e	K	Linq	src/Slugger/Domain/Validation/ThemeCombinatorics.cs:104:52	Math.Max(1, participles)	Math.Min(1, participles)
+4805337aec0c91f1	K	Linq	src/Slugger/Domain/Analysis/ThemeAnalyzer.cs:102:13	exposure.MinBy(word => word.Nouns)	exposure.MaxBy(word => word.Nouns)
+4d0131e54ee26ec0	S	Linq	src/Slugger/Domain/Analysis/ThemeAnalyzer.cs:238:23	theme.Nouns.Select(noun => noun.Value).DefaultIfEmpty(string.Empty).Max(SegmentsIn)	theme.Nouns.Select(noun => noun.Value).DefaultIfEmpty(string.Empty).Min(SegmentsIn)
+4f844a477f64774f	S	Linq	src/Slugger/Domain/Analysis/ThemeAnalyzer.cs:182:26	inUse.MinBy(combinatorics.CombinationsForCategory)	inUse.MaxBy(combinatorics.CombinationsForCategory)
+5aa1bc52c98acef5	K	Linq	src/Slugger.Cli/CommandLine/CliErrors.cs:159:37	choices.Take(choices.Count - 1)	choices.Skip(choices.Count - 1)
+69c9f548370a79e7	S	Linq	src/Slugger/Domain/Validation/ThemeValidator.cs:558:42	words.MaxBy(word => SlugBudget.LengthOf([word], style))	words.MinBy(word => SlugBudget.LengthOf([word], style))
+6e5dadee8cc5375b	S	Linq	src/Slugger/Domain/Validation/ThemeValidator.cs:158:16	theme.Adjectives.Values.SelectMany(words => words) .Intersect(theme.Participles.Values.SelectMany(wo	theme.Adjectives.Values.SelectMany(words => words) .Intersect(theme.Participles.Values.SelectMany(wo
+775b0a3db117c74a	K	Linq	src/Slugger/Domain/Validation/ThemeCombinatorics.cs:80:28	Math.Max(1, _resolver.ParticiplePool(noun).Count)	Math.Min(1, _resolver.ParticiplePool(noun).Count)
+7a4aee3ae5a4f8a9	K	Linq	src/Slugger/Domain/Validation/ThemeValidator.cs:412:13	theme.Adjectives.Values.Concat(theme.Participles.Values)	theme.Adjectives.Values.Except(theme.Participles.Values)
+82e6c8c5267b793b	S	Linq	src/Slugger/Infrastructure/Serialization/KeySpelling.cs:45:23	Math.Min(MostSlips, candidate.Length / 3)	Math.Max(MostSlips, candidate.Length / 3)
+8b006faa5da4b909	K	Linq	src/Slugger/Domain/Analysis/ThemeAnalyzer.cs:141:29	theme.Nouns.MinBy(size)	theme.Nouns.MaxBy(size)
+8e714944b006b911	K	Linq	src/Slugger/Domain/Validation/ThemeValidator.cs:398:42	words.Take(MaxNamedPerRemark)	words.Skip(MaxNamedPerRemark)
+9326e2601695b9af	K	Linq	src/Slugger.Cli/CommandLine/CommandLineReader.cs:170:45	asked.Skip(1)	asked.Take(1)
+941e0d7ce8c8066d	K	Linq	src/Slugger/Infrastructure/Serialization/KeySpelling.cs:69:41	Math.Min(dropped, added)	Math.Max(dropped, added)
+9ab5b8e622073252	K	Linq	src/Slugger/Domain/Validation/ThemeValidator.cs:315:29	theme.Adjectives.Keys .Concat(theme.Participles.Keys) .Distinct(StringComparer.Ordinal) .Order(Strin	theme.Adjectives.Keys .Concat(theme.Participles.Keys) .Distinct(StringComparer.Ordinal) .OrderDescen
+a5a77ab36fb5cc92	S	Linq	src/Slugger/Domain/Analysis/ThemeAnalyzer.cs:237:23	Words(theme.Adjectives).DefaultIfEmpty(string.Empty).Max(SegmentsIn)	Words(theme.Adjectives).DefaultIfEmpty(string.Empty).Min(SegmentsIn)
+a69def099be0fcb9	S	Linq	src/Slugger/Domain/Validation/ThemeValidator.cs:381:25	paths.All(path => path.Length == 0)	paths.Any(path => path.Length == 0)
+adb6b2e8fdd0a1ce	S	Linq	src/Slugger/Domain/Analysis/ThemeAnalyzer.cs:212:16	theme.Adjectives.Keys .Concat(theme.Participles.Keys)	theme.Adjectives.Keys .Except(theme.Participles.Keys)
+ae0e40d85b434b79	K	Linq	src/Slugger/Domain/Analysis/ThemeAnalyzer.cs:103:13	exposure.MaxBy(word => word.Nouns)	exposure.MinBy(word => word.Nouns)
+b3f61d21ee5a7511	K	Linq	src/Slugger/Infrastructure/ThemeCatalogs/FileSystemThemeCatalog.cs:84:16	Directory .EnumerateFiles(DirectoryPath, "*.json") .Select(file => Path.GetFileNameWithoutExtension(	Directory .EnumerateFiles(DirectoryPath, "*.json") .Select(file => Path.GetFileNameWithoutExtension(
+c7fba8c2caf89fd1	S	Linq	src/Slugger/Domain/Analysis/ThemeAnalyzer.cs:241:25	Words(theme.Participles).DefaultIfEmpty(string.Empty).Max(SegmentsIn)	Words(theme.Participles).DefaultIfEmpty(string.Empty).Min(SegmentsIn)
+c97c086b85b2707c	K	Linq	src/Slugger/Infrastructure/Serialization/KeySpelling.cs:69:32	Math.Min(Math.Min(dropped, added), replaced)	Math.Max(Math.Min(dropped, added), replaced)
+cd2d91012e4502c1	S	Linq	src/Slugger/Domain/Validation/ThemeValidator.cs:658:16	resolver.Nouns .SelectMany(noun => noun.Categories) .Where(category => category != ThemeResolver.Com	resolver.Nouns .SelectMany(noun => noun.Categories) .Where(category => category != ThemeResolver.Com
+ce2b433de89f54b2	K	Linq	src/Slugger/Infrastructure/ThemeCatalogs/ChainedThemeCatalog.cs:64:16	Catalogs .SelectMany(catalog => catalog.ListNames()) .Distinct(StringComparer.Ordinal) .Order(String	Catalogs .SelectMany(catalog => catalog.ListNames()) .Distinct(StringComparer.Ordinal) .OrderDescend
+d4a9c0fd7f9dd7fd	K	Linq	src/Slugger/Domain/Resolution/ThemeResolver.cs:291:38	participles.MinBy(word => word.Length)	participles.MaxBy(word => word.Length)
+d5d7cf7046c95a90	K	Linq	src/Slugger.Cli/Rendering/ReportRenderer.cs:69:28	sameKind.Take(MaxNamedPerKind)	sameKind.Skip(MaxNamedPerKind)
+dbfb5a5be2eab1c1	K	Linq	src/Slugger/Domain/Validation/ThemeValidator.cs:158:16	theme.Adjectives.Values.SelectMany(words => words) .Intersect(theme.Participles.Values.SelectMany(wo	theme.Adjectives.Values.SelectMany(words => words) .Union(theme.Participles.Values.SelectMany(words 
+dc1635e88b7b8d80	S	Linq	src/Slugger/Domain/Validation/ThemeValidator.cs:172:16	theme.Nouns .Where(noun => noun.Categories.Contains(ThemeResolver.CommonCategory, StringComparer.Ord	theme.Nouns .Where(noun => noun.Categories.Contains(ThemeResolver.CommonCategory, StringComparer.Ord
+df72c99e55186ede	S	Linq	src/Slugger.Cli/Rendering/ThemeAnalysisRenderer.cs:142:38	sameKind.Take(3)	sameKind.Skip(3)
+ef2f2ac5dacc50f9	N	Linq	src/Slugger/Infrastructure/ThemeCatalogs/ChainedThemeCatalog.cs:41:16	Catalogs.Any(catalog => catalog.Contains(name))	Catalogs.All(catalog => catalog.Contains(name))
+f03f91fdf2869f4b	K	Linq	src/Slugger/Domain/Validation/ThemeValidator.cs:389:42	paths.Take(MaxNamedPerRemark)	paths.Skip(MaxNamedPerRemark)
+f8296999bfc88c57	S	Linq	src/Slugger/Domain/Validation/ThemeValidator.cs:364:23	reach.Any(noun => noun.Adjectives.Contains(pair.Key) && noun.Participles.Contains(participle))	reach.All(noun => noun.Adjectives.Contains(pair.Key) && noun.Participles.Contains(participle))
+fb7c4b8f9f07f44a	S	Linq	src/Slugger/Domain/Analysis/ThemeAnalyzer.cs:69:22	refusals.Any(reason => reason.Code == ThemeErrors.Codes.MalformedJson)	refusals.All(reason => reason.Code == ThemeErrors.Codes.MalformedJson)
