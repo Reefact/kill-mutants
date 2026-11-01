@@ -234,8 +234,10 @@ internal static class Program
     private static async Task<MutationTestReport> RunAsync(
         RunSettings settings, ReportFiles? files, CancellationToken stopToken)
     {
+        // The mode the user chose, and nothing detected (DEC0023). Only the width is asked of the
+        // console, so a live line fits it; outside a terminal the answer is 0 and nothing is cut.
         using var progress = new ConsoleProgressReporter(
-            Console.Error, rewritesInPlace: !Console.IsErrorRedirected);
+            Console.Error, settings.Progress, slowAfter: settings.Slow, width: () => Console.WindowWidth);
 
         // The one place that knows both halves: the option names a git revision, so the CLI is
         // where a git-backed change source is built. The core is handed the source and never learns
@@ -775,7 +777,7 @@ internal static class Program
               A project may keep its habits in killmutants.json, in the directory above. Every
               option below that states a habit has a key there - configuration, exclude, mutators,
               with, without, parallel, coverage, breakAt, verifyKills, reportJson, stopAfter,
-              targetFramework, ignoreUntracked - and
+              targetFramework, ignoreUntracked, progress, slow - and
               anything given on the command line wins. --since and --resume say what one run is
               about, and have none.
 
@@ -835,6 +837,15 @@ internal static class Program
                   --verify-kills <n>    Test n of the mutants reported killed a second time, on
                                         their own, and report any verdict that does not repeat.
                                         Costs one test run each. Defaults to 0.
+                  --progress <mode>     What standard error shows while the run runs. 'log', the
+                                        default: dated lines, a count and the mutant in progress
+                                        once a minute, for a CI log, a file or a terminal alike.
+                                        'live': one line rewritten in place, for a terminal.
+                                        'none': nothing but the parts set aside. Nothing about
+                                        the terminal is detected. These lines are for people and
+                                        may change between versions: tools read --report-json.
+                  --slow <time>         Name a mutant still running after this long - 30s by
+                                        default - once, at the moment it happens.
               -h, --help                Show this help.
 
             Exit codes:

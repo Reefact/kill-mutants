@@ -558,6 +558,15 @@ internal sealed class ProjectDiscovery
         return message.ToString();
     }
 
+    /// <summary>Sets a project aside, and says so at once to whoever follows the progress (#65).</summary>
+    private void SetAsideNow(SetAside part)
+    {
+        _setAside.Add(part);
+        _progress?.Report(new MutationTestProgress(
+            part.Stage == SetAsideStage.Build ? MutationTestPhase.Building : MutationTestPhase.Discovering,
+            SetAside: part));
+    }
+
     /// <summary>
     /// A refusal that ends discovery, followed by what it set aside on the way.
     /// </summary>
@@ -639,7 +648,7 @@ internal sealed class ProjectDiscovery
                 // readable as it was, and the report names this one with the reason and the way out.
                 // Nothing is known of what it holds, which is why a project set aside here withholds
                 // the run's score - it may have been the only suite reaching some code.
-                _setAside.Add(new SetAside(
+                SetAsideNow(new SetAside(
                     SetAsideStage.Discovery,
                     Path.GetRelativePath(searchDirectory, path).Replace('\\', '/'),
                     unreadable.Message + Environment.NewLine + WayOut(path, searchDirectory)));
@@ -839,7 +848,7 @@ internal sealed class ProjectDiscovery
                 continue;
             }
 
-            _setAside.Add(new SetAside(
+            SetAsideNow(new SetAside(
                 SetAsideStage.Build, target.ProjectUnderTest.Name, string.Join(Environment.NewLine, reasons)));
         }
 

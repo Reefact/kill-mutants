@@ -35,6 +35,8 @@ namespace KillMutants.Cli;
 /// The untracked files a series does not count when it reads its tree, already validated; null or
 /// empty for a run that names no series, whatever the file says. See DEC0025.
 /// </param>
+/// <param name="Progress">What the console shows while the run runs; <c>log</c> unless asked. See DEC0023.</param>
+/// <param name="Slow">How long a mutant runs before it is named as slow, or null for the default.</param>
 internal sealed record RunSettings(
     string Directory,
     string Configuration,
@@ -51,7 +53,9 @@ internal sealed record RunSettings(
     string? Resume = null,
     IReadOnlyList<MutatorName>? WithMutators = null,
     string? TargetFramework = null,
-    IReadOnlyList<string>? IgnoreUntracked = null)
+    IReadOnlyList<string>? IgnoreUntracked = null,
+    ProgressMode Progress = ProgressMode.Log,
+    TimeSpan? Slow = null)
 {
     /// <summary>Resolves what was asked against what the project keeps in its file.</summary>
     /// <param name="options">What the command line asked for.</param>
@@ -108,8 +112,14 @@ internal sealed record RunSettings(
             options.Resume,
             with,
             options.TargetFramework ?? NamedFramework(file?.TargetFramework),
-            ignoreUntracked);
+            ignoreUntracked,
+            options.Progress ?? CommandLineOptions.ProgressModeOf(file?.Progress) ?? ProgressMode.Log,
+            options.Slow ?? SlowIn(file));
     }
+
+    /// <summary>The threshold the file names, already refused by <see cref="RejectImpossible"/> if unreadable.</summary>
+    private static TimeSpan? SlowIn(ConfigurationFile? file) =>
+        file?.Slow is { } text && Duration.TryParse(text, out TimeSpan after) ? after : null;
 
     /// <summary>
     /// The untracked files a series does not count, from the command line or else the file, refused
@@ -321,6 +331,20 @@ internal sealed record RunSettings(
         {
             throw new ArgumentException(
                 $"'{stopAfter}' is not {Duration.Expected} ('stopAfter' in {ConfigurationFile.Name}).");
+        }
+
+        // Refused rather than ignored, as the command line refuses it: a project that wrote 'quiet'
+        // would otherwise get the default without a word, and DEC0023 holds the three names.
+        if (file.Progress is { } progress && CommandLineOptions.ProgressModeOf(progress) is null)
+        {
+            throw new ArgumentException(
+                $"'{progress}' is not {CommandLineOptions.ProgressModes} ('progress' in {ConfigurationFile.Name}).");
+        }
+
+        if (file.Slow is { } slow && (!Duration.TryParse(slow, out TimeSpan after) || after <= TimeSpan.Zero))
+        {
+            throw new ArgumentException(
+                $"'{slow}' is not {Duration.Expected}, longer than nothing ('slow' in {ConfigurationFile.Name}).");
         }
     }
 

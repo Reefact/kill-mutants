@@ -41,6 +41,14 @@ release rather than shipping undocumented.
   returned the same way. The rule names no class, so `ImmutableArray`'s `Any` is reached as
   `Enumerable`'s is, and a method of your own that merely shares a name is left alone. Two
   `Any` → `All` gaps confirmed on `first-class-errors` motivated it. See DEC0024, #63.
+- `--progress <mode>` (and `progress` in `killmutants.json`) chooses what standard error shows while
+  the run runs: `log`, the default, dated lines with the mutant in progress once a minute; `live`,
+  one line rewritten in place with a bar, the time left, the mutant in progress and the verdicts so
+  far; `none`, only the parts set aside. Nothing about the terminal is detected any more, where the
+  form used to follow whether standard error was redirected. A part set aside is written the moment
+  it happens, and `--slow <time>` (30 seconds by default) names a mutant still running after that
+  long, once. The lines are not an interface: tools read the JSON report. See DEC0023 (#65).
+
 - `--ignore-untracked <pattern>` (and `ignoreUntracked` in `killmutants.json`) names the untracked
   files a `--resume` series does not count when it reads its tree, such as the `.received` files a
   snapshot test writes beside its source. Each file ignored is named on standard error and recorded

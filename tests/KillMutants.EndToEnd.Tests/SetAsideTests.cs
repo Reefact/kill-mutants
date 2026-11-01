@@ -67,7 +67,8 @@ public class SetAsideTests
     /// <summary>
     /// A project MSBuild cannot read is set aside at discovery, and the rest of the directory is
     /// measured. Nothing is known of what it holds - it may have been the only suite reaching some
-    /// code - so the run gives no score.
+    /// code - so the run gives no score. The progress says so when it happens, and names each mutant
+    /// as it starts and as it finishes (#65).
     /// </summary>
     [Fact]
     public async Task An_unreadable_project_is_set_aside_and_withholds_the_score()
@@ -78,8 +79,18 @@ public class SetAsideTests
         await File.WriteAllTextAsync(
             Path.Combine(probe, "Probe.csproj"), "<Project Sdk=\"Microsoft.NET.Sdk\">", TestContext.Current.CancellationToken);
 
+        var progress = new Recorded();
+
         MutationTestReport report = await MutationTesting.RunAsync(
-            fixture.Root, mutators: Families, cancellationToken: TestContext.Current.CancellationToken);
+            fixture.Root, mutators: Families, progress: progress, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal("tools/probe/Probe.csproj", Assert.Single(progress.All, reported => reported.SetAside is not null).SetAside!.Name);
+
+        MutantInProgress[] mutants = [.. progress.All.Select(reported => reported.Mutant).OfType<MutantInProgress>()];
+
+        Assert.NotEmpty(mutants);
+        Assert.Equal(mutants.Count(mutant => mutant.IsFinished), mutants.Count(mutant => !mutant.IsFinished));
+        Assert.All(mutants, mutant => Assert.Equal("Sample.Library/Ages.cs", mutant.Path));
 
         SetAside unreadable = Assert.Single(report.SetAside);
         Assert.Equal(SetAsideStage.Discovery, unreadable.Stage);
@@ -194,5 +205,15 @@ public class SetAsideTests
 
         public Task<TestRunOutcome> RunAsync(TestRunRequest request, CancellationToken cancellationToken = default) =>
             inner.RunAsync(request, cancellationToken);
+    }
+
+    /// <summary>Every progress report, kept in order, from whichever worker sent it.</summary>
+    private sealed class Recorded : IProgress<MutationTestProgress>
+    {
+        private readonly System.Collections.Concurrent.ConcurrentQueue<MutationTestProgress> _reported = new();
+
+        public IReadOnlyList<MutationTestProgress> All => [.. _reported];
+
+        public void Report(MutationTestProgress value) => _reported.Enqueue(value);
     }
 }
