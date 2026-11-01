@@ -470,7 +470,8 @@ public class ResumeCommandLineTests
     /// <summary>
     /// DEC0025. The same tree, with the project naming what its tests write: the series continues,
     /// says which file it did not count, and records it in the report. An edit to a tracked file is
-    /// still a change to the code, whatever the pattern.
+    /// still a change to the code, whatever the pattern. Every ignored file is named, more than ten
+    /// included - #66 left sixteen (review of #68).
     /// </summary>
     [Fact]
     public async Task A_series_continues_over_the_untracked_files_it_was_told_to_ignore()
@@ -489,13 +490,22 @@ public class ResumeCommandLineTests
             Path.Combine(fixture.Root, "Sample.Library.Tests", "Ages.received.html"), "<p/>",
             TestContext.Current.CancellationToken);
 
+        for (int index = 1; index <= 15; index++)
+        {
+            await File.WriteAllTextAsync(
+                Path.Combine(fixture.Root, "Sample.Library.Tests", $"Snapshot{index:00}.received.html"), "<p/>",
+                TestContext.Current.CancellationToken);
+        }
+
         (exitCode, _, error) = await RunAsync(
             fixture.Root, "--mutators", "Comparison", "--report-json", reportPath, "--resume", "one",
             "--ignore-untracked", "*.received.html");
 
         Assert.True(exitCode == Success, error);
-        Assert.Contains("were not counted against the commit", error, StringComparison.Ordinal);
+        Assert.Contains("16 untracked file(s)", error, StringComparison.Ordinal);
         Assert.Contains("Sample.Library.Tests/Ages.received.html", error, StringComparison.Ordinal);
+        Assert.Contains("Sample.Library.Tests/Snapshot15.received.html", error, StringComparison.Ordinal);
+        Assert.DoesNotContain("more.", error, StringComparison.Ordinal);
 
         using (JsonDocument report = await ReadAsync(reportPath))
         {

@@ -620,6 +620,11 @@ internal static class Program
     /// Names the untracked files a pattern of <c>--ignore-untracked</c> left out of the tree, on
     /// standard error, every run - so that accepting them is never silent (DEC0025).
     /// </summary>
+    /// <remarks>
+    /// Every one, with no "and N more": the record promises that each ignored file is named, and the
+    /// run that motivated it (#66) left sixteen. A refusal can shorten its list, because it changes
+    /// nothing; this is the one place a person sees what the series accepted (review of #68).
+    /// </remarks>
     private static void ReportIgnoredUntracked(CodeReading reading, string directory)
     {
         if (reading.Ignored.Count == 0)
@@ -631,7 +636,10 @@ internal static class Program
             $"Warning: {reading.Ignored.Count.ToString(CultureInfo.InvariantCulture)} untracked file(s) under " +
             $"'{directory}' were not counted against the commit, as --ignore-untracked asked:");
 
-        WriteSome(reading.Ignored.Select(file => file.Path));
+        foreach (IgnoredFile file in reading.Ignored)
+        {
+            Console.Error.WriteLine($"  {file.Path}");
+        }
     }
 
     /// <summary>
@@ -713,21 +721,6 @@ internal static class Program
         return text.ToString();
     }
 
-    private static void WriteSome(IEnumerable<string> files)
-    {
-        const int Shown = 10;
-        string[] all = [.. files];
-
-        foreach (string file in all.Take(Shown))
-        {
-            Console.Error.WriteLine($"  {file}");
-        }
-
-        if (all.Length > Shown)
-        {
-            Console.Error.WriteLine($"  and {(all.Length - Shown).ToString(CultureInfo.InvariantCulture)} more.");
-        }
-    }
 
     private static void RestoreEarlierReport(ReportFiles? files)
     {
