@@ -325,6 +325,35 @@ internal static class MutationSite
     }
 
     /// <summary>
+    /// True when the expression is part of a lambda the compiler turns into an expression tree.
+    /// </summary>
+    /// <remarks>
+    /// An expression tree accepts no pattern at all (CS8122), so a family whose mutant writes one
+    /// asks first: <c>Pattern</c> negates a type test around its operator there (review of #38),
+    /// and <c>NullCoalescing</c> does not force a fallback there, since its forced form tests the
+    /// left for <c>null</c> with a pattern (review of #81).
+    /// </remarks>
+    public static bool IsInsideAnExpressionTree(SyntaxNode node, SemanticModel semanticModel)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(semanticModel);
+
+        return node.Ancestors().OfType<AnonymousFunctionExpressionSyntax>().Any(lambda =>
+            semanticModel.GetTypeInfo(lambda).ConvertedType is INamedTypeSymbol type &&
+            IsAnExpressionTreeType(type));
+    }
+
+    private static bool IsAnExpressionTreeType(INamedTypeSymbol type)
+    {
+        for (INamedTypeSymbol? current = type; current is not null; current = current.BaseType)
+        {
+            if (current.ToDisplayString() == "System.Linq.Expressions.LambdaExpression") { return true; }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// True when the developer has marked this code as not measured, with
     /// <c>[ExcludeFromCodeCoverage]</c>.
     /// </summary>

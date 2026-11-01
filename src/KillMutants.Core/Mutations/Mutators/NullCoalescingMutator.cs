@@ -68,7 +68,7 @@ internal sealed class NullCoalescingMutator : IMutator
             yield break;
         }
 
-        if (CanBeForced(coalesce) &&
+        if (CanBeForced(coalesce, semanticModel) &&
             Forced(coalesce) is { } forced &&
             Fits(forced, coalesce, expected, semanticModel))
         {
@@ -135,13 +135,17 @@ internal sealed class NullCoalescingMutator : IMutator
     /// Nothing on either side is refused as the swap refuses it: <c>null ?? b</c> cannot be tested
     /// for null at all, and <c>a ?? null</c> forced answers <c>null</c> whatever <c>a</c> is, a
     /// question about code nobody writes on purpose. A <c>throw</c> on the right has no type to
-    /// give both branches. The same expression on both sides forces into the original.
+    /// give both branches. The same expression on both sides forces into the original. And an
+    /// expression tree accepts no pattern (CS8122), so <c>a is null</c> cannot stand in one: the
+    /// speculative binding does not see that, and the mutant would only ever be a compile error -
+    /// found in review of #81.
     /// </remarks>
-    private static bool CanBeForced(BinaryExpressionSyntax coalesce) =>
+    private static bool CanBeForced(BinaryExpressionSyntax coalesce, SemanticModel semanticModel) =>
         !IsNothing(coalesce.Left) &&
         !IsNothing(coalesce.Right) &&
         !coalesce.Right.IsKind(SyntaxKind.ThrowExpression) &&
-        !SyntaxFactory.AreEquivalent(coalesce.Left, coalesce.Right);
+        !SyntaxFactory.AreEquivalent(coalesce.Left, coalesce.Right) &&
+        !MutationSite.IsInsideAnExpressionTree(coalesce, semanticModel);
 
     /// <summary>True for an operand that can only be null: <c>null</c> or a default.</summary>
     private static bool IsNothing(ExpressionSyntax operand) =>

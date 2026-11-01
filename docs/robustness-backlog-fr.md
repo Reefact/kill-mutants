@@ -1440,7 +1440,10 @@ branches, la même expression des deux côtés — et la forme forcée doit se c
 l'original représentait, comme l'échange le doit (RB-011) : `count ?? 0` vers un `int`, dont le
 retrait ne compile pas, a désormais le repli forcé pour seul mutant. Entre parenthèses, parce que
 `??` lie plus fort que `?:` et que l'original peut se trouver à droite d'un autre `??` ou dans la
-condition d'un ternaire.
+condition d'un ternaire. Pas produit dans un arbre d'expression, qui n'accepte aucun motif
+(CS8122) : la liaison spéculative ne le voit pas, et le mutant n'aurait jamais pu être rapporté
+autrement que comme une erreur de compilation — relevé en revue de #81, et la même frontière à
+laquelle `Pattern` s'arrête déjà.
 
 **Pourquoi pas de record.** L'échange (#17, `be39346`) est entré dans la famille sans record, et
 cette variante applique un principe accepté à un opérateur frère plutôt que de choisir entre des

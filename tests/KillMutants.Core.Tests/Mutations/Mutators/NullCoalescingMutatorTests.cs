@@ -51,6 +51,21 @@ public class NullCoalescingMutatorTests
             mutated);
     }
 
+    /// <summary>
+    /// An expression tree accepts no pattern (CS8122), and the forced form tests the left with
+    /// one, so inside a tree the fallback is dropped and nothing is forced (review of #81).
+    /// </summary>
+    [Fact]
+    public void A_coalesce_inside_an_expression_tree_is_not_forced()
+    {
+        IReadOnlyList<string> mutated = MutatorTestBase.MutatedTexts(
+            Mutator,
+            "int unused",
+            "System.Linq.Expressions.Expression<System.Func<string?, string>> M({0}) => s => s.ToString() ?? \"x\";");
+
+        Assert.Equal(["s.ToString()"], mutated);
+    }
+
     /// <summary>A <c>throw</c> has no type to give both branches of the forced form.</summary>
     [Fact]
     public void A_throw_fallback_is_not_forced()

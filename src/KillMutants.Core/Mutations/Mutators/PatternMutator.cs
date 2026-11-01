@@ -48,7 +48,7 @@ internal sealed class PatternMutator : IMutator
             BinaryExpressionSyntax test when test.IsKind(SyntaxKind.IsExpression) &&
                                              test.Right is TypeSyntax type &&
                                              IsDecidedAtRunTime(test, semanticModel) =>
-                [IsInsideAnExpressionTree(test, semanticModel) ? NegatedAsAnOperator(test) : NegatedTypeTest(test, type, semanticModel)],
+                [MutationSite.IsInsideAnExpressionTree(test, semanticModel) ? NegatedAsAnOperator(test) : NegatedTypeTest(test, type, semanticModel)],
             RelationalPatternSyntax relational when BelongsToAnIsExpression(relational) => Shifted(relational),
             BinaryPatternSyntax binary when BelongsToAnIsExpression(binary) => Arms(binary, semanticModel),
             _ => [],
@@ -120,22 +120,6 @@ internal sealed class PatternMutator : IMutator
         SyntaxFactory.PrefixUnaryExpression(
             SyntaxKind.LogicalNotExpression,
             SyntaxFactory.ParenthesizedExpression(test.WithoutTrivia()));
-
-    /// <summary>True when the expression is part of a lambda the compiler turns into an expression tree.</summary>
-    private static bool IsInsideAnExpressionTree(SyntaxNode node, SemanticModel semanticModel) =>
-        node.Ancestors().OfType<AnonymousFunctionExpressionSyntax>().Any(lambda =>
-            semanticModel.GetTypeInfo(lambda).ConvertedType is INamedTypeSymbol type &&
-            IsAnExpressionTreeType(type));
-
-    private static bool IsAnExpressionTreeType(INamedTypeSymbol type)
-    {
-        for (INamedTypeSymbol? current = type; current is not null; current = current.BaseType)
-        {
-            if (current.ToDisplayString() == "System.Linq.Expressions.LambdaExpression") { return true; }
-        }
-
-        return false;
-    }
 
     /// <summary><c>x is T</c>, the type test that predates patterns, as <c>x is not T</c>.</summary>
     /// <remarks>
