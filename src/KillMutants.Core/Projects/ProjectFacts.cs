@@ -144,6 +144,20 @@ internal sealed record ProjectFacts(
              TestApplicationPackages.Contains(package, StringComparer.OrdinalIgnoreCase)));
 
     /// <summary>
+    /// True when the project references a package that makes a test application, whatever its
+    /// output type - which is what an unrestored test project still shows.
+    /// </summary>
+    public bool ReferencesATestApplicationPackage =>
+        PackageReferences.Any(package => TestApplicationPackages.Contains(package, StringComparer.OrdinalIgnoreCase));
+
+    /// <summary>True when NuGet has written the restore result the project names.</summary>
+    /// <remarks>
+    /// <c>ProjectAssetsFile</c> is named by the SDK whether or not a restore ever ran, so the file
+    /// itself is what says it did.
+    /// </remarks>
+    public bool IsRestored => ProjectAssetsFile.Length > 0 && File.Exists(ProjectAssetsFile);
+
+    /// <summary>
     /// True when the project is test scaffolding rather than code under test, and says so itself.
     /// </summary>
     /// <remarks>
