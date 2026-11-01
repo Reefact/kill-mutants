@@ -80,15 +80,16 @@ public sealed class MutationTestReport
         Ignored = CountOutcome(MutantOutcome.Ignored);
         Score = MutationScore.FromCounts(Detected, Undetected);
 
-        // Every rule the project wrote, in its order, with what it silenced - a rule that silenced
-        // nothing included, because that is how a project learns a pattern no longer matches what it
-        // once did (DEC0026).
+        // Every rule the project wrote, in its order, with every mutant it silences - a mutant two
+        // rules silence counted under each, so that the count does not depend on the order of the
+        // list - and a rule that silenced nothing included, because that is how a project learns a
+        // pattern no longer matches what it once did (DEC0026).
         IgnoredByRule =
         [
             .. (ignoreCalls ?? []).Select(rule => new IgnoredRule(
                 rule,
                 results.Count(result => result.Status == MutantStatus.Ignored &&
-                                        string.Equals(result.Mutant.IgnoredBy, rule, StringComparison.Ordinal)))),
+                                        result.Mutant.IgnoredBy.Contains(rule, StringComparer.Ordinal)))),
         ];
         UndetectedFromWidening = Widened.Count == 0 || inTheChange is null
             ? 0
@@ -169,8 +170,9 @@ public sealed class MutationTestReport
     public int Ignored { get; }
 
     /// <summary>
-    /// Each rule of <c>--ignore-calls</c> with the number of mutants it silenced, in the order the
-    /// project wrote them, a rule that silenced nothing included.
+    /// Each rule of <c>--ignore-calls</c> with the number of mutants it silences, in the order the
+    /// project wrote them, a rule that silenced nothing included. A mutant silenced by several rules
+    /// counts under each, so the counts can sum to more than <see cref="Ignored"/>.
     /// </summary>
     public IReadOnlyList<IgnoredRule> IgnoredByRule { get; }
 

@@ -119,8 +119,7 @@ internal sealed class MutantGenerator
                 // Likewise once per node, and only once something is proposed: a call the project
                 // does not hear still has its mutants generated, marked with the rule, so that the
                 // report counts what was silenced rather than losing it (DEC0026).
-                string? ignoredBy = null;
-                bool askedIgnored = false;
+                IReadOnlyList<string>? ignoredBy = null;
 
                 foreach (IMutator mutator in _catalog.Mutators)
                 {
@@ -138,11 +137,7 @@ internal sealed class MutantGenerator
                             break;
                         }
 
-                        if (!askedIgnored)
-                        {
-                            ignoredBy = _ignoredCalls.RuleSilencing(node, semanticModel);
-                            askedIgnored = true;
-                        }
+                        ignoredBy ??= _ignoredCalls.RulesSilencing(node, semanticModel);
 
                         mutants.Add(new Mutant(_nextId, candidate, _root, ignoredBy));
                         _nextId = _nextId.Next();

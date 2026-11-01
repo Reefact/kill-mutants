@@ -535,11 +535,11 @@ public class ConsoleReportWriterTests
                     "class C { bool M(object x, int a) { System.ArgumentNullException.ThrowIfNull(x); return a >= 18; } }",
                     "/src/Ages.cs"),
                 cancellationToken: TestContext.Current.CancellationToken);
-        Mutant guard = Assert.Single(mutants, mutant => mutant.IgnoredBy is not null);
+        Mutant guard = Assert.Single(mutants, mutant => mutant.IsIgnored);
         MutantResult[] results =
         [
             new(guard, MutantStatus.Ignored),
-            .. mutants.Where(mutant => mutant.IgnoredBy is null).Select(mutant => new MutantResult(mutant, MutantStatus.Killed)),
+            .. mutants.Where(mutant => !mutant.IsIgnored).Select(mutant => new MutantResult(mutant, MutantStatus.Killed)),
         ];
 
         var writer = new StringWriter();
@@ -552,10 +552,47 @@ public class ConsoleReportWriterTests
         Assert.Contains(
             "Ignored by the project's rules (1)\n\n" +
             "  *.ThrowIfNull  1 mutant\n" +
-            "  *.Nobody       silenced nothing - the pattern recognises no call of this run\n",
+            "  *.Nobody       silenced no mutant of this run\n",
             output,
             StringComparison.Ordinal);
+        Assert.DoesNotContain("counted under each", output, StringComparison.Ordinal);
         Assert.Contains("Mutation score: 100% (1 ignored by the project's rules)", output, StringComparison.Ordinal);
         Assert.Contains("1 ignored", output[output.IndexOf("By mutator", StringComparison.Ordinal)..], StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Review of #74: two rules that overlap are each credited, and the report says so rather than
+    /// letting the rows disagree with the heading.
+    /// </summary>
+    [Fact]
+    public void A_mutant_silenced_by_several_rules_is_counted_under_each_and_the_report_says_so()
+    {
+        IReadOnlyList<Mutant> mutants = new MutantGenerator(
+                MutatorCatalog.Default,
+                ignoredCalls: KillMutants.Filtering.IgnoredCalls.Of(["*.ThrowIfNull", "System.ArgumentNullException.ThrowIfNull"]))
+            .Generate(
+                TestCompilation.From("class C { void M(object x) { System.ArgumentNullException.ThrowIfNull(x); } }", "/src/Ages.cs"),
+                cancellationToken: TestContext.Current.CancellationToken);
+        Mutant guard = Assert.Single(mutants);
+
+        var writer = new StringWriter();
+
+        ConsoleReportWriter.Write(
+            writer,
+            new MutationTestReport(
+                [new MutantResult(guard, MutantStatus.Ignored)],
+                ignoreCalls: ["*.ThrowIfNull", "System.ArgumentNullException.ThrowIfNull"]));
+
+        string output = writer.ToString().ReplaceLineEndings("\n");
+
+        const string narrow = "System.ArgumentNullException.ThrowIfNull";
+
+        Assert.Contains(
+            "Ignored by the project's rules (1)\n\n" +
+            $"  {"*.ThrowIfNull".PadRight(narrow.Length)}  1 mutant\n" +
+            $"  {narrow}  1 mutant\n" +
+            "  (a mutant silenced by several rules is counted under each)\n",
+            output,
+            StringComparison.Ordinal);
     }
 }
