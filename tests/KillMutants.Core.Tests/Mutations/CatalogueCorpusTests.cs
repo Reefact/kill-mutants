@@ -46,6 +46,7 @@ public class CatalogueCorpusTests
             { "a quantifier over a sequence", "int[] xs", "bool M({0}) => System.Linq.Enumerable.Any(xs, x => x > 0);" },
             { "an order, then a slice of it", "int[] xs", "object M({0}) => System.Linq.Enumerable.Take(System.Linq.Enumerable.OrderBy(xs, x => x), 1);" },
             { "a quantifier over an immutable array, bound outside Enumerable", "System.Collections.Immutable.ImmutableArray<int> xs", "bool M({0}) => System.Linq.ImmutableArrayExtensions.Any(xs, x => x > 0);" },
+            { "a pair returned by reference, where a reference is required", "F f", "class F { private int v; public ref int Min() => ref v; public ref int Max() => ref v; } public ref int M({0}) => ref f.Min();" },
             { "an awaited decision handed back", "System.Func<System.Threading.Tasks.Task<bool>> f", "async System.Threading.Tasks.Task<bool> M({0}) => await f();" },
             { "an out into a declared local behind &&", "string? s", "int M({0}) { int y; if (s != null && int.TryParse(s, out y)) { return y; } return 0; }" },
             { "an out into a declared local behind ||", "string? s", "int M({0}) { int y; if (s == null || !int.TryParse(s, out y)) { return 0; } return y; }" },
@@ -352,6 +353,22 @@ public class CatalogueCorpusTests
     /// <c>$"{global::…Hit(1, a + b)}"</c>, where the colon reads as the start of a format specifier.
     /// The build failed with CS0103 and no coverage could be measured at all.
     /// </remarks>
+    /// <summary>
+    /// A call that returns by reference is swapped like any other, and runs against the whole suite:
+    /// <c>Hit&lt;T&gt;</c> returns a value, and <c>ref Hit(…)</c> is no variable (review of #72).
+    /// </summary>
+    [Fact]
+    public void A_call_that_returns_by_reference_is_mutated_but_carries_no_recorder()
+    {
+        (Compilation compilation, IReadOnlyList<Mutant> mutants) = Analyse(
+            "F f",
+            "class F { private int v; public ref int Min() => ref v; public ref int Max() => ref v; } " +
+            "public ref int M({0}) => ref f.Min();");
+
+        Assert.Equal(["f.Max()"], mutants.Select(mutant => mutant.MutatedText));
+        Assert.Empty(MutationSites.From(mutants, compilation).IdentifierByNode);
+    }
+
     [Theory]
     [MemberData(nameof(Corpus))]
     [MemberData(nameof(ReadThroughAConstant))]
