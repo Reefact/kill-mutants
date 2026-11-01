@@ -45,6 +45,30 @@ public class ProjectCompilationTests
         Assert.Contains(parsed.SourceFiles, file => file.Path.EndsWith("Ages.cs", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// Review of #68. A series told to ignore an untracked assembly - a local reference, a generator -
+    /// would otherwise inherit verdicts reached against another one, since <c>*.dll</c> passes the
+    /// sensitive list: every reference and analyzer the command line names is an input (DEC0025).
+    /// </summary>
+    [Fact]
+    public async Task Every_referenced_assembly_and_analyzer_is_an_input_of_the_compilation()
+    {
+        var msBuild = new MsBuildQuery("Release");
+        string project = FixtureRepository.SampleLibraryProject;
+        string directory = Path.GetDirectoryName(project)!;
+
+        IReadOnlyList<string> arguments = await msBuild.GetCscCommandLineAsync(project, cancellationToken: TestContext.Current.CancellationToken);
+        CSharpCommandLineArguments parsed = CscCommandLine.Parse(arguments, directory);
+        ProjectCompilation compilation = ProjectCompilation.Create(parsed, directory);
+
+        Assert.NotEmpty(parsed.MetadataReferences);
+        Assert.NotEmpty(parsed.AnalyzerReferences);
+        Assert.All(parsed.MetadataReferences, reference => Assert.Contains(
+            Path.GetFullPath(Path.Combine(directory, reference.Reference)), compilation.InputFiles));
+        Assert.All(parsed.AnalyzerReferences, analyzer => Assert.Contains(
+            Path.GetFullPath(Path.Combine(directory, analyzer.FilePath)), compilation.InputFiles));
+    }
+
     [Fact]
     public async Task An_empty_command_line_is_rejected_rather_than_silently_compiling_nothing()
     {

@@ -41,6 +41,28 @@ public sealed class IgnoredUntrackedInputTests : IDisposable
         Assert.Contains("Nothing was tested", refused.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Review of #68: '*.dll' passes the sensitive list, so an untracked local reference a series was
+    /// told to ignore is caught here, once the build has named it.
+    /// </summary>
+    [Fact]
+    public void A_continuing_series_that_ignored_a_referenced_assembly_is_refused()
+    {
+        string library = Path.Combine(_directory, "libs", "Vendor.dll");
+        var earlier = new RunPlan(
+            RunPlan.CurrentFormat,
+            "one",
+            new RunIdentity(new CodeState("0123abcd", IsExact: true), "test-tool", "Release", true, [], [], []),
+            Mutants: null,
+            Runs: []);
+        PlanKeeper keeper = Keeper(earlier, new IgnoredFile("libs/Vendor.dll", library));
+
+        ResumeException refused = Assert.Throws<ResumeException>(
+            () => Begin(keeper, Path.Combine(_directory, "Library.cs"), library));
+
+        Assert.Contains("'libs/Vendor.dll'", refused.Message, StringComparison.Ordinal);
+    }
+
     /// <summary>A continuing series promises its plan and log as they were, and says so.</summary>
     [Fact]
     public void A_continuing_series_refused_for_it_keeps_its_plan()

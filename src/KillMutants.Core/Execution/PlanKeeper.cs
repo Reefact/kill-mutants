@@ -99,7 +99,7 @@ internal sealed class PlanKeeper
     /// <param name="ledger">The verdicts, which inherit what may be inherited.</param>
     /// <param name="compiled">
     /// Every file the compiler reads for the projects under mutation, as full paths: sources,
-    /// additional files, analyzer configuration and resources.
+    /// additional files, analyzer configuration, resources, referenced assemblies and analyzers.
     /// </param>
     /// <exception cref="ResumeException">
     /// The series cannot be continued by this run, or the compiler reads a file the run was told to

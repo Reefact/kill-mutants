@@ -29,12 +29,15 @@ internal sealed class ProjectCompilation
 
     /// <summary>
     /// Every file the compiler reads from disk for this project, as full paths: the sources, the
-    /// additional files, the analyzer configuration and the resources the command line names.
+    /// additional files, the analyzer configuration, the resources, the assemblies it references and
+    /// the analyzers and generators it loads.
     /// </summary>
     /// <remarks>
     /// Kept so a series can check that none of them is a file it was told to ignore (DEC0025). The
-    /// resources are given by the caller, read from the raw arguments - see
-    /// <see cref="CscCommandLine.ResourceFiles"/>.
+    /// assemblies count as much as the sources: a local reference or a generator changed between two
+    /// runs changes the assembly while the commit, the mutants and the graph stay the same, and no
+    /// pattern of the sensitive list names <c>*.dll</c> (review of #68). The resources are given by
+    /// the caller, read from the raw arguments - see <see cref="CscCommandLine.ResourceFiles"/>.
     /// </remarks>
     public IReadOnlyList<string> InputFiles { get; private init; } = [];
 
@@ -149,6 +152,8 @@ internal sealed class ProjectCompilation
                 .. arguments.AdditionalFiles.Select(file => file.Path),
                 .. arguments.AnalyzerConfigPaths,
                 .. resourceFiles ?? [],
+                .. arguments.MetadataReferences.Select(reference => Resolved(reference.Reference, projectDirectory)),
+                .. arguments.AnalyzerReferences.Select(analyzer => Resolved(analyzer.FilePath, projectDirectory)),
             ],
         };
     }
@@ -307,15 +312,16 @@ internal sealed class ProjectCompilation
 
         foreach (CommandLineReference reference in arguments.MetadataReferences)
         {
-            string path = Path.IsPathRooted(reference.Reference)
-                ? reference.Reference
-                : Path.Combine(projectDirectory, reference.Reference);
-
-            references.Add(MetadataReference.CreateFromFile(path, reference.Properties));
+            references.Add(MetadataReference.CreateFromFile(
+                Resolved(reference.Reference, projectDirectory), reference.Properties));
         }
 
         return references;
     }
+
+    /// <summary>A path from the command line, against the project directory when it is relative.</summary>
+    private static string Resolved(string path, string projectDirectory) =>
+        Path.GetFullPath(Path.IsPathRooted(path) ? path : Path.Combine(projectDirectory, path));
 
     /// <summary>
     /// Stops warnings from failing a mutant's compilation. A mutation can legitimately make live
