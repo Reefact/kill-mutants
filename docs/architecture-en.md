@@ -98,8 +98,9 @@ what the contract is for.
 | CLI | `KillMutants.Cli` | `dotnet killmutants`, thresholds and exit codes (DEC0009) |
 
 **The catalogue.** Sixteen families, each a separate `IMutator`, each with its own tests and each
-exercised end to end against a real fixture project. Fourteen run by default; `NumericLiteral` and
-`Linq` run only when `--with` adds them or `--mutators` names them (DEC0019, DEC0024).
+exercised end to end against a real fixture project. Fifteen run by default; `NumericLiteral` runs
+only when `--with` adds it or `--mutators` names it (DEC0019). `Linq` was opt-in until it had been
+measured (DEC0024), and runs by default since (DEC0027).
 
 | Family | Rewrites | Into |
 |---|---|---|
@@ -119,7 +120,7 @@ exercised end to end against a real fixture project. Fourteen run by default; `N
 | `StringLiteral` | `"text"` | `""`, and `""` into a non-empty string |
 | `Statement` | a statement that only calls something: `f();`, `await f();`, `x?.f();`, `new X();` - unless it assigns a variable (`=` or `out`) or calls a `[Conditional]` method; and a `yield return`, unless it assigns a variable or is the only one of its iterator (#62) | `{ }` - DEC0020 |
 | `NumericLiteral` *(opt-in)* | an integer literal in the initializer of a constant, a field or a property, outside a pattern - a `const` only when its own project reads it | `n + 1` and `n - 1`, each only when it keeps the literal's type and fits the type it is used as |
-| `Linq` *(opt-in)* | a call to one member of eleven pairs - `Any`/`All`, `Min`/`Max`, `MinBy`/`MaxBy`, `OrderBy`/`OrderByDescending`, `ThenBy`/`ThenByDescending`, `Order`/`OrderDescending`, `Skip`/`Take`, `SkipWhile`/`TakeWhile`, `SkipLast`/`TakeLast`, `Union`/`Intersect`, `Concat`/`Except` - when the counterpart binds to a twin: a method of the same containing type, with the same return type, returned the same way | the counterpart - DEC0024 |
+| `Linq` | a call to one member of eleven pairs - `Any`/`All`, `Min`/`Max`, `MinBy`/`MaxBy`, `OrderBy`/`OrderByDescending`, `ThenBy`/`ThenByDescending`, `Order`/`OrderDescending`, `Skip`/`Take`, `SkipWhile`/`TakeWhile`, `SkipLast`/`TakeLast`, `Union`/`Intersect`, `Concat`/`Except` - when the counterpart binds to a twin: a method of the same containing type, with the same return type, returned the same way | the counterpart - DEC0024 |
 
 **What it deliberately does not mutate.** The catalogue is selective rather than exhaustive: every
 mutant costs a test run, so an operator earns its place by the signal it carries. The inventory below

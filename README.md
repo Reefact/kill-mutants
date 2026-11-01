@@ -12,8 +12,8 @@ they miss **survives**.
 Early, but working end to end. Milestone 1 was a deliberately tiny vertical slice — one project
 pair, one mutator, one mutant, executed for real — and every milestone since has widened it on that
 same foundation: multi-project solutions, coverage-driven test selection, mutants tested in
-parallel, console and JSON reports, a `--break-at` quality gate, and a catalogue of fourteen mutator
-families, with a fifteenth to opt in to. It is now packaged as a `dotnet` tool and has been run against its own source. The intent
+parallel, console and JSON reports, a `--break-at` quality gate, and a catalogue of fifteen mutator
+families, with a sixteenth to opt in to. It is now packaged as a `dotnet` tool and has been run against its own source. The intent
 throughout is a foundation that has been shown to work, rather than a large catalog resting on an
 engine that has never run.
 
@@ -74,6 +74,7 @@ The few choices that are expensive to reverse. Each is recorded in [docs/decisio
 | DEC0024 — An opt-in `Linq` family swaps a method for its counterpart, when the counterpart is a twin on the same type | [en](docs/decisions/0024-an-opt-in-linq-family-swaps-a-method-for-its-twin-on-the-same-type-en.md) | [fr](docs/decisions/0024-an-opt-in-linq-family-swaps-a-method-for-its-twin-on-the-same-type-fr.md) |
 | DEC0025 — A series names the untracked files that do not make its tree dirty, and a pattern that could cover code is refused | [en](docs/decisions/0025-a-series-names-the-untracked-files-that-do-not-make-its-tree-dirty-en.md) | [fr](docs/decisions/0025-a-series-names-the-untracked-files-that-do-not-make-its-tree-dirty-fr.md) |
 | DEC0026 — A project names the calls it silences, and the report counts what it chose not to hear | [en](docs/decisions/0026-a-project-names-the-calls-it-silences-and-the-report-counts-what-it-chose-not-to-hear-en.md) | [fr](docs/decisions/0026-a-project-names-the-calls-it-silences-and-the-report-counts-what-it-chose-not-to-hear-fr.md) |
+| DEC0027 — `Linq` runs by default, and `--without` leaves it out | [en](docs/decisions/0027-linq-runs-by-default-and-without-leaves-it-out-en.md) | [fr](docs/decisions/0027-linq-runs-by-default-and-without-leaves-it-out-fr.md) |
 
 ## Installing
 
@@ -315,12 +316,13 @@ a constant are tested against the whole suite, since there is nothing to measure
 whether a test exercises a quantifier, an order or a slice on both sides, or on one only. A call is
 swapped only when the counterpart binds to a twin of the method called: declared on the same type,
 returning the same type the same way. So the rule names no class - `ImmutableArray`'s `Any` is
-reached as `Enumerable`'s is - and leaves alone a method of your own that merely shares a name. It
-is off by default until it has been measured (DEC0024):
+reached as `Enumerable`'s is - and leaves alone a method of your own that merely shares a name
+(DEC0024). It runs by default since it was measured
+([DEC0027](docs/decisions/0027-linq-runs-by-default-and-without-leaves-it-out-en.md)); a project
+that does not want it leaves it out:
 
 ```bash
-dotnet killmutants --with Linq
-dotnet killmutants --mutators Linq
+dotnet killmutants --without Linq
 ```
 
 Code marked `[ExcludeFromCodeCoverage]` is left alone: the attribute already says this code is not

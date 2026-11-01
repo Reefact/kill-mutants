@@ -29,6 +29,7 @@ internal sealed class MutatorCatalog
         new PatternMutator(),
         new StringLiteralMutator(),
         new StatementMutator(),
+        new LinqMutator(),
     ]);
 
     /// <summary>
@@ -38,12 +39,12 @@ internal sealed class MutatorCatalog
     /// <remarks>
     /// Named rather than levelled. Stryker.NET groups its optional mutators by level, so raising it
     /// turns several on at once; with one optional family here, a level would be a name for a list
-    /// of one. DEC0019.
+    /// of one. DEC0019. <c>Linq</c> was here first, until it had been measured (DEC0024), and
+    /// entered the default catalogue on that measurement (DEC0027).
     /// </remarks>
     private static readonly IReadOnlyList<IMutator> OptIn =
     [
         new NumericLiteralMutator(),
-        new LinqMutator(),
     ];
 
     private static readonly IReadOnlyList<IMutator> Every = [.. Default.Mutators, .. OptIn];
