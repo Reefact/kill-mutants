@@ -269,6 +269,93 @@ internal sealed class GitRepository
             "--", ".",
         ];
 
+        arguments.AddRange(await ExcludingAsync(leaveAlone, cancellationToken).ConfigureAwait(false));
+
+        return !string.IsNullOrWhiteSpace(
+            await RunRawAsync(
+                    Root,
+                    arguments,
+                    "The state of the working tree could not be read.",
+                    cancellationToken)
+                .ConfigureAwait(false));
+    }
+
+    /// <summary>
+    /// What makes the tree differ from what <c>HEAD</c> points at, split into the two kinds a series
+    /// treats differently: whether any tracked file or submodule differs, and every untracked file,
+    /// one by one, relative to the top with <c>/</c>. <paramref name="leaveAlone"/> is left out as
+    /// <see cref="HasUncommittedChangesAsync(IEnumerable{string}, CancellationToken)"/> leaves it out.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Asked only when the untracked files have to be named - a series that ignores some (DEC0025), a
+    /// refusal that says which appeared - because listing every file of an untracked directory costs
+    /// what the plain question does not.
+    /// </para>
+    /// <para>
+    /// An untracked file inside a submodule shows here as the submodule modified, which is a tracked
+    /// difference: such a file is never one a pattern can ignore, and a series stays as strict about
+    /// it as DEC0015 made it.
+    /// </para>
+    /// </remarks>
+    public async Task<WorkingTreeChanges> ChangesAsync(
+        IEnumerable<string> leaveAlone,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(leaveAlone);
+
+        List<string> arguments =
+        [
+            "status", "--porcelain", "-z", "--untracked-files=all", "--ignore-submodules=none",
+            "--", ".",
+        ];
+
+        arguments.AddRange(await ExcludingAsync(leaveAlone, cancellationToken).ConfigureAwait(false));
+
+        string output = await RunRawAsync(
+                Root,
+                arguments,
+                "The state of the working tree could not be read.",
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        string[] entries = output.Split('\0', StringSplitOptions.RemoveEmptyEntries);
+        bool tracked = false;
+        List<string> untracked = [];
+
+        for (int index = 0; index < entries.Length; index++)
+        {
+            string entry = entries[index];
+
+            if (entry.StartsWith("?? ", StringComparison.Ordinal))
+            {
+                untracked.Add(entry[3..]);
+
+                continue;
+            }
+
+            tracked = true;
+
+            // A rename or a copy is followed, with -z, by the path it came from as an entry of its
+            // own, which is not a status line and must not be read as one.
+            if (entry.Length > 1 && (entry[0] is 'R' or 'C' || entry[1] is 'R' or 'C'))
+            {
+                index++;
+            }
+        }
+
+        return new WorkingTreeChanges(tracked, [.. untracked.Order(StringComparer.Ordinal)]);
+    }
+
+    /// <summary>
+    /// The pathspecs that leave <paramref name="leaveAlone"/> out of a status, each placed in the
+    /// working copy by git - see <see cref="HasUncommittedChangesAsync(IEnumerable{string}, CancellationToken)"/>.
+    /// </summary>
+    private async Task<IReadOnlyList<string>> ExcludingAsync(
+        IEnumerable<string> leaveAlone, CancellationToken cancellationToken)
+    {
+        List<string> pathspecs = [];
+
         foreach (IGrouping<string, string> inDirectory in leaveAlone
                      .Select(Path.GetFullPath)
                      .GroupBy(path => Path.GetDirectoryName(path) ?? string.Empty, StringComparer.Ordinal))
@@ -282,17 +369,11 @@ internal sealed class GitRepository
 
             foreach (string path in inDirectory)
             {
-                arguments.Add($":(exclude){prefix}{Path.GetFileName(path)}");
+                pathspecs.Add($":(exclude){prefix}{Path.GetFileName(path)}");
             }
         }
 
-        return !string.IsNullOrWhiteSpace(
-            await RunRawAsync(
-                    Root,
-                    arguments,
-                    "The state of the working tree could not be read.",
-                    cancellationToken)
-                .ConfigureAwait(false));
+        return pathspecs;
     }
 
     /// <summary>

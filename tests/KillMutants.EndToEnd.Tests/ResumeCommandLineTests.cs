@@ -434,4 +434,90 @@ public class ResumeCommandLineTests
 
         Assert.False(plan.RootElement.GetProperty("identity").GetProperty("code").GetProperty("isExact").GetBoolean());
     }
+
+    /// <summary>
+    /// #66. A run of the series wrote a snapshot's '.received' file beside its test, and was killed
+    /// before the notice that would have named it. The next run refuses the dirty tree - DEC0015 - and
+    /// now names the file as one the series may have written, with the two ways out.
+    /// </summary>
+    [Fact]
+    public async Task A_refused_series_names_the_untracked_files_that_appeared_since_it_began()
+    {
+        using var fixture = FixtureCopy.Create();
+        await MakeWorkingCopyAsync(fixture);
+
+        string reportPath = Path.Combine(fixture.Root, "out", "report.json");
+
+        (int exitCode, _, string error) = await RunAsync(
+            fixture.Root, "--mutators", "Comparison", "--report-json", reportPath, "--resume", "one");
+
+        Assert.True(exitCode == Success, error);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(fixture.Root, "Sample.Library.Tests", "Ages.received.html"), "<p/>",
+            TestContext.Current.CancellationToken);
+
+        (exitCode, _, error) = await RunAsync(
+            fixture.Root, "--mutators", "Comparison", "--report-json", reportPath, "--resume", "one");
+
+        Assert.Equal(CouldNotRun, exitCode);
+        Assert.Contains("1 untracked file(s) appeared since the series began", error, StringComparison.Ordinal);
+        Assert.Contains("Sample.Library.Tests/Ages.received.html", error, StringComparison.Ordinal);
+        Assert.Contains("--ignore-untracked", error, StringComparison.Ordinal);
+        Assert.DoesNotContain("Tracked files differ", error, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// DEC0025. The same tree, with the project naming what its tests write: the series continues,
+    /// says which file it did not count, and records it in the report. An edit to a tracked file is
+    /// still a change to the code, whatever the pattern.
+    /// </summary>
+    [Fact]
+    public async Task A_series_continues_over_the_untracked_files_it_was_told_to_ignore()
+    {
+        using var fixture = FixtureCopy.Create();
+        await MakeWorkingCopyAsync(fixture);
+
+        string reportPath = Path.Combine(fixture.Root, "out", "report.json");
+
+        (int exitCode, _, string error) = await RunAsync(
+            fixture.Root, "--mutators", "Comparison", "--report-json", reportPath, "--resume", "one");
+
+        Assert.True(exitCode == Success, error);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(fixture.Root, "Sample.Library.Tests", "Ages.received.html"), "<p/>",
+            TestContext.Current.CancellationToken);
+
+        (exitCode, _, error) = await RunAsync(
+            fixture.Root, "--mutators", "Comparison", "--report-json", reportPath, "--resume", "one",
+            "--ignore-untracked", "*.received.html");
+
+        Assert.True(exitCode == Success, error);
+        Assert.Contains("were not counted against the commit", error, StringComparison.Ordinal);
+        Assert.Contains("Sample.Library.Tests/Ages.received.html", error, StringComparison.Ordinal);
+
+        using (JsonDocument report = await ReadAsync(reportPath))
+        {
+            JsonElement runs = report.RootElement.GetProperty("series").GetProperty("runs");
+            JsonElement second = runs[1];
+
+            Assert.Equal(2, runs.GetArrayLength());
+            Assert.Equal(JsonValueKind.Null, runs[0].GetProperty("ignoredUntracked").ValueKind);
+            Assert.Equal("*.received.html", second.GetProperty("ignoreUntracked")[0].GetString());
+            Assert.Equal("Sample.Library.Tests/Ages.received.html", second.GetProperty("ignoredUntracked")[0].GetString());
+        }
+
+        await File.AppendAllTextAsync(
+            Path.Combine(fixture.Root, "Sample.Library", "Ages.cs"), "\n// edited\n",
+            TestContext.Current.CancellationToken);
+
+        (exitCode, _, error) = await RunAsync(
+            fixture.Root, "--mutators", "Comparison", "--report-json", reportPath, "--resume", "one",
+            "--ignore-untracked", "*.received.html");
+
+        Assert.Equal(CouldNotRun, exitCode);
+        Assert.Contains("uncommitted changes", error, StringComparison.Ordinal);
+        Assert.Contains("Tracked files differ", error, StringComparison.Ordinal);
+    }
 }

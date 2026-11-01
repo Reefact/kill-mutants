@@ -357,7 +357,8 @@ internal sealed class MutationTestSession
             scope,
             searchDirectory,
             TestFrameworkOf(targets),
-            run.Verdicts);
+            run.Verdicts,
+            compilations.SelectMany(compilation => compilation.InputFiles));
 
         for (int index = 0; index < targets.Count; index++)
         {

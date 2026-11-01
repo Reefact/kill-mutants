@@ -301,10 +301,21 @@ public sealed record PlannedMutant(
 /// <param name="Verdicts">How many verdicts it reached itself, inherited ones excluded.</param>
 /// <param name="KillsReVerified">How many kills it tested a second time, alone.</param>
 /// <param name="Disagreements">The verdicts whose re-test did not agree, so the series keeps them.</param>
+/// <param name="IgnoreUntracked">
+/// The patterns it was given with <c>--ignore-untracked</c>, or null for none - which is also what a
+/// plan written before DEC0025 says.
+/// </param>
+/// <param name="IgnoredUntracked">
+/// The untracked files those patterns left out when it read its tree, relative to the directory, or
+/// null for none.
+/// </param>
 /// <remarks>
 /// <para>
 /// Runtime, operating system and processors are recorded and never compared - see
-/// <see cref="RunIdentity"/>. Disagreements live here because the log holds verdicts and nothing
+/// <see cref="RunIdentity"/>. So are the patterns of <c>--ignore-untracked</c> and the files they left
+/// out: they decide whether a tree counts as its commit, not what a verdict is, and DEC0025 lets them
+/// change from one run of a series to the next. Recorded per run, so a reader of the series sees which
+/// run accepted which files. Disagreements live here because the log holds verdicts and nothing
 /// else, and a disagreement is a qualification of one, recorded without being announced.
 /// </para>
 /// <para>
@@ -326,7 +337,9 @@ public sealed record PlannedRun(
     int LogLinesBefore,
     int Verdicts,
     int KillsReVerified,
-    IReadOnlyList<PlannedDisagreement> Disagreements);
+    IReadOnlyList<PlannedDisagreement> Disagreements,
+    IReadOnlyList<string>? IgnoreUntracked = null,
+    IReadOnlyList<string>? IgnoredUntracked = null);
 
 /// <summary>A verdict a re-test did not reproduce, by the key of its mutant.</summary>
 /// <param name="Key">The mutant's stable identity.</param>

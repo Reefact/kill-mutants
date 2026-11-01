@@ -97,7 +97,14 @@ internal sealed class PlanKeeper
     /// <param name="root">The directory the run was pointed at.</param>
     /// <param name="testFramework">The xUnit the test applications were built on.</param>
     /// <param name="ledger">The verdicts, which inherit what may be inherited.</param>
-    /// <exception cref="ResumeException">The series cannot be continued by this run.</exception>
+    /// <param name="compiled">
+    /// Every file the compiler reads for the projects under mutation, as full paths: sources,
+    /// additional files and analyzer configuration.
+    /// </param>
+    /// <exception cref="ResumeException">
+    /// The series cannot be continued by this run, or the compiler reads a file the run was told to
+    /// ignore.
+    /// </exception>
     public void Begin(
         IReadOnlyList<MutationTestTarget> targets,
         IReadOnlyList<IReadOnlyList<Mutant>> mutantsOf,
@@ -105,13 +112,16 @@ internal sealed class PlanKeeper
         RunScope scope,
         string root,
         string? testFramework,
-        VerdictLedger ledger)
+        VerdictLedger ledger,
+        IEnumerable<string>? compiled = null)
     {
         ArgumentNullException.ThrowIfNull(targets);
         ArgumentNullException.ThrowIfNull(mutantsOf);
         ArgumentNullException.ThrowIfNull(notGenerated);
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentNullException.ThrowIfNull(ledger);
+
+        RefuseIgnoredInputs(compiled ?? []);
 
         IReadOnlyList<Mutant> all = [.. mutantsOf.SelectMany(mutants => mutants)];
 
@@ -171,6 +181,50 @@ internal sealed class PlanKeeper
         _mutants = [.. all.Select(Describe)];
 
         Write(ledger.ReachedHere);
+    }
+
+    /// <summary>
+    /// Refuses the run when the compiler reads a file a pattern of <c>--ignore-untracked</c> left out of
+    /// the code state.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The second of DEC0025's two checks, and the exact one. The first refused, before anything ran,
+    /// every pattern that could cover a file of a known kind; this one catches a pattern the first
+    /// could not judge, such as a directory of generated sources, once the build has named what it
+    /// compiles. A file the compiler reads is code: ignoring it would let the series inherit verdicts
+    /// reached without it.
+    /// </para>
+    /// <para>
+    /// Here, before the plan is rewritten, so that a continuing series keeps its plan and its log as
+    /// they were - the promise every refusal at this point makes. It sees only the projects under
+    /// mutation, whose command lines are the ones read (DEC0003); a source a pattern ignores in a test
+    /// project is the risk the record names rather than one this can close.
+    /// </para>
+    /// </remarks>
+    private void RefuseIgnoredInputs(IEnumerable<string> compiled)
+    {
+        if (_continuation.IgnoredUntracked is not { Count: > 0 } ignored)
+        {
+            return;
+        }
+
+        HashSet<string> read = new(compiled.Select(Path.GetFullPath), ProjectPaths.Comparer);
+
+        if (ignored.FirstOrDefault(file => read.Contains(file.FullPath)) is not { } input)
+        {
+            return;
+        }
+
+        string files = _continuation.Earlier is null
+            ? "Nothing was tested."
+            : "The plan and the log were left as they were.";
+
+        throw new ResumeException(
+            $"'{input.Path}' was left out of the tree by --ignore-untracked, and the compiler reads it: an " +
+            $"untracked file the build compiles is code, and the series '{_continuation.Series}' cannot " +
+            $"measure a commit without it. {files} Commit the file, delete it, or narrow the pattern " +
+            "so that it no longer matches it.");
     }
 
     /// <summary>Keeps a disagreement <c>--verify-kills</c> found, so the series carries it.</summary>
@@ -289,7 +343,9 @@ internal sealed class PlanKeeper
             _logLinesBefore,
             reachedHere,
             _killsReVerified,
-            [.. _disagreements]));
+            [.. _disagreements],
+            _continuation.IgnoreUntracked is { Count: > 0 } patterns ? patterns : null,
+            _continuation.IgnoredUntracked is { Count: > 0 } ignored ? [.. ignored.Select(file => file.Path)] : null));
 
         return runs;
     }

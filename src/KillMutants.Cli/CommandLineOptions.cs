@@ -20,6 +20,9 @@ namespace KillMutants.Cli;
 /// <param name="Resume">The series this run continues or starts, or null when it names none.</param>
 /// <param name="WithMutators">Families to add to the others, or null when the option was not given.</param>
 /// <param name="TargetFramework">The framework the test projects run on, or null when it was not given.</param>
+/// <param name="IgnoreUntracked">
+/// The untracked files a series does not count, or null when the option was not given.
+/// </param>
 /// <remarks>
 /// Every setting is nullable, and that is the point: <c>--configuration Release</c> and saying
 /// nothing must be told apart, because a project's <c>killmutants.json</c> sits between them.
@@ -43,7 +46,8 @@ internal sealed record CommandLineOptions(
     bool StopAfterCleared = false,
     string? Resume = null,
     IReadOnlyList<MutatorName>? WithMutators = null,
-    string? TargetFramework = null)
+    string? TargetFramework = null,
+    IReadOnlyList<string>? IgnoreUntracked = null)
 {
     /// <summary>
     /// Parses the command line. The defaults are chosen so that <c>dotnet killmutants</c> with no
@@ -77,6 +81,7 @@ internal sealed record CommandLineOptions(
         bool stopAfterCleared = false;
         string? resume = null;
         string? targetFramework = null;
+        List<string>? ignoreUntracked = null;
 
         for (int index = 0; index < args.Count; index++)
         {
@@ -140,6 +145,22 @@ internal sealed record CommandLineOptions(
                     }
 
                     exclude.Add(args[index]);
+
+                    break;
+
+                case "--ignore-untracked":
+                    index++;
+
+                    // Only the shape here. What a pattern may cover is settled in RunSettings, so the
+                    // file and the command line are refused by one rule with one message (DEC0025).
+                    if (index >= args.Count || string.IsNullOrWhiteSpace(args[index]))
+                    {
+                        throw new ArgumentException(
+                            $"'{argument}' needs a pattern naming the untracked files the tests write, " +
+                            "such as '*.received.html'.");
+                    }
+
+                    (ignoreUntracked ??= []).Add(args[index]);
 
                     break;
 
@@ -325,7 +346,8 @@ internal sealed record CommandLineOptions(
             stopAfterCleared,
             resume,
             withMutators,
-            targetFramework);
+            targetFramework,
+            ignoreUntracked);
     }
 
     /// <summary>Parses a comma-separated list of mutator family names.</summary>

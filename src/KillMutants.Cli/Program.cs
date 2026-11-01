@@ -515,9 +515,11 @@ internal static class Program
         // The code state, on the other hand, is read on every run that writes a report: a plan that
         // records what code it describes is what lets a later run, or a person, know what a killed
         // run's remainder is about. Null outside a working copy, which is an ordinary place to run.
-        CodeState? code = await GitCodeState
-            .ReadAsync(settings.Directory, store.Files, CancellationToken.None)
+        IReadOnlyList<string> ignoreUntracked = settings.IgnoreUntracked ?? [];
+        CodeReading? reading = await GitCodeState
+            .ReadAsync(settings.Directory, store.Files, ignoreUntracked, CancellationToken.None)
             .ConfigureAwait(false);
+        CodeState? code = reading?.State;
 
         var identity = new RunIdentity(
             code,
@@ -546,14 +548,20 @@ internal static class Program
             {
                 if (identity.WhyNotContinuedBy(earlier.Identity) is { } why)
                 {
+                    string uncounted = earlier.Identity.Code is { IsExact: true } && !code.IsExact
+                        ? await WhatMadeTheTreeDirtyAsync(settings, store, ignoreUntracked).ConfigureAwait(false)
+                        : string.Empty;
+
                     throw new ResumeException(
                         $"The series '{series}' cannot be continued by this run: {why}. Nothing was " +
                         $"changed. Choose another series name, or delete '{store.PlanPath}' to start " +
-                        "this one again.");
+                        "this one again." + uncounted);
                 }
 
                 continues = true;
             }
+
+            ReportIgnoredUntracked(reading!, settings.Directory);
 
             if (!code.IsExact)
             {
@@ -592,7 +600,8 @@ internal static class Program
         {
             return new ReportFiles(
                 VerdictLog.Append(store.LogPath),
-                new RunContinuation(settings.Resume, identity, earlier, verdicts, store),
+                new RunContinuation(
+                    settings.Resume, identity, earlier, verdicts, store, ignoreUntracked, reading?.Ignored),
                 earlierReport);
         }
 
@@ -602,8 +611,122 @@ internal static class Program
 
         return new ReportFiles(
             VerdictLog.Create(store.LogPath),
-            new RunContinuation(settings.Resume, identity, Earlier: null, [], store),
+            new RunContinuation(
+                settings.Resume, identity, Earlier: null, [], store, ignoreUntracked, reading?.Ignored),
             EarlierReport: null);
+    }
+
+    /// <summary>
+    /// Names the untracked files a pattern of <c>--ignore-untracked</c> left out of the tree, on
+    /// standard error, every run - so that accepting them is never silent (DEC0025).
+    /// </summary>
+    private static void ReportIgnoredUntracked(CodeReading reading, string directory)
+    {
+        if (reading.Ignored.Count == 0)
+        {
+            return;
+        }
+
+        Console.Error.WriteLine(
+            $"Warning: {reading.Ignored.Count.ToString(CultureInfo.InvariantCulture)} untracked file(s) under " +
+            $"'{directory}' were not counted against the commit, as --ignore-untracked asked:");
+
+        WriteSome(reading.Ignored.Select(file => file.Path));
+    }
+
+    /// <summary>
+    /// What the refusal of a dirty tree adds when the series began on a clean one: the untracked files
+    /// that were not counted then, which a run of the series may have written itself (#66).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The series began on a tree that was exactly its commit, apart from the tool's own files and
+    /// whatever its patterns ignored, so every untracked file now counted appeared since - and the
+    /// commonest writer is the series' own run: a snapshot test writes a <c>.received</c> file beside
+    /// its source when a mutant changes its output, and a run that is killed never gets to the notice
+    /// that would have named it. Without this, the refusal said "uncommitted changes" and left the
+    /// person to find out that the tool had made them.
+    /// </para>
+    /// <para>
+    /// A likely cause, not a verdict: another process may have written in the same tree, which is why
+    /// the files are to be looked at before they are deleted. Edited tracked files are named as such,
+    /// since no pattern can make them not count.
+    /// </para>
+    /// </remarks>
+    private static async Task<string> WhatMadeTheTreeDirtyAsync(
+        RunSettings settings, RunPlanStore store, IReadOnlyList<string> ignoreUntracked)
+    {
+        WorkingTreeChanges? changes;
+
+        try
+        {
+            changes = await GitCodeState
+                .DifferencesAsync(settings.Directory, store.Files, ignoreUntracked, CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or ChangeSelectionException)
+        {
+            // Only the wording of a refusal already decided is at stake.
+            return string.Empty;
+        }
+
+        if (changes is null)
+        {
+            return string.Empty;
+        }
+
+        var text = new System.Text.StringBuilder();
+
+        if (changes.Tracked)
+        {
+            text.Append(Environment.NewLine).Append(Environment.NewLine).Append(
+                "Tracked files differ from the commit: commit or revert them, since no series continues " +
+                "over an edit to its code.");
+        }
+
+        if (changes.Untracked.Count > 0)
+        {
+            const int Shown = 10;
+
+            text.Append(Environment.NewLine).Append(Environment.NewLine).Append(
+                $"{changes.Untracked.Count.ToString(CultureInfo.InvariantCulture)} untracked file(s) appeared " +
+                "since the series began, and a run of the series may have written them itself - a snapshot " +
+                "test writes a '.received' file beside its source when a mutant changes its output:");
+
+            foreach (string file in changes.Untracked.Take(Shown))
+            {
+                text.Append(Environment.NewLine).Append("  ").Append(file);
+            }
+
+            if (changes.Untracked.Count > Shown)
+            {
+                text.Append(Environment.NewLine).Append(
+                    $"  and {(changes.Untracked.Count - Shown).ToString(CultureInfo.InvariantCulture)} more.");
+            }
+
+            text.Append(Environment.NewLine).Append(
+                "Look at each one: delete those the run wrote, or name them with --ignore-untracked " +
+                "(ignoreUntracked in killmutants.json), such as '*.received.html', so the series does " +
+                "not count them.");
+        }
+
+        return text.ToString();
+    }
+
+    private static void WriteSome(IEnumerable<string> files)
+    {
+        const int Shown = 10;
+        string[] all = [.. files];
+
+        foreach (string file in all.Take(Shown))
+        {
+            Console.Error.WriteLine($"  {file}");
+        }
+
+        if (all.Length > Shown)
+        {
+            Console.Error.WriteLine($"  and {(all.Length - Shown).ToString(CultureInfo.InvariantCulture)} more.");
+        }
     }
 
     private static void RestoreEarlierReport(ReportFiles? files)
@@ -659,7 +782,7 @@ internal static class Program
               A project may keep its habits in killmutants.json, in the directory above. Every
               option below that states a habit has a key there - configuration, exclude, mutators,
               with, without, parallel, coverage, breakAt, verifyKills, reportJson, stopAfter,
-              targetFramework - and
+              targetFramework, ignoreUntracked - and
               anything given on the command line wins. --since and --resume say what one run is
               about, and have none.
 
@@ -709,6 +832,13 @@ internal static class Program
                                         reached and judges only the rest; the run that judges the
                                         last of them reports the whole series, score included.
                                         Otherwise it starts the series. Needs --report-json.
+                  --ignore-untracked <pattern>
+                                        With --resume: an untracked file matching it does not make
+                                        the tree dirty - the '.received' files a snapshot test
+                                        writes, say. Repeatable, matched as --exclude is. Each
+                                        file so ignored is named. A pattern that could cover a
+                                        source or build file ('*', '*.cs', '*.received.*') is
+                                        refused, and so is a run whose compiler reads one.
                   --verify-kills <n>    Test n of the mutants reported killed a second time, on
                                         their own, and report any verdict that does not repeat.
                                         Costs one test run each. Defaults to 0.

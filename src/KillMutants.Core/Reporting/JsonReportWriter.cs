@@ -164,6 +164,12 @@ public static class JsonReportWriter
             workerCount = run.WorkerCount,
             verdicts = run.Verdicts,
             killsReVerifiedAlone = run.KillsReVerified,
+
+            // The files a run did not count when it read its tree, and the patterns that named them
+            // (DEC0025): a report says the tree was not exactly its commit, and which files made the
+            // difference, rather than presenting the run as if it were.
+            ignoreUntracked = run.IgnoreUntracked,
+            ignoredUntracked = run.IgnoredUntracked,
         }).ToArray(),
     };
 

@@ -176,6 +176,27 @@ between jobs is the plan and the log — an artifact, a cache keyed on the commi
 has to stay on the series' commit until the series is done
 ([DEC0015](docs/decisions/0015-a-resumed-run-inherits-the-verdicts-its-series-reached-on-the-same-code-en.md)).
 
+A series resumed **in the directory it was interrupted in** — on a workstation, typically — can find
+files its own run wrote: a snapshot test writes a `.received` file beside its source when a mutant
+changes its output. The refusal names the untracked files that appeared since the series began, and
+the project can name them for good with `--ignore-untracked` (`ignoreUntracked` in
+`killmutants.json`), which only a series takes:
+
+```bash
+dotnet killmutants --resume "$SHA" --report-json out/km.json \
+  --ignore-untracked '*.received.html' --ignore-untracked '*.received.json'
+```
+
+Only untracked files under the directory are ignored, matched as `--exclude` matches; an edited
+tracked file still makes the tree dirty. Every file ignored is named on standard error and recorded
+in the report, against the run that ignored it. A pattern that could cover a file that changes what
+is built is refused before anything runs, case ignored: one made only of wildcards, and any that can
+match the same path as `*.cs`, `*.csproj`, `*.props`, `*.targets`, `*.globalconfig`, `*.resx`,
+`.editorconfig`, `global.json` or `NuGet.config` — so `*.received.*` is refused, since it accepts
+`x.received.cs`, and the extensions are named instead. A run whose compiler reads an ignored file is
+refused too, once the build has named its inputs. Neither check sees a file a test reads at run time
+([DEC0025](docs/decisions/0025-a-series-names-the-untracked-files-that-do-not-make-its-tree-dirty-en.md)).
+
 ## Judging a change rather than a codebase
 
 A full sweep of a real repository takes minutes; a diff takes seconds. `--since` runs only what a
