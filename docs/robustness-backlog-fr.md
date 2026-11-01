@@ -1360,3 +1360,43 @@ suites dans des répertoires distincts chaque copie garde sa propre suite parmi 
 l'autre (il échoue quand toutes les copies vont à côté de la sortie de la première suite). Vérifié sur le cas réel : avec seulement
 `RequestBinder.UnitTests` sélectionné, la baseline passe, les bacs à sable apparaissent sous
 `bin/Release/killmutants`, et rien ne reste ensuite.
+
+---
+
+## RB-033 — Un argument de capacité produit des mutants que rien ne peut tuer · COUVERT
+
+**Comment il a été trouvé.** En lançant KillMutants `13b0229` sur `Reefact/enum-member-name-binding`
+à `bc6eda9`, à côté de Stryker.NET 5.0.0 sur le même commit (#76). Sur les 26 survivants, cinq se
+lisaient comme équivalents, et celui-ci figurait dans les deux rapports :
+`EnumMemberNameSchemaTransformer.cs:233`, `StringBuilder escaped = new(name.Length * 4);`, où
+`Arithmetic` a produit `name.Length / 4`.
+
+**Ce qui se passe.** Une capacité est la taille à laquelle un tampon démarre. Elle change le moment
+où le tampon grandit, jamais ce qu'il contient : un mutant de la capacité calcule les mêmes chaînes,
+les mêmes listes et les mêmes dictionnaires que l'original. Aucun test ne peut les distinguer, et
+aucun ne devrait essayer : la trouvaille est lue, examinée, et n'apprend qu'une chose, que le rapport
+n'est pas fiable.
+
+**Pourquoi celui-ci, et pas les quatre autres.** Les autres survivants lus comme équivalents sur ce
+projet — un `inherit: false` sur un attribut qu'un enum ne peut pas hériter, une borne de boucle à
+`char.MaxValue` où U+FFFF n'a pas d'autre casse, un `Remove` dont l'appelant ne relit jamais l'effet,
+un `Length > 0` là où le constructeur a un argument — sont équivalents pour des raisons que la syntaxe
+seule ne voit pas ; un autre attribut, une autre borne, un autre appelant, et chacun est un vrai
+mutant. Une capacité est équivalente par ce qu'elle est, et ce qu'elle est se lit sur l'appel : la
+BCL nomme `capacity` chacun de ces paramètres, et rien d'autre de ce nom.
+
+**La règle.** Un nœud sous un argument qui se lie à un paramètre nommé `capacity` d'un type déclaré
+sous `System` n'est pas un site de mutation, comme une constante n'en est pas un. Par nom quand
+l'argument est nommé, par position sinon. Chaque argument au-dessus du nœud est interrogé, jusqu'au
+membre, parce que ce qui alimente une capacité — `Math.Max(n, 1) * 2`, une lambda qui compte — est
+aussi inobservable que la capacité elle-même. Limitée au framework : un `capacity` de l'utilisateur
+peut vouloir dire n'importe quoi, et reste muté. Pas rapporté comme `Ignored` : ce statut est pour
+ce que le développeur a fait taire (DEC0026), et ceci est un site qui n'a jamais existé.
+L'instruction qui passe une capacité, `b.EnsureCapacity(n);`, reste un appel que `Statement`
+supprime, et `--ignore-calls` est le moyen de la faire taire.
+
+**Nos tests.** `MutationSiteTests.A_capacity_argument_is_not_mutated` sur un `StringBuilder`, un
+`new` à type cible, une `List<T>` par position, un `Dictionary<K, V>` par nom et un `EnsureCapacity`
+alimenté par un `Math.Max`, chacun vérifiant que la comparaison voisine de la capacité est toujours
+mutée ; et `An_argument_that_is_not_a_framework_capacity_is_still_mutated`, pour un `capacity` de
+l'utilisateur et un paramètre de la BCL d'un autre nom.

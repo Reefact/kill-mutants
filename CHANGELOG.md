@@ -21,6 +21,13 @@ release rather than shipping undocumented.
   so the call around it is mutated and probed without orphaning anything, while the expression
   inside that declares it is refused as before. Found on `enum-member-name-binding`, where a sort
   key reading an `out` variable had no mutant from any family. See #78.
+- An argument that is a capacity - `new StringBuilder(n * 4)`, `new List<T>(n + 1)`,
+  `EnsureCapacity(n)`, on a type under `System` - is no longer a mutation site, as a constant is
+  not: a capacity changes when the buffer grows, never what it holds, so every mutant of it survived
+  for a reason that said nothing about the tests. Recognised by the parameter's name, which the BCL
+  reserves for it; a `capacity` of the user's own is still mutated. Found on
+  `enum-member-name-binding`, where it was the one survivor read as equivalent in both KillMutants'
+  and Stryker.NET's reports. See RB-033, #76.
 - `Statement` also removes a `yield return`, unless it is the only one of its iterator, whose
   removal would not compile. Removing one skips an element and leaves the iterator well-formed, so
   it needs none of the flow analysis that keeps `return`, `throw`, `break` and `yield break` out

@@ -1259,3 +1259,40 @@ the conventional layout and for the artifacts layout, and with two suites in dis
 each copy keeps its own suite among its ancestors and not the other's (it fails when every copy goes
 beside the first suite's output). Checked on the real case: with only `RequestBinder.UnitTests` selected, the baseline
 passes, the sandboxes appear under `bin/Release/killmutants`, and nothing is left behind.
+
+---
+
+## RB-033 — A capacity argument yields mutants nothing can kill · COVERED
+
+**How it was found.** Running KillMutants `13b0229` against `Reefact/enum-member-name-binding` at
+`bc6eda9`, beside Stryker.NET 5.0.0 on the same commit (#76). Of the 26 survivors, five read as
+equivalent, and this one was in both reports: `EnumMemberNameSchemaTransformer.cs:233`,
+`StringBuilder escaped = new(name.Length * 4);`, where `Arithmetic` made `name.Length / 4`.
+
+**What happens.** A capacity is the size a buffer starts at. It changes when the buffer grows, never
+what the buffer holds, so a mutant of it computes the same strings, the same lists and the same
+dictionaries as the original. No test can tell them apart, and no test should try: the finding is
+read, investigated, and teaches only that the report is not to be trusted.
+
+**Why it is this one, and not the other four.** The other survivors read as equivalent on that
+project — an `inherit: false` on an attribute an enum cannot inherit, a loop bound of
+`char.MaxValue` where U+FFFF has no other casing, a `Remove` whose effect the caller never reads, a
+`Length > 0` where the constructor has an argument — are equivalent for reasons the syntax alone
+cannot see; a different attribute, a different bound, a different caller and each is a real mutant.
+A capacity is equivalent by what it is, and what it is can be read off the call: the BCL names every
+such parameter `capacity`, and nothing else by that name.
+
+**The rule.** A node beneath an argument that binds to a parameter named `capacity` of a type
+declared under `System` is not a mutation site, as a constant is not one. By name when the argument
+is named, by position otherwise. Every argument above the node is asked, up to the member, because
+what feeds a capacity — `Math.Max(n, 1) * 2`, a lambda counting — is as unobservable as the capacity
+itself. Kept to the framework: a user's own `capacity` may mean anything, and is still mutated. Not
+reported as `Ignored`: that status is for what the developer silenced (DEC0026), and this is a site
+that never existed. The statement that passes a capacity, `b.EnsureCapacity(n);`, is still a call
+`Statement` removes, and `--ignore-calls` is the way to silence it.
+
+**Our tests.** `MutationSiteTests.A_capacity_argument_is_not_mutated` over a `StringBuilder`, a
+target-typed `new`, a `List<T>` by position, a `Dictionary<K, V>` by name and an `EnsureCapacity`
+fed by a `Math.Max`, each asserting that the comparison beside the capacity is still mutated; and
+`An_argument_that_is_not_a_framework_capacity_is_still_mutated`, for a `capacity` of the user's own
+and a BCL parameter of another name.
