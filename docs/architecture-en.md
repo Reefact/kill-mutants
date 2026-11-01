@@ -117,7 +117,7 @@ only when `--with` adds it or `--mutators` names it (DEC0019).
 | `NegatedDecision` | the condition of a branch or a loop, or a returned `bool`, when it is not a constant | the decision negated, unless it is a negation, a comparison, an `is`, a literal or a ternary's condition, which other families already make the mutant of |
 | `Pattern` | `x is P`, `x is T`, and the patterns inside an `is` | the test negated (`x is not P`); a relational pattern's boundary shift and negation, the negation left out when it is the whole pattern; each arm of an `or` or `and` dropped, an `and` keeping its `not null` |
 | `StringLiteral` | `"text"` | `""`, and `""` into a non-empty string |
-| `Statement` | a statement that only calls something: `f();`, `await f();`, `x?.f();`, `new X();` - unless it writes an `out` argument or calls a `[Conditional]` method | `{ }` - DEC0020 |
+| `Statement` | a statement that only calls something: `f();`, `await f();`, `x?.f();`, `new X();` - unless it writes an `out` argument or calls a `[Conditional]` method; and a `yield return`, unless it is the only one of its iterator (#62) | `{ }` - DEC0020 |
 | `NumericLiteral` *(opt-in)* | an integer literal in the initializer of a constant, a field or a property, outside a pattern - a `const` only when its own project reads it | `n + 1` and `n - 1`, each only when it keeps the literal's type and fits the type it is used as |
 
 **What it deliberately does not mutate.** The catalogue is selective rather than exhaustive: every
@@ -134,7 +134,7 @@ was measured by running the catalogue over each form rather than read off the la
 | `~x` | **Not supported for now.** Removing it changes the value so drastically that any test touching the expression kills it; the mutant is nearly free to write and nearly worthless. |
 | `?.`, `as` | **Not supported.** Both mutate into forms that usually throw rather than compute, so they measure whether a test touches the line, not whether it checks the result - and `?.` often does not even compile once the null path is removed. |
 | Patterns of a `switch` | **Not supported for now.** Changing one arm can make a later arm unreachable, which the compiler refuses for the whole switch (CS8510) and no check of a single node can see - DEC0018. |
-| Assignments and control flow as statements | **Future candidate.** Removing `x = f();`, `return;`, `throw` or `break` can leave a local unassigned or change reachability, which needs a flow analysis `Statement` does not make; assignments to fields are the first to revisit - DEC0020. |
+| Assignments and control flow as statements | **Future candidate.** Removing `x = f();`, `return;`, `throw`, `break` or `yield break` can leave a local unassigned or change reachability, which needs a flow analysis `Statement` does not make; a `yield return` needs neither and is removed (#62); assignments to fields are the first to revisit - DEC0020. |
 | `switch` arms | **Not supported.** Reordering or removing arms is a structural mutation, not an operator one, and needs a different kind of reasoning about exhaustiveness. |
 
 Three properties hold across all of them. Each replacement is a **new node of the target kind**, not

@@ -16,6 +16,12 @@ release rather than shipping undocumented.
 
 ### Changed
 
+- `Statement` also removes a `yield return`, unless it is the only one of its iterator, whose
+  removal would not compile. Removing one skips an element and leaves the iterator well-formed, so
+  it needs none of the flow analysis that keeps `return`, `throw`, `break` and `yield break` out
+  (DEC0020). Found on `first-class-errors`, where a tokenizer in a security analyzer could drop the
+  token before a separator or a camel-case hump without a test noticing, and no family had a
+  mutant on either line. See #62.
 - A part of the run that cannot be measured is set aside with its reason, and the run carries on:
   a project MSBuild cannot read, a test project that does not build, a compilation that cannot be
   reconstructed, a red baseline, a failed coverage pass. Each was a stop; now the report names them
