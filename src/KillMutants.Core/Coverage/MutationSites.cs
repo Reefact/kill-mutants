@@ -114,6 +114,14 @@ internal sealed class MutationSites
     /// wrap.
     /// </para>
     /// <para>
+    /// So is a call that returns by reference. <c>Hit&lt;T&gt;</c> returns its value, and such a call
+    /// may stand where a variable is required - <c>ref int r = ref f.Min();</c>, <c>return ref</c>,
+    /// a <c>ref</c> argument, the target of an assignment - where <c>ref Hit(…)</c> is refused
+    /// (CS1510). The mutation is fine: the <c>Linq</c> family swaps a pair returned by reference as
+    /// any other, and the site is tested against the whole suite. Found by review of #72, the first
+    /// family to mutate a call that may return by reference.
+    /// </para>
+    /// <para>
     /// So is an expression with no natural type. <c>int? x = flag ? a : null</c> only acquires its
     /// type from what it is assigned to, and handing it to a generic method leaves nothing to infer
     /// <c>T</c> from: <c>CS0411</c>. The mutation itself is perfectly valid - the same expression is
@@ -137,7 +145,8 @@ internal sealed class MutationSites
 
         if (IsAConstantTheCompilerReads(node, semanticModel) ||
             IsInAConstantDeclaration(node) ||
-            LosesItsConstantConversion(node, semanticModel))
+            LosesItsConstantConversion(node, semanticModel) ||
+            ReturnsByReference(node, semanticModel))
         {
             return false;
         }
@@ -152,6 +161,15 @@ internal sealed class MutationSites
              type.TypeKind != TypeKind.Pointer &&
              type.SpecialType != SpecialType.System_Void);
     }
+
+    /// <summary>True when the site binds to a method or a property that returns by reference.</summary>
+    private static bool ReturnsByReference(SyntaxNode node, SemanticModel semanticModel) =>
+        semanticModel.GetSymbolInfo(node).Symbol switch
+        {
+            IMethodSymbol method => method.ReturnsByRef || method.ReturnsByRefReadonly,
+            IPropertySymbol property => property.ReturnsByRef || property.ReturnsByRefReadonly,
+            _ => false,
+        };
 
     /// <summary>
     /// True when the site is a constant, or part of one, whose value reaches the type it is used as

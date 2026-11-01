@@ -93,14 +93,18 @@ public class LinqMutatorTests
             Replacements(Member("object M(int[] xs) => xs.OrderBy(x => x).ThenBy(x => x);")));
     }
 
-    /// <summary>A user's own pair with the same shape is swapped: its author made them comparable.</summary>
-    [Fact]
-    public void A_user_type_that_declares_both_names_with_the_same_shape_is_swapped()
+    /// <summary>
+    /// A user's own pair with the same shape is swapped: its author made them comparable. Returned by
+    /// value, or both by reference - "the same way" is what the rule asks, not "by value".
+    /// </summary>
+    [Theory]
+    [InlineData("public class F { public bool Any(int x) => x > 0; public bool All(int x) => x > 1; } " +
+                "public class C { public bool M(F f) => f.Any(1); }", "f.All(1)")]
+    [InlineData("public class F { private int v; public ref int Min() => ref v; public ref int Max() => ref v; } " +
+                "public class C { public ref int M(F f) => ref f.Min(); }", "f.Max()")]
+    public void A_user_type_that_declares_both_names_with_the_same_shape_is_swapped(string source, string replacement)
     {
-        Assert.Equal(
-            ["f.All(1)"],
-            Replacements("public class F { public bool Any(int x) => x > 0; public bool All(int x) => x > 1; } " +
-                         "public class C { public bool M(F f) => f.Any(1); }"));
+        Assert.Equal([replacement], Replacements(source));
     }
 
     /// <summary>
