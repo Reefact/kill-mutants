@@ -98,12 +98,14 @@ internal sealed class MutantGenerator
             foreach (SyntaxNode node in tree.GetRoot(cancellationToken).DescendantNodes())
             {
                 // Three different refusals, for three different reasons: a mutation nothing could
-                // notice, a mutation that could not compile, and code the developer has said is not
-                // measured. The first has one exception, settled per rule below: a constant its own
-                // project reads, offered to a rule that reaches constants (DEC0019).
+                // notice - a constant, or a capacity (RB-033) - a mutation that could not compile,
+                // and code the developer has said is not measured. The constant has one exception,
+                // settled per rule below: one its own project reads, offered to a rule that reaches
+                // constants (DEC0019).
                 bool observable = MutationSite.IsObservable(node);
 
                 if ((!observable && !_reachesConstants) ||
+                    MutationSite.IsACapacity(node, semanticModel) ||
                     MutationSite.DeclaresAVariable(node) ||
                     MutationSite.AssignsOnSomePathsOnly(node) ||
                     MutationSite.IsExcludedFromCoverage(node, semanticModel))

@@ -325,6 +325,97 @@ internal static class MutationSite
     }
 
     /// <summary>
+    /// True when the node sits in an argument that is a capacity - the initial size of a
+    /// <c>StringBuilder</c>, a <c>List&lt;T&gt;</c>, a <c>Dictionary&lt;K, V&gt;</c> - which no
+    /// test can observe.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A capacity changes when the buffer grows, never what it holds, so every mutant of
+    /// <c>new StringBuilder(name.Length * 4)</c> computes the same strings and survives for a
+    /// reason that says nothing about the tests. Measured on
+    /// <c>Reefact/enum-member-name-binding</c> at <c>bc6eda9</c>, where that mutant was one of
+    /// five survivors read as equivalent out of twenty-six, and the one whose shape the syntax
+    /// alone can recognise - RB-033 (#76).
+    /// </para>
+    /// <para>
+    /// The parameter's name decides, and only on a type under <c>System</c>: the BCL calls every
+    /// such parameter <c>capacity</c> and nothing else by that name, while a user's own
+    /// <c>capacity</c> may mean anything, and is still mutated. Every argument above the node is
+    /// asked, up to the member, because what feeds a capacity - <c>Math.Max(n, 1) * 2</c>, a
+    /// lambda counting - is as unobservable as the capacity itself. Not reported as ignored: that
+    /// status is for what the developer silenced (DEC0026), and this is a site that never was,
+    /// like a constant.
+    /// </para>
+    /// </remarks>
+    public static bool IsACapacity(SyntaxNode node, SemanticModel semanticModel)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(semanticModel);
+
+        foreach (SyntaxNode ancestor in node.AncestorsAndSelf())
+        {
+            if (ancestor is MemberDeclarationSyntax)
+            {
+                return false;
+            }
+
+            if (ancestor is ArgumentSyntax argument &&
+                ParameterOf(argument, semanticModel) is { Name: "capacity" } parameter &&
+                IsFromTheFramework(parameter.ContainingType))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// The parameter an argument binds to: by name when the argument is named, by position
+    /// otherwise, the <c>params</c> parameter taking the rest.
+    /// </summary>
+    private static IParameterSymbol? ParameterOf(ArgumentSyntax argument, SemanticModel semanticModel)
+    {
+        if (argument.Parent is not BaseArgumentListSyntax list ||
+            list.Parent is not { } call ||
+            semanticModel.GetSymbolInfo(call).Symbol is not IMethodSymbol method)
+        {
+            return null;
+        }
+
+        if (argument.NameColon is { } named)
+        {
+            return method.Parameters.FirstOrDefault(parameter =>
+                string.Equals(parameter.Name, named.Name.Identifier.ValueText, StringComparison.Ordinal));
+        }
+
+        int position = list.Arguments.IndexOf(argument);
+
+        return position < method.Parameters.Length
+            ? method.Parameters[position]
+            : method.Parameters.LastOrDefault(parameter => parameter.IsParams);
+    }
+
+    /// <summary>True for a type declared under the <c>System</c> namespace.</summary>
+    private static bool IsFromTheFramework(INamedTypeSymbol? type)
+    {
+        INamespaceSymbol? space = type?.ContainingNamespace;
+
+        while (space is { IsGlobalNamespace: false })
+        {
+            if (space.ContainingNamespace is { IsGlobalNamespace: true })
+            {
+                return string.Equals(space.Name, "System", StringComparison.Ordinal);
+            }
+
+            space = space.ContainingNamespace;
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// True when the developer has marked this code as not measured, with
     /// <c>[ExcludeFromCodeCoverage]</c>.
     /// </summary>
