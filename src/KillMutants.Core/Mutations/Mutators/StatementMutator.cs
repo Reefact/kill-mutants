@@ -5,7 +5,8 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace KillMutants.Mutations.Mutators;
 
 /// <summary>
-/// Removes a statement that only calls something: <c>Config.Save(merged);</c> becomes <c>{ }</c>.
+/// Removes a statement that only calls something, <c>Config.Save(merged);</c>, or that yields one
+/// element of an iterator, <c>yield return token;</c>: either becomes <c>{ }</c>.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -14,12 +15,23 @@ namespace KillMutants.Mutations.Mutators;
 /// checks the directory exists passes - and only removing the call can say so. DEC0020.
 /// </para>
 /// <para>
-/// Calls only, in this first version. An assignment's removal can leave a local unassigned where it
-/// is read (CS0165), and removing a <c>return</c>, a <c>throw</c> or a <c>break</c> changes what the
-/// compiler concludes about reachability; both need a flow analysis this family does not make.
-/// Stryker.NET refuses assignments for the same reason, and on <c>Reefact/slugger</c> its 139 judged
-/// statement mutants were calls. A call that writes an <c>out</c> argument is an assignment in
-/// disguise and is refused with them.
+/// Calls and <c>yield return</c>, and nothing else. An assignment's removal can leave a local
+/// unassigned where it is read (CS0165), and removing a <c>return</c>, a <c>throw</c>, a <c>break</c>
+/// or a <c>yield break</c> changes what the compiler concludes about reachability; both need a flow
+/// analysis this family does not make. Stryker.NET refuses assignments for the same reason, and on
+/// <c>Reefact/slugger</c> its 139 judged statement mutants were calls. A call that writes an
+/// <c>out</c> argument is an assignment in disguise and is refused with them.
+/// </para>
+/// <para>
+/// A <c>yield return</c> is the one control-flow statement whose removal needs no such analysis:
+/// the element is skipped and the iterator runs on, well-formed, as long as another <c>yield</c>
+/// keeps the method an iterator. DEC0020 drew its line at reachability, not at calls as such, so
+/// the statement is on the calls' side of it. Removing the only <c>yield return</c> of an iterator
+/// is the exception: the method stops being one and no longer returns a value on every path
+/// (CS0161), so that mutant is not proposed at all rather than left to the compiler to refuse. On
+/// <c>Reefact/first-class-errors</c> the two tokens a security analyzer's tokenizer yielded before a
+/// separator and before a camel-case hump could both be dropped without a test noticing (#62), and no
+/// family had a mutant on either line.
 /// </para>
 /// <para>
 /// The replacement is an empty block rather than an empty statement: <c>if (ready) ;</c> draws
@@ -36,10 +48,8 @@ internal sealed class StatementMutator : IMutator
     {
         ArgumentNullException.ThrowIfNull(semanticModel);
 
-        if (node is not ExpressionStatementSyntax statement ||
-            !IsACall(statement.Expression) ||
-            WritesAnOutArgument(statement) ||
-            CallsAMethodTheCompilerDrops(statement.Expression, semanticModel))
+        if (node is not StatementSyntax statement ||
+            !(IsACallStatement(statement, semanticModel) || IsAYieldTheIteratorCanLose(statement)))
         {
             yield break;
         }
@@ -48,6 +58,46 @@ internal sealed class StatementMutator : IMutator
             Name,
             statement,
             SyntaxFactory.Block().WithTriviaFrom(statement));
+    }
+
+    private static bool IsACallStatement(StatementSyntax statement, SemanticModel semanticModel) =>
+        statement is ExpressionStatementSyntax call &&
+        IsACall(call.Expression) &&
+        !WritesAnOutArgument(call) &&
+        !CallsAMethodTheCompilerDrops(call.Expression, semanticModel);
+
+    /// <summary>
+    /// A <c>yield return</c> that is not the only one of its iterator, so that removing it leaves
+    /// the method an iterator.
+    /// </summary>
+    /// <remarks>
+    /// The iterator is the nearest member, accessor or local function; a local function nested in
+    /// it is an iterator of its own, so its <c>yield</c>s count for it and not for the outer one. A
+    /// <c>yield break</c> keeps a method an iterator too, but it is not what a reader would call
+    /// one element among others, and a method that only breaks has nothing to yield: the count is of
+    /// <c>yield return</c> alone, which is the stricter rule.
+    /// </remarks>
+    private static bool IsAYieldTheIteratorCanLose(StatementSyntax statement)
+    {
+        if (!statement.IsKind(SyntaxKind.YieldReturnStatement))
+        {
+            return false;
+        }
+
+        SyntaxNode? iterator = statement.Ancestors().FirstOrDefault(ancestor =>
+            ancestor is MemberDeclarationSyntax
+                or AccessorDeclarationSyntax
+                or LocalFunctionStatementSyntax
+                or AnonymousFunctionExpressionSyntax);
+
+        // The descent predicate is asked of the iterator itself, which may be a local function: it
+        // is let through, and only the functions nested in it are not.
+        return iterator is not null &&
+               iterator
+                   .DescendantNodes(inner =>
+                       inner == iterator ||
+                       inner is not (LocalFunctionStatementSyntax or AnonymousFunctionExpressionSyntax))
+                   .Count(inner => inner.IsKind(SyntaxKind.YieldReturnStatement)) > 1;
     }
 
     /// <summary>A call, awaited or not, through <c>?.</c> or not, or an object created for its effect.</summary>

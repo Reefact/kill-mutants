@@ -3,7 +3,10 @@ using Microsoft.CodeAnalysis;
 
 namespace KillMutants.Core.Tests.Mutations.Mutators;
 
-/// <summary>A statement that only calls something is removed, and nothing else is - DEC0020.</summary>
+/// <summary>
+/// A statement that only calls something is removed, a <c>yield return</c> its iterator can lose
+/// is removed, and nothing else is - DEC0020, #62.
+/// </summary>
 public class StatementMutatorTests
 {
     private static readonly StatementMutator Mutator = new();
@@ -64,6 +67,39 @@ public class StatementMutatorTests
         Assert.Empty(tree.GetRoot(TestContext.Current.CancellationToken)
             .DescendantNodes()
             .SelectMany(node => Mutator.Mutate(node, model)));
+    }
+
+    /// <summary>
+    /// Each <c>yield return</c> of an iterator that has at least two is removed on its own, in a
+    /// method, a property getter or a local function; a <c>yield break</c> never is.
+    /// </summary>
+    [Theory]
+    [InlineData("System.Collections.Generic.IEnumerable<int> M() { yield return 1; yield return 2; }", "yield return 1;", "yield return 2;")]
+    [InlineData("System.Collections.Generic.IEnumerable<int> M() { yield return 1; yield return 2; yield break; }", "yield return 1;", "yield return 2;")]
+    [InlineData("System.Collections.Generic.IEnumerable<int> P { get { yield return 1; yield return 2; } }", "yield return 1;", "yield return 2;")]
+    [InlineData("void M() { System.Collections.Generic.IEnumerable<int> L() { yield return 1; yield return 2; } }", "yield return 1;", "yield return 2;")]
+    [InlineData("System.Collections.Generic.IEnumerable<int> M(bool a) { if (a) yield return 1; yield return 2; }", "yield return 1;", "yield return 2;")]
+    public void A_yield_return_the_iterator_can_lose_becomes_an_empty_block(string member, string first, string second)
+    {
+        Assert.Equal(
+            [(first, "{}"), (second, "{}")],
+            MutatorTestBase.MutateAll(Mutator, "", member)
+                .Select(candidate => (candidate.Original.ToString(), candidate.Replacement.ToString())));
+    }
+
+    /// <summary>
+    /// The only <c>yield return</c> of an iterator is not proposed: without it the method is no
+    /// iterator and returns nothing on its paths (CS0161). A <c>yield break</c> beside it does not
+    /// change that, and the <c>yield</c>s of a nested local function are that function's, not its
+    /// parent's - so the parent's single one stays and the local function's two are removed.
+    /// </summary>
+    [Theory]
+    [InlineData("System.Collections.Generic.IEnumerable<int> M() { yield return 1; }", 0)]
+    [InlineData("System.Collections.Generic.IEnumerable<int> M(bool a) { if (a) yield break; yield return 1; }", 0)]
+    [InlineData("System.Collections.Generic.IEnumerable<int> M() { yield return 1; System.Collections.Generic.IEnumerable<int> L() { yield return 2; yield return 3; } }", 2)]
+    public void The_only_yield_return_of_an_iterator_is_left_alone(string member, int removed)
+    {
+        Assert.Equal(removed, MutatorTestBase.MutateAll(Mutator, "", member).Count);
     }
 
     /// <summary>An implemented partial method is called for real, so removing the call is a mutant.</summary>
