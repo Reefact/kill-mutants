@@ -588,13 +588,33 @@ n'est pas mutée. C'est vérifié une seule fois, à la génération, dans
 mutant, un nœud jamais muté n'est jamais instrumenté non plus. La défaillance d'instrumentation
 disparaît par conséquence, sans règle propre.
 
-La règle est délibérément grossière : toute déclaration sous le nœud, même une dont la portée ne
-pourrait pas s'en échapper. Ce qu'elle coûte, c'est la rare mutation d'une déclaration que personne ne
-relit ensuite ; ce qu'elle achète, c'est qu'aucune des deux défaillances ne peut se reproduire.
+La règle est délibérément grossière : toute déclaration sous le nœud, même une que personne ne relit
+ensuite. Ce qu'elle coûte, c'est cette rare mutation ; ce qu'elle achète, c'est qu'aucune des deux
+défaillances ne peut se reproduire.
+
+**La seule frontière où elle s'arrête (#78).** « Même une dont la portée ne pourrait pas s'en
+échapper », disait d'abord la règle, et la portée qui ne peut pas s'échapper est celle d'une lambda.
+Sur `Reefact/enum-member-name-binding` à `bc6eda9`, `EnumContract.cs:184` s'écrit
+`names.OrderByDescending(member => byClrName.TryGetValue(member, out object? value) ? PopCount(value) : 0)`,
+et aucune famille n'avait de mutant nulle part sur la ligne — `Linq`, demandée, en a fait cinq sur le
+projet et aucun ici, alors qu'`OrderBy` est sa jumelle et se lie. La variable `out` a pour portée la
+lambda : remplacer l'appel, ou l'envelopper dans la sonde, ne change rien au moment où les parties
+propres de la lambda sont évaluées, donc ni CS0165 ni l'échec du build instrumenté ne peuvent se
+produire. Une lambda, une méthode anonyme ou une fonction locale strictement sous le nœud n'est donc
+plus parcourue ; le nœud qui *est* la lambda déclare toujours ce qu'il déclare. Le ternaire à
+l'intérieur de cette lambda est refusé comme avant, parce que la déclaration est dans sa propre
+condition, sans frontière entre les deux. Le parcours de RB-030 s'arrête à la même frontière, pour
+la même raison : une affectation dans une lambda ne rend jamais une variable définitivement affectée
+en dehors. Stryker.NET a produit le mutant `OrderBy` et l'a déclaré survivant ; appliqué à la main,
+la suite complète le tue avec trois échecs — un mutant perdu, pas un trou manqué, sur le genre de
+ligne où `Linq` a ses mutants.
 
 **Nos tests.** `MutationSiteTests.An_expression_that_declares_a_variable_is_not_mutated`, qui vérifie
 aussi que les expressions ordinaires voisines de la garde sont toujours mutées — une règle qui
 avalerait le fichier passerait un test plus faible.
+`A_declaration_inside_a_lambda_does_not_refuse_the_expression_around_it` et
+`An_assignment_inside_a_lambda_does_not_refuse_the_expression_around_it` tiennent la frontière des
+deux côtés, et `A_linq_call_whose_lambda_declares_a_variable_is_mutated` est la ligne ci-dessus.
 
 ---
 

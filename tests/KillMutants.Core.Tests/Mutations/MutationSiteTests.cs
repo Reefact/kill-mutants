@@ -81,6 +81,68 @@ public class MutationSiteTests
     }
 
     /// <summary>
+    /// The one boundary RB-016's rule stops at (#78). A variable declared inside a lambda is scoped
+    /// to it, so the call around the lambda is mutated, and wrapped in the probe, without orphaning
+    /// anything. The expression inside the lambda that declares it is refused as before.
+    /// </summary>
+    [Theory]
+    // an `out` variable in a lambda: the comparison around the call is mutated, the `&&` that declares it is not
+    [InlineData("class C { bool M(string[] xs, System.Collections.Generic.Dictionary<string,int> d) " +
+                "=> System.Linq.Enumerable.Count(xs, m => d.TryGetValue(m, out int v) && v >= 1) >= 2; }",
+                "System.Linq.Enumerable.Count(xs, m => d.TryGetValue(m, out int v) && v >= 1) >= 2",
+                "&&")]
+    // a pattern variable in a lambda, read by a ternary: the ternary is refused, the comparison around the call is not
+    [InlineData("class C { bool M(object[] xs) " +
+                "=> System.Linq.Enumerable.Sum(xs, o => o is string s ? s.Length : 0) >= 2; }",
+                "System.Linq.Enumerable.Sum(xs, o => o is string s ? s.Length : 0) >= 2",
+                "?")]
+    public void A_declaration_inside_a_lambda_does_not_refuse_the_expression_around_it(
+        string source, string mutated, string stillRefused)
+    {
+        IReadOnlyList<Mutant> mutants = Generate(source);
+
+        Assert.Contains(mutants, mutant => mutant.OriginalText == mutated);
+        Assert.DoesNotContain(mutants, mutant =>
+            mutant.OriginalText != mutated && mutant.OriginalText.Contains(stillRefused, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// RB-030's rule stops at the same boundary: an assignment inside a lambda never makes a
+    /// variable definitely assigned outside it, so the <c>&amp;&amp;</c> that skips it is refused
+    /// and the comparison around the call is not (#78).
+    /// </summary>
+    [Fact]
+    public void An_assignment_inside_a_lambda_does_not_refuse_the_expression_around_it()
+    {
+        IReadOnlyList<Mutant> mutants = Generate(
+            "class C { bool M(string[] xs) { int y = 0; " +
+            "return System.Linq.Enumerable.Count(xs, m => m.Length >= 1 && (y = m.Length) > 0) >= 2; } }");
+
+        Assert.Contains(mutants, mutant =>
+            mutant.OriginalText == "System.Linq.Enumerable.Count(xs, m => m.Length >= 1 && (y = m.Length) > 0) >= 2");
+        Assert.DoesNotContain(mutants, mutant => mutant.OriginalText == "m.Length >= 1 && (y = m.Length) > 0");
+    }
+
+    /// <summary>
+    /// The line that found #78, with the family that has a mutant for it: on
+    /// <c>Reefact/enum-member-name-binding</c> at <c>bc6eda9</c>, <c>Linq</c> made none here, over
+    /// an <c>out</c> variable that could not reach the call.
+    /// </summary>
+    [Fact]
+    public void A_linq_call_whose_lambda_declares_a_variable_is_mutated()
+    {
+        IReadOnlyList<Mutant> mutants = new MutantGenerator(MutatorCatalog.Of(added: [MutatorName.Create("Linq")]))
+            .Generate(TestCompilation.From(
+                "class C { System.Collections.Generic.IEnumerable<string> M(" +
+                "string[] names, System.Collections.Generic.Dictionary<string, int> weights) " +
+                "=> System.Linq.Enumerable.OrderByDescending(names, member => weights.TryGetValue(member, out int value) ? value : 0); }"),
+                cancellationToken: TestContext.Current.CancellationToken);
+
+        Mutant linq = Assert.Single(mutants, mutant => mutant.Mutator.ToString() == "Linq");
+        Assert.StartsWith("System.Linq.Enumerable.OrderBy(", linq.MutatedText, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// An <c>out</c> in a left operand runs every time, so the rule must leave its expression alone.
     /// </summary>
     [Fact]

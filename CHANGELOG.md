@@ -16,6 +16,11 @@ release rather than shipping undocumented.
 
 ### Changed
 
+- A declaration or an assignment inside a lambda, an anonymous method or a local function no
+  longer refuses the expression around it (RB-016, RB-030): the variable is scoped to the function,
+  so the call around it is mutated and probed without orphaning anything, while the expression
+  inside that declares it is refused as before. Found on `enum-member-name-binding`, where a sort
+  key reading an `out` variable had no mutant from any family. See #78.
 - `Statement` also removes a `yield return`, unless it is the only one of its iterator, whose
   removal would not compile. Removing one skips an element and leaves the iterator well-formed, so
   it needs none of the flow analysis that keeps `return`, `throw`, `break` and `yield break` out

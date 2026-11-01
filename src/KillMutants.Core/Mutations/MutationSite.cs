@@ -229,17 +229,32 @@ internal static class MutationSite
     /// before a single mutant was tested. See <c>docs/robustness-backlog-en.md</c>, entry RB-016.
     /// </para>
     /// <para>
-    /// The rule is deliberately blunt: any declaration anywhere beneath the node, even one whose
-    /// scope could not escape it. A mutant that cannot compile teaches nobody anything, so refusing
-    /// too much costs only the rare mutation of a declaration nothing reads afterwards.
+    /// The rule is deliberately blunt: any declaration anywhere beneath the node, even one nothing
+    /// reads afterwards. A mutant that cannot compile teaches nobody anything, so refusing too much
+    /// costs only that rare mutation. It stops at one boundary, a lambda, an anonymous method or a
+    /// local function strictly beneath the node: a variable declared inside one is scoped to it, so
+    /// nothing done to the expression around it - a replacement, the probe - changes when its own
+    /// parts are evaluated. Without the boundary,
+    /// <c>names.OrderByDescending(m => d.TryGetValue(m, out var v) ? Weight(v) : 0)</c> had no
+    /// mutant from any family, over a declaration that could not reach the call - found on
+    /// <c>Reefact/enum-member-name-binding</c> (#78). The ternary inside that lambda is refused as
+    /// before: the declaration is in its own condition, with no boundary between.
     /// </para>
     /// </remarks>
     public static bool DeclaresAVariable(SyntaxNode node)
     {
         ArgumentNullException.ThrowIfNull(node);
 
-        return node.DescendantNodesAndSelf().Any(inner => inner is SingleVariableDesignationSyntax);
+        return node
+            .DescendantNodesAndSelf(inner => inner == node || !IsAFunctionBoundary(inner))
+            .Any(inner => inner is SingleVariableDesignationSyntax);
     }
+
+    /// <summary>
+    /// True for a scope of its own, which no declaration or assignment inside it reaches past.
+    /// </summary>
+    private static bool IsAFunctionBoundary(SyntaxNode node) =>
+        node is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax;
 
     /// <summary>
     /// True when the expression assigns a variable on some of its paths only, which makes replacing
@@ -262,13 +277,18 @@ internal static class MutationSite
     /// <c>??</c>, a branch of a ternary, what follows a <c>?.</c>, and a <c>switch</c> arm. An
     /// <c>out</c> in a left operand runs every time, so <c>int.TryParse(s, out y) &amp;&amp; a</c>
     /// is still mutated, and so is a comparison that holds an assignment without skipping it.
+    /// A nested function is the same boundary as for a declaration: an assignment inside a lambda
+    /// never makes a variable definitely assigned outside it, so it does not count against the
+    /// expression around the lambda (#78).
     /// </para>
     /// </remarks>
     public static bool AssignsOnSomePathsOnly(SyntaxNode node)
     {
         ArgumentNullException.ThrowIfNull(node);
 
-        return node.DescendantNodesAndSelf().Any(inner => IsAnAssignment(inner) && MayBeSkipped(inner, node));
+        return node
+            .DescendantNodesAndSelf(inner => inner == node || !IsAFunctionBoundary(inner))
+            .Any(inner => IsAnAssignment(inner) && MayBeSkipped(inner, node));
     }
 
     private static bool IsAnAssignment(SyntaxNode node) =>

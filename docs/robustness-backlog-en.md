@@ -547,13 +547,30 @@ mutated. That is checked once, at generation, in `MutationSite.DeclaresAVariable
 site is by definition a node some mutant replaces, a node that is never mutated is never instrumented
 either. The instrumentation failure disappears as a consequence rather than needing a rule of its own.
 
-The rule is deliberately blunt: any declaration beneath the node, even one whose scope could not
-escape it. What it costs is the rare mutation of a declaration nothing reads afterwards; what it buys
-is that neither failure can recur.
+The rule is deliberately blunt: any declaration beneath the node, even one nothing reads afterwards.
+What it costs is that rare mutation; what it buys is that neither failure can recur.
+
+**The one boundary it stops at (#78).** "Even one whose scope could not escape it" was how the
+rule first read, and the scope that cannot escape is a lambda's. On `Reefact/enum-member-name-binding`
+at `bc6eda9`, `EnumContract.cs:184` reads
+`names.OrderByDescending(member => byClrName.TryGetValue(member, out object? value) ? PopCount(value) : 0)`,
+and no family had a mutant anywhere on the line — `Linq`, asked for, made five on the project and
+none here, although `OrderBy` is its twin and binds. The `out` variable is scoped to the lambda:
+replacing the call, or wrapping it in the probe, changes nothing about when the lambda's own parts
+are evaluated, so neither CS0165 nor the instrumented-build failure can happen. A lambda, an
+anonymous method or a local function strictly beneath the node is therefore not walked into; the
+node that *is* the lambda still declares what it declares. The ternary inside that lambda is refused
+as before, because the declaration is in its own condition with no boundary between. RB-030's walk
+stops at the same boundary, for the same reason: an assignment inside a lambda never makes a
+variable definitely assigned outside it. Stryker.NET made the `OrderBy` mutant and reported it
+survived; applied by hand, the full suite kills it with three failures — a mutant lost, not a gap
+missed, on the kind of line where `Linq` has its mutants.
 
 **Our tests.** `MutationSiteTests.An_expression_that_declares_a_variable_is_not_mutated`, which also
 asserts that the ordinary expressions beside the guard are still mutated — a rule that swallowed the
-file would pass a weaker test.
+file would pass a weaker test. `A_declaration_inside_a_lambda_does_not_refuse_the_expression_around_it`
+and `An_assignment_inside_a_lambda_does_not_refuse_the_expression_around_it` hold the boundary from
+both sides, and `A_linq_call_whose_lambda_declares_a_variable_is_mutated` is the line above.
 
 ---
 
