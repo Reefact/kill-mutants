@@ -19,11 +19,14 @@ namespace KillMutants.Filtering;
 /// names it as a rule without effect: a wide net has to be written as one, <c>*.ThrowIfNull</c>.
 /// </para>
 /// <para>
-/// What a recognised call silences is its statement and the expressions that supply its values, and
-/// nothing beyond: an argument counts only through what the call makes of it, so a mutant in one is
-/// observable only through a call the project does not hear. The body of a lambda or of a local
-/// function handed to the call is code that runs later and whose effects escape the call, so the walk
-/// stops there and a rule about the call does not reach it.
+/// What a recognised call silences is its statement and its arguments, and nothing beyond. An
+/// argument counts only through what the call makes of it, so a mutant in one is observable only
+/// through a call the project does not hear. What the call is made <em>on</em> is another matter: in
+/// <c>Task.FromResult(x + 1).ConfigureAwait(false)</c> the value of <c>x + 1</c> passes through
+/// <c>ConfigureAwait</c> untouched and is observed after it, and a fluent chain ending in an ignored
+/// <c>ToList</c> is not a chain the project asked to silence (review of #74). And the body of a
+/// lambda or of a local function handed to the call is code that runs later and whose effects escape
+/// the call, so the walk stops there and a rule about the call does not reach it.
 /// </para>
 /// </remarks>
 public sealed class IgnoredCalls
@@ -104,6 +107,7 @@ public sealed class IgnoredCalls
         // A statement mutator proposes the statement, whose call sits beneath it rather than above:
         // the walk starts from that call, so the statement is silenced by the call it is made of.
         SyntaxNode start = node is ExpressionStatementSyntax statement ? Call(statement.Expression) : node;
+        SyntaxNode? reachedThrough = null;
 
         foreach (SyntaxNode ancestor in start.AncestorsAndSelf())
         {
@@ -113,16 +117,28 @@ public sealed class IgnoredCalls
                 return null;
             }
 
-            if (ancestor is InvocationExpressionSyntax or BaseObjectCreationExpressionSyntax &&
+            // The call itself, or a node reached through its argument list - never through what it
+            // is called on, which the call passes along rather than consumes.
+            if (IsACall(ancestor) &&
+                reachedThrough is null or ArgumentListSyntax &&
                 semanticModel.GetSymbolInfo(ancestor).Symbol is IMethodSymbol method &&
                 RuleMatching(QualifiedName(method)) is { } rule)
             {
                 return rule;
             }
+
+            reachedThrough = ancestor;
         }
 
         return null;
     }
+
+    /// <summary>
+    /// A call, an object created, or a constructor's <c>base(...)</c> or <c>this(...)</c>, which
+    /// binds to the same constructor that <c>new</c> does (review of #74).
+    /// </summary>
+    private static bool IsACall(SyntaxNode node) =>
+        node is InvocationExpressionSyntax or BaseObjectCreationExpressionSyntax or ConstructorInitializerSyntax;
 
     /// <summary>
     /// The name a pattern is matched against: the method's containing type, fully qualified and

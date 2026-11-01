@@ -285,7 +285,8 @@ and `?` as `--exclude` has them and case as C# has it, so a method of your own t
 name with `ThrowIfNull` is not caught; a constructor is `System.ArgumentException.ctor`. A bare
 `ThrowIfNull` recognises nothing, and the report says so. A recognised call silences its statement
 and its arguments - `ConfigureAwait(false)`'s literal, an exception's message - and nothing beyond:
-the body of a lambda or a local function handed to the call is code of its own. A silenced mutant is
+neither what the call is made on, which it passes along, nor the body of a lambda or a local
+function handed to it, which is code of its own. A silenced mutant is
 still generated, never tested, and reported as **ignored**: outside the score, counted per family,
 counted per rule with a rule that silenced nothing named, and the count stands beside the score
 itself. The choice is the project's, it is versioned, and the report shows it rather than hiding it
