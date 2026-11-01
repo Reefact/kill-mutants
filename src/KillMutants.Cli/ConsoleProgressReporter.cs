@@ -266,7 +266,7 @@ internal sealed class ConsoleProgressReporter : IProgress<MutationTestProgress>,
         else if (value.IsCounted && _time.GetElapsedTime(_lastWritten) >= Interval)
         {
             _lastWritten = _time.GetTimestamp();
-            _writer.WriteLine(Stamp() + Describe(value) + InProgress());
+            _writer.WriteLine(Stamp() + Describe(value) + (InProgress() is { } mutant ? "  " + mutant : string.Empty));
         }
     }
 
@@ -276,17 +276,19 @@ internal sealed class ConsoleProgressReporter : IProgress<MutationTestProgress>,
         _announced = value.Phase;
         _shown = value;
 
-        var line = new StringBuilder(Describe(value with { Completed = 0, Total = 0 }));
         TimeSpan elapsed = _time.GetElapsedTime(_phaseStarted);
+        List<Field> fields = [new(Describe(value with { Completed = 0, Total = 0 }), Keep)];
 
         if (value.IsCounted)
         {
             int percent = (int)(100L * value.Completed / value.Total);
 
-            line.Append(CultureInfo.InvariantCulture, $"  {Bar(value.Completed, value.Total)} {Format(value.Completed)}/{Format(value.Total)}  {percent}%");
+            fields.Add(new(Bar(value.Completed, value.Total), DropSecond));
+            fields.Add(new($"{Format(value.Completed)}/{Format(value.Total)}", Keep, Separator: " "));
+            fields.Add(new(percent.ToString(CultureInfo.InvariantCulture) + "%", DropFifth));
         }
 
-        line.Append("  ").Append(Duration.Format(Whole(elapsed)));
+        fields.Add(new(Duration.Format(Whole(elapsed)), DropFourth));
 
         if (value.IsCounted && value.Completed > 0 && value.Completed < value.Total)
         {
@@ -295,32 +297,85 @@ internal sealed class ConsoleProgressReporter : IProgress<MutationTestProgress>,
             // Under a second says nothing a reader can act on, and "~0s left" reads as done.
             if (left > TimeSpan.Zero)
             {
-                line.Append("  ~").Append(Duration.Format(left)).Append(" left");
+                fields.Add(new("~" + Duration.Format(left) + " left", DropThird));
             }
         }
 
-        line.Append(InProgress());
+        if (InProgress() is { } mutant)
+        {
+            fields.Add(new(mutant, Keep, IsMutant: true));
+        }
 
         if (value.Phase == MutationTestPhase.TestingMutants && _reached.Count > 0)
         {
-            line.Append(CultureInfo.InvariantCulture,
-                $"  killed {Count(MutantStatus.Killed)} · survived {Count(MutantStatus.Survived)} · " +
-                $"no coverage {Count(MutantStatus.NoCoverage)} · timed out {Count(MutantStatus.Timeout)}");
+            fields.Add(new(
+                $"killed {Count(MutantStatus.Killed)} · survived {Count(MutantStatus.Survived)} · " +
+                $"no coverage {Count(MutantStatus.NoCoverage)} · timed out {Count(MutantStatus.Timeout)}",
+                DropFirst));
         }
 
-        string text = line.ToString();
         int width = Width();
 
         // One column short of the terminal: a line that reaches the last column moves the cursor to
         // the next one on some terminals, and the next carriage return then rewrites the wrong line.
-        if (width > 1 && text.Length >= width)
-        {
-            text = text[..(width - 1)];
-        }
+        int room = width > 1 ? width - 1 : int.MaxValue;
+        string text = Fit(fields, room);
 
-        _writer.Write('\r' + text.PadRight(_lastWidth));
+        // Never wider than the terminal is now, padding included: after a resize from 100 columns to
+        // 40, padding to the earlier 99 would wrap, and every later rewrite would land on the wrong
+        // line (review of #73). What the old line left beyond the new width was reflowed by the
+        // terminal already, and is not this line's to clear.
+        _writer.Write('\r' + text.PadRight(Math.Min(_lastWidth, room)));
         _lastWidth = text.Length;
     }
+
+    /// <summary>
+    /// The fields that fit in <paramref name="room"/>: the cheapest are left out first, and the mutant
+    /// in progress last of all, shortened from the left so that its file and line survive.
+    /// </summary>
+    /// <remarks>
+    /// The mutant's file and line are what this line exists for - a counter that stops moving says
+    /// nothing until it names them (#65) - and cutting the end of the line lost them first on an
+    /// 80-column terminal (review of #73). So the bar, the verdicts, the times and the percentage go
+    /// before the mutant does, and a path still too long loses its leading directories rather than
+    /// its line number.
+    /// </remarks>
+    private static string Fit(List<Field> fields, int room)
+    {
+        string Join() => string.Concat(fields.Select((field, index) => (index == 0 ? string.Empty : field.Separator) + field.Text));
+
+        while (Join().Length > room && fields.Where(field => field.Drop > Keep).MaxBy(field => field.Drop) is { } cheapest)
+        {
+            fields.Remove(cheapest);
+        }
+
+        string text = Join();
+
+        if (text.Length > room && fields.FindIndex(field => field.IsMutant) is var at and >= 0)
+        {
+            string mutant = fields[at].Text;
+            int keep = mutant.Length - (text.Length - room) - 1;
+
+            if (keep > 0)
+            {
+                fields[at] = fields[at] with { Text = "…" + mutant[^keep..] };
+                text = Join();
+            }
+        }
+
+        return text.Length > room ? text[..room] : text;
+    }
+
+    // The order fields are left out in when the line does not fit, the first to go first.
+    private const int Keep = 0;
+    private const int DropFifth = 1;
+    private const int DropFourth = 2;
+    private const int DropThird = 3;
+    private const int DropSecond = 4;
+    private const int DropFirst = 5;
+
+    /// <summary>One part of the live line, and how readily it is left out when the line is too wide.</summary>
+    private sealed record Field(string Text, int Drop, string Separator = "  ", bool IsMutant = false);
 
     /// <summary>
     /// Writes lines that have to be read now - a part set aside, a slow mutant - dated, out of the way
@@ -345,7 +400,10 @@ internal sealed class ConsoleProgressReporter : IProgress<MutationTestProgress>,
     {
         if (_mode == ProgressMode.Live && _lastWidth > 0)
         {
-            _writer.Write('\r' + new string(' ', _lastWidth) + '\r');
+            int width = Width();
+            int cleared = width > 1 ? Math.Min(_lastWidth, width - 1) : _lastWidth;
+
+            _writer.Write('\r' + new string(' ', cleared) + '\r');
             _lastWidth = 0;
         }
     }
@@ -381,10 +439,8 @@ internal sealed class ConsoleProgressReporter : IProgress<MutationTestProgress>,
     /// workers, the one that started last is the one a reader has not seen yet; one stuck for longer
     /// is named on its own line by <see cref="CheckForSlowMutants"/>.
     /// </summary>
-    private string InProgress() =>
-        _running.Count == 0
-            ? string.Empty
-            : "  " + Name(_running.Values.MaxBy(running => running.Started)!.Mutant);
+    private string? InProgress() =>
+        _running.Count == 0 ? null : Name(_running.Values.MaxBy(running => running.Started)!.Mutant);
 
     private static string Name(MutantInProgress mutant) =>
         $"{mutant.Family}  {mutant.Path}:{Format(mutant.Line)}";

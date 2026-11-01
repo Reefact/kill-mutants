@@ -310,6 +310,53 @@ public class ConsoleProgressReporterTests : IDisposable
         Assert.Contains("Rendering/Renderer.cs:440", drawn[(drawn.LastIndexOf('\r') + 1)..], StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Review of #73: on an 80-column terminal the mutant's file and line are what must survive, so
+    /// the verdicts and the bar are left out before it is.
+    /// </summary>
+    [Theory]
+    [InlineData(80, "Conditional  Rendering/Renderer.cs:97")]
+    [InlineData(40, "Renderer.cs:97")]
+    public void The_mutant_in_progress_survives_a_narrow_terminal(int width, string kept)
+    {
+        using ConsoleProgressReporter progress = Reporter(ProgressMode.Live, width);
+
+        progress.Report(new MutationTestProgress(MutationTestPhase.TestingMutants, 0, 4, Mutant: Mutant("M1")));
+        _clock.Advance(TimeSpan.FromSeconds(10));
+        progress.Report(new MutationTestProgress(
+            MutationTestPhase.TestingMutants, 1, 4, Mutant: Mutant("M1") with { Status = Mutations.MutantStatus.Killed }));
+        progress.Report(new MutationTestProgress(MutationTestPhase.TestingMutants, 1, 4, Mutant: Mutant("M2", line: 97)));
+
+        string drawn = _log.ToString();
+        string last = drawn[(drawn.LastIndexOf('\r') + 1)..].TrimEnd();
+
+        Assert.Contains(kept, last, StringComparison.Ordinal);
+        Assert.True(last.Length < width, last);
+    }
+
+    /// <summary>
+    /// Review of #73: after the terminal shrinks from 100 columns to 40, the next line is padded to
+    /// the new width, not the old one - padding to 99 would wrap, and every later rewrite would land
+    /// on the wrong line.
+    /// </summary>
+    [Fact]
+    public void A_terminal_that_shrinks_is_never_written_past_its_new_width()
+    {
+        int width = 100;
+        using ConsoleProgressReporter progress = new(
+            _log, ProgressMode.Live, _clock, TimeSpan.FromSeconds(30), () => width, watchForSlowMutants: false);
+
+        progress.Report(new MutationTestProgress(MutationTestPhase.TestingMutants, 0, 4, Mutant: Mutant("M1")));
+        int before = _log.ToString().Length;
+        width = 40;
+        progress.Report(new MutationTestProgress(MutationTestPhase.TestingMutants, 0, 4, Mutant: Mutant("M2", line: 97)));
+
+        string written = _log.ToString()[before..];
+
+        Assert.StartsWith("\r", written, StringComparison.Ordinal);
+        Assert.True(written.Length - 1 <= 39, $"{written.Length - 1} characters written at 40 columns");
+    }
+
     /// <summary>A line wider than the terminal would wrap, and a wrapped line cannot be rewritten.</summary>
     [Fact]
     public void The_live_line_fits_the_terminal()
