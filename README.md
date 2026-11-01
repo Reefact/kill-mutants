@@ -398,7 +398,7 @@ does not drag the progress along with it. What standard error shows is chosen wi
 | Mode | For | What it shows |
 |---|---|---|
 | `log`, the default | a CI log, a file, a pipe, and anyone who asked for nothing | dated lines: each phase once, then its count and the mutant in progress at most once a minute |
-| `live` | a person at a terminal | one line rewritten in place: a bar, the count, the time left, the mutant in progress and the verdicts so far |
+| `live` | a person at a terminal | one line rewritten in place: the phase, the count and the mutant in progress, with a bar, the percentage, the elapsed and remaining time and the verdicts so far as the width allows - those are left out first on a narrow terminal |
 | `none` | a tool that reads the JSON report | nothing but the parts set aside |
 
 Two events are written the moment they happen rather than at the next count: a part set aside, with
