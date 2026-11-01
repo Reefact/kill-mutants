@@ -158,7 +158,7 @@ internal sealed class ProjectDiscovery
             throw new ProjectAnalysisException(WithWhatWasSetAside(
                 $"No xUnit test project was found under '{searchDirectory}'. " +
                 "KillMutants supports xUnit 4 - the xunit.v3 package family at version 4." +
-                WhatWasNotRestored(projects)));
+                WhatWasNotRestored(projects, searchDirectory)));
         }
 
         RequireTheFrameworkTheyRunOn(testProjects);
@@ -522,16 +522,17 @@ internal sealed class ProjectDiscovery
     /// <para>
     /// Said only of projects that reference an xUnit test application and have no restore result,
     /// and before what was set aside: it names the likelier cause first without claiming it is the
-    /// only one.
+    /// only one. Each by its path relative to the directory, as a set-aside project is named, since
+    /// two suites called <c>Tests</c> in two folders would otherwise read as one (review of #71).
     /// </para>
     /// </remarks>
-    private static string WhatWasNotRestored(IReadOnlyList<ProjectFacts> projects)
+    private static string WhatWasNotRestored(IReadOnlyList<ProjectFacts> projects, string searchDirectory)
     {
         string[] unrestored =
         [
             .. projects
                 .Where(project => !project.IsTestSupport && project.ReferencesATestApplicationPackage && !project.IsRestored)
-                .Select(project => project.Name)
+                .Select(project => Path.GetRelativePath(searchDirectory, project.ProjectPath).Replace('\\', '/'))
                 .Order(StringComparer.Ordinal),
         ];
 
