@@ -1,4 +1,4 @@
-# DEC0023 | The console progress is chosen by an option, not detected, and its default is a log that reads anywhere
+# DEC0023 | The console progress mode is chosen explicitly, with `log` as the default and no detection of the terminal
 
 ## Status
 

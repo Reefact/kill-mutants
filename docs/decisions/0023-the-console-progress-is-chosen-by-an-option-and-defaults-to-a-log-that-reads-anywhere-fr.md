@@ -1,4 +1,4 @@
-# DEC0023 | La progression de la console se choisit par une option, sans détection, et sa valeur par défaut est un journal lisible partout
+# DEC0023 | Le mode de progression de la console se choisit explicitement, avec `log` par défaut et sans détection du terminal
 
 ## Statut
 
