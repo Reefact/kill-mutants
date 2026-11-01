@@ -73,6 +73,7 @@ The few choices that are expensive to reverse. Each is recorded in [docs/decisio
 | DEC0023 — The console progress mode is chosen explicitly, with `log` as the default and no detection of the terminal | [en](docs/decisions/0023-the-console-progress-is-chosen-by-an-option-and-defaults-to-a-log-that-reads-anywhere-en.md) | [fr](docs/decisions/0023-the-console-progress-is-chosen-by-an-option-and-defaults-to-a-log-that-reads-anywhere-fr.md) |
 | DEC0024 — An opt-in `Linq` family swaps a method for its counterpart, when the counterpart is a twin on the same type | [en](docs/decisions/0024-an-opt-in-linq-family-swaps-a-method-for-its-twin-on-the-same-type-en.md) | [fr](docs/decisions/0024-an-opt-in-linq-family-swaps-a-method-for-its-twin-on-the-same-type-fr.md) |
 | DEC0025 — A series names the untracked files that do not make its tree dirty, and a pattern that could cover code is refused | [en](docs/decisions/0025-a-series-names-the-untracked-files-that-do-not-make-its-tree-dirty-en.md) | [fr](docs/decisions/0025-a-series-names-the-untracked-files-that-do-not-make-its-tree-dirty-fr.md) |
+| DEC0026 — A project names the calls it silences, and the report counts what it chose not to hear | [en](docs/decisions/0026-a-project-names-the-calls-it-silences-and-the-report-counts-what-it-chose-not-to-hear-en.md) | [fr](docs/decisions/0026-a-project-names-the-calls-it-silences-and-the-report-counts-what-it-chose-not-to-hear-fr.md) |
 
 ## Installing
 

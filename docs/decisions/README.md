@@ -127,3 +127,4 @@ request.
 | [DEC0023](0023-the-console-progress-is-chosen-by-an-option-and-defaults-to-a-log-that-reads-anywhere-en.md) | The console progress mode is chosen explicitly, with `log` as the default and no detection of the terminal | Accepted |
 | [DEC0024](0024-an-opt-in-linq-family-swaps-a-method-for-its-twin-on-the-same-type-en.md) | An opt-in `Linq` family swaps a method for its counterpart, when the counterpart is a twin on the same type | Accepted |
 | [DEC0025](0025-a-series-names-the-untracked-files-that-do-not-make-its-tree-dirty-en.md) | A series names the untracked files that do not make its tree dirty, and a pattern that could cover code is refused | Accepted |
+| [DEC0026](0026-a-project-names-the-calls-it-silences-and-the-report-counts-what-it-chose-not-to-hear-en.md) | A project names the calls it silences, and the report counts what it chose not to hear | Proposed |
