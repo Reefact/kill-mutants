@@ -117,7 +117,7 @@ only when `--with` adds it or `--mutators` names it (DEC0019).
 | `NegatedDecision` | the condition of a branch or a loop, or a returned `bool`, when it is not a constant | the decision negated, unless it is a negation, a comparison, an `is`, a literal or a ternary's condition, which other families already make the mutant of |
 | `Pattern` | `x is P`, `x is T`, and the patterns inside an `is` | the test negated (`x is not P`); a relational pattern's boundary shift and negation, the negation left out when it is the whole pattern; each arm of an `or` or `and` dropped, an `and` keeping its `not null` |
 | `StringLiteral` | `"text"` | `""`, and `""` into a non-empty string |
-| `Statement` | a statement that only calls something: `f();`, `await f();`, `x?.f();`, `new X();` - unless it writes an `out` argument or calls a `[Conditional]` method; and a `yield return`, unless it is the only one of its iterator (#62) | `{ }` - DEC0020 |
+| `Statement` | a statement that only calls something: `f();`, `await f();`, `x?.f();`, `new X();` - unless it assigns a variable (`=` or `out`) or calls a `[Conditional]` method; and a `yield return`, unless it assigns a variable or is the only one of its iterator (#62) | `{ }` - DEC0020 |
 | `NumericLiteral` *(opt-in)* | an integer literal in the initializer of a constant, a field or a property, outside a pattern - a `const` only when its own project reads it | `n + 1` and `n - 1`, each only when it keeps the literal's type and fits the type it is used as |
 
 **What it deliberately does not mutate.** The catalogue is selective rather than exhaustive: every
