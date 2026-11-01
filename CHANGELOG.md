@@ -43,8 +43,8 @@ release rather than shipping undocumented.
   `Any` → `All` gaps confirmed on `first-class-errors` motivated it. See DEC0024, #63.
 - `--progress <mode>` (and `progress` in `killmutants.json`) chooses what standard error shows while
   the run runs: `log`, the default, dated lines with the mutant in progress once a minute; `live`,
-  one line rewritten in place with a bar, the time left, the mutant in progress and the verdicts so
-  far; `none`, only the parts set aside. Nothing about the terminal is detected any more, where the
+  one line rewritten in place with the mutant in progress, and the bar, the time left and the
+  verdicts so far as the terminal's width allows; `none`, only the parts set aside. Nothing about the terminal is detected any more, where the
   form used to follow whether standard error was redirected. A part set aside is written the moment
   it happens, and `--slow <time>` (30 seconds by default) names a mutant still running after that
   long, once. The lines are not an interface: tools read the JSON report. See DEC0023 (#65).
