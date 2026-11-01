@@ -434,9 +434,12 @@ public static class ConsoleReportWriter
             : string.Empty;
 
     /// <summary>
-    /// Each rule of <c>--ignore-calls</c> with what it silenced, a rule that silenced nothing first
+    /// Each rule of <c>--ignore-calls</c> with what it silences, a rule that silenced nothing first
     /// of all: that one is a method renamed or a pattern that never matched, and obeying it in
-    /// silence would be the tool lying by omission about what the project asked (DEC0026).
+    /// silence would be the tool lying by omission about what the project asked (DEC0026). What the
+    /// zero says is exactly what was counted - no mutant of this run under that rule - and not that
+    /// the pattern recognises no call: a call with nothing to mutate is recognised and silences
+    /// nothing (review of #74).
     /// </summary>
     private static void WriteIgnored(TextWriter writer, MutationTestReport report)
     {
@@ -456,8 +459,14 @@ public static class ConsoleReportWriter
             writer.WriteLine(
                 $"  {rule.Rule.PadRight(ruleWidth)}  " +
                 (rule.Mutants == 0
-                    ? "silenced nothing - the pattern recognises no call of this run"
+                    ? "silenced no mutant of this run"
                     : $"{Format(rule.Mutants)} {Plural(rule.Mutants, "mutant")}"));
+        }
+
+        // Said only when it happens, so the rows and the heading are never read as disagreeing.
+        if (report.IgnoredByRule.Sum(rule => rule.Mutants) > report.Ignored)
+        {
+            writer.WriteLine("  (a mutant silenced by several rules is counted under each)");
         }
     }
 

@@ -96,8 +96,9 @@ public static class JsonReportWriter
             ignored = report.Ignored,
         },
 
-        // Every rule the project wrote, with what it silenced, a rule that silenced nothing
-        // included: the choice that moves the score is published next to the score it moved.
+        // Every rule the project wrote, with every mutant it silences - one two rules silence counted
+        // under each - a rule that silenced nothing included: the choice that moves the score is
+        // published next to the score it moved.
         ignoredCalls = report.IgnoredByRule.Select(rule => new
         {
             rule = rule.Rule,
@@ -259,8 +260,8 @@ public static class JsonReportWriter
         original = result.Mutant.OriginalText,
         mutated = result.Mutant.MutatedText,
 
-        // The rule of --ignore-calls that silenced this mutant, or null for one that was tested.
-        ignoredBy = result.Mutant.IgnoredBy,
+        // Every rule of --ignore-calls that silences this mutant; empty for one that was tested.
+        ignoredBy = result.Mutant.IgnoredBy.ToArray(),
 
         // With the three fields above and these names, a kill can be reproduced by hand: put the
         // mutation in the file at that position, run these tests, watch them fail. A verdict nobody

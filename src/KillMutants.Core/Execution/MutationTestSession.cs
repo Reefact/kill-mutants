@@ -371,9 +371,10 @@ internal sealed class MutationTestSession
         // the same rule (DEC0026).
         foreach (Mutant mutant in all)
         {
-            if (mutant.IgnoredBy is { } rule && !run.Verdicts.IsReached(mutant))
+            if (mutant.IsIgnored && !run.Verdicts.IsReached(mutant))
             {
-                run.Verdicts.Reach(new MutantResult(mutant, MutantStatus.Ignored, $"ignored by the rule '{rule}'"));
+                run.Verdicts.Reach(new MutantResult(
+                    mutant, MutantStatus.Ignored, $"ignored by the rule(s) {string.Join(", ", mutant.IgnoredBy.Select(rule => $"'{rule}'"))}"));
             }
         }
 

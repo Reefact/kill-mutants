@@ -235,11 +235,11 @@ public class JsonReportWriterTests
                     "class C { bool M(object x, int a) { System.ArgumentNullException.ThrowIfNull(x); return a >= 18; } }",
                     "/src/Ages.cs"),
                 cancellationToken: TestContext.Current.CancellationToken);
-        Mutant guard = Assert.Single(mutants, mutant => mutant.IgnoredBy is not null);
+        Mutant guard = Assert.Single(mutants, mutant => mutant.IsIgnored);
         MutantResult[] results =
         [
             new(guard, MutantStatus.Ignored),
-            .. mutants.Where(mutant => mutant.IgnoredBy is null).Select(mutant => new MutantResult(mutant, MutantStatus.Killed)),
+            .. mutants.Where(mutant => !mutant.IsIgnored).Select(mutant => new MutantResult(mutant, MutantStatus.Killed)),
         ];
 
         var writer = new StringWriter();
@@ -264,7 +264,7 @@ public class JsonReportWriterTests
             mutant => mutant.GetProperty("status").GetString() == "Ignored");
 
         Assert.Equal("Ignored", statement.GetProperty("outcome").GetString());
-        Assert.Equal("*.ThrowIfNull", statement.GetProperty("ignoredBy").GetString());
+        Assert.Equal("*.ThrowIfNull", Assert.Single(statement.GetProperty("ignoredBy").EnumerateArray()).GetString());
 
         JsonElement family = Assert.Single(
             root.GetProperty("byMutator").EnumerateArray(),

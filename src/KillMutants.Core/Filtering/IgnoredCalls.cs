@@ -90,19 +90,29 @@ public sealed class IgnoredCalls
     }
 
     /// <summary>
-    /// The rule that silences a mutant of <paramref name="node"/>, or null when none does.
+    /// Every rule that silences a mutant of <paramref name="node"/>, in the order the project wrote
+    /// them; empty when none does.
     /// </summary>
     /// <param name="node">The node a mutator proposes to change.</param>
     /// <param name="semanticModel">The model the node's tree was bound with.</param>
-    public string? RuleSilencing(SyntaxNode node, SemanticModel semanticModel)
+    /// <remarks>
+    /// Every rule rather than the first: two rules that overlap - <c>*.ThrowIfNull</c> and
+    /// <c>System.ArgumentNullException.ThrowIfNull</c> - each silence the mutant, and each is counted
+    /// for it. Crediting the first alone would make the counts depend on the order of the list, which
+    /// a series compares as a set, and would show the second rule as silencing nothing when it does
+    /// (review of #74).
+    /// </remarks>
+    public IReadOnlyList<string> RulesSilencing(SyntaxNode node, SemanticModel semanticModel)
     {
         ArgumentNullException.ThrowIfNull(node);
         ArgumentNullException.ThrowIfNull(semanticModel);
 
         if (Rules.Count == 0)
         {
-            return null;
+            return [];
         }
+
+        HashSet<string> silencing = new(StringComparer.Ordinal);
 
         // A statement mutator proposes the statement, whose call sits beneath it rather than above:
         // the walk starts from that call, so the statement is silenced by the call it is made of.
@@ -114,23 +124,22 @@ public sealed class IgnoredCalls
             // Code handed to a call, not code of the call: a rule about the call stops here.
             if (ancestor is AnonymousFunctionExpressionSyntax or LocalFunctionStatementSyntax)
             {
-                return null;
+                break;
             }
 
             // The call itself, or a node reached through its argument list - never through what it
             // is called on, which the call passes along rather than consumes.
             if (IsACall(ancestor) &&
                 reachedThrough is null or ArgumentListSyntax &&
-                semanticModel.GetSymbolInfo(ancestor).Symbol is IMethodSymbol method &&
-                RuleMatching(QualifiedName(method)) is { } rule)
+                semanticModel.GetSymbolInfo(ancestor).Symbol is IMethodSymbol method)
             {
-                return rule;
+                silencing.UnionWith(RulesMatching(QualifiedName(method)));
             }
 
             reachedThrough = ancestor;
         }
 
-        return null;
+        return [.. Rules.Where(silencing.Contains)];
     }
 
     /// <summary>
@@ -161,8 +170,8 @@ public sealed class IgnoredCalls
         return type + name;
     }
 
-    private string? RuleMatching(string qualifiedName) =>
-        Rules.FirstOrDefault(rule => FileSystemName.MatchesSimpleExpression(rule, qualifiedName, ignoreCase: false));
+    private IEnumerable<string> RulesMatching(string qualifiedName) =>
+        Rules.Where(rule => FileSystemName.MatchesSimpleExpression(rule, qualifiedName, ignoreCase: false));
 
     /// <summary>The call an expression statement is made of, through <c>await</c> and <c>?.</c>.</summary>
     private static SyntaxNode Call(ExpressionSyntax expression) => expression switch

@@ -46,7 +46,7 @@ public class IgnoredCallsTests
 
         Mutant statement = Assert.Single(mutants, mutant => mutant.Mutator.ToString() == "Statement");
 
-        Assert.Equal("System.ArgumentNullException.ThrowIfNull", statement.IgnoredBy);
+        Assert.Equal(["System.ArgumentNullException.ThrowIfNull"], statement.IgnoredBy);
     }
 
     /// <summary>#48: the mutant of ConfigureAwait's argument, through a generic Task.</summary>
@@ -60,7 +60,7 @@ public class IgnoredCallsTests
 
         Mutant literal = Assert.Single(mutants, mutant => mutant.Mutator.ToString() == "BooleanLiteral");
 
-        Assert.Equal("*.ConfigureAwait", literal.IgnoredBy);
+        Assert.Equal(["*.ConfigureAwait"], literal.IgnoredBy);
     }
 
     /// <summary>#50: a string handed to a static factory, silenced through a nested call too.</summary>
@@ -72,7 +72,7 @@ public class IgnoredCallsTests
             "System.String.Concat");
 
         Assert.NotEmpty(mutants);
-        Assert.All(mutants, mutant => Assert.Equal("System.String.Concat", mutant.IgnoredBy));
+        Assert.All(mutants, mutant => Assert.Equal(["System.String.Concat"], mutant.IgnoredBy));
     }
 
     /// <summary>
@@ -88,7 +88,7 @@ public class IgnoredCallsTests
     {
         IReadOnlyList<Mutant> mutants = Generate(source, "*.Where", "*.Add");
 
-        Assert.Contains(mutants, mutant => mutant.OriginalText == "x >= 18" && mutant.IgnoredBy is null);
+        Assert.Contains(mutants, mutant => mutant.OriginalText == "x >= 18" && !mutant.IsIgnored);
     }
 
     /// <summary>
@@ -104,7 +104,7 @@ public class IgnoredCallsTests
             "ThrowIfNull");
 
         Assert.NotEmpty(mutants);
-        Assert.All(mutants, mutant => Assert.Null(mutant.IgnoredBy));
+        Assert.All(mutants, mutant => Assert.Empty(mutant.IgnoredBy));
     }
 
     [Fact]
@@ -116,7 +116,7 @@ public class IgnoredCallsTests
 
         Mutant statement = Assert.Single(mutants, mutant => mutant.Mutator.ToString() == "Statement");
 
-        Assert.Null(statement.IgnoredBy);
+        Assert.Empty(statement.IgnoredBy);
     }
 
     /// <summary>
@@ -135,7 +135,7 @@ public class IgnoredCallsTests
     {
         IReadOnlyList<Mutant> mutants = Generate(source, rule);
 
-        Assert.Contains(mutants, mutant => mutant.OriginalText == heard && mutant.IgnoredBy is null);
+        Assert.Contains(mutants, mutant => mutant.OriginalText == heard && !mutant.IsIgnored);
     }
 
     /// <summary>Review of #74: <c>base("…")</c> binds to the constructor <c>new</c> would.</summary>
@@ -148,7 +148,7 @@ public class IgnoredCallsTests
 
         Mutant literal = Assert.Single(mutants, mutant => mutant.Mutator.ToString() == "StringLiteral");
 
-        Assert.Equal("System.ArgumentException.ctor", literal.IgnoredBy);
+        Assert.Equal(["System.ArgumentException.ctor"], literal.IgnoredBy);
     }
 
     /// <summary>The message of a thrown exception, the most ordinary StringLiteral noise.</summary>
@@ -161,7 +161,7 @@ public class IgnoredCallsTests
 
         Mutant literal = Assert.Single(mutants, mutant => mutant.Mutator.ToString() == "StringLiteral");
 
-        Assert.Equal("System.ArgumentException.ctor", literal.IgnoredBy);
+        Assert.Equal(["System.ArgumentException.ctor"], literal.IgnoredBy);
     }
 
     [Fact]
@@ -171,7 +171,7 @@ public class IgnoredCallsTests
             "class C { void M(object x) { System.ArgumentNullException.ThrowIfNull(x); } }",
             "system.argumentnullexception.throwifnull");
 
-        Assert.All(mutants, mutant => Assert.Null(mutant.IgnoredBy));
+        Assert.All(mutants, mutant => Assert.Empty(mutant.IgnoredBy));
     }
 
     /// <summary>A silenced mutant is still generated, with the same key as it would have otherwise.</summary>
@@ -184,7 +184,25 @@ public class IgnoredCallsTests
         Mutant silenced = Assert.Single(Generate(source, "*.ThrowIfNull"));
 
         Assert.Equal(heard.Key, silenced.Key);
-        Assert.Null(heard.IgnoredBy);
-        Assert.NotNull(silenced.IgnoredBy);
+        Assert.False(heard.IsIgnored);
+        Assert.True(silenced.IsIgnored);
+    }
+
+    /// <summary>
+    /// Review of #74. Two rules that overlap each silence the mutant and each are credited, in the
+    /// order the project wrote them: the counts do not depend on the order of a list a series
+    /// compares as a set, and the narrower rule is not shown as silencing nothing when it does.
+    /// </summary>
+    [Fact]
+    public void Every_rule_that_silences_a_mutant_is_credited_whatever_the_order()
+    {
+        const string source = "class C { void M(object x) { System.ArgumentNullException.ThrowIfNull(x); } }";
+
+        Mutant broadFirst = Assert.Single(Generate(source, "*.ThrowIfNull", "System.ArgumentNullException.ThrowIfNull"));
+        Mutant narrowFirst = Assert.Single(Generate(source, "System.ArgumentNullException.ThrowIfNull", "*.ThrowIfNull"));
+
+        Assert.Equal(["*.ThrowIfNull", "System.ArgumentNullException.ThrowIfNull"], broadFirst.IgnoredBy);
+        Assert.Equal(["System.ArgumentNullException.ThrowIfNull", "*.ThrowIfNull"], narrowFirst.IgnoredBy);
+        Assert.Equal(broadFirst.IgnoredBy.Order(StringComparer.Ordinal), narrowFirst.IgnoredBy.Order(StringComparer.Ordinal));
     }
 }

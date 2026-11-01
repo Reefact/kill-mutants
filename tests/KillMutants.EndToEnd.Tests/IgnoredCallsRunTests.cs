@@ -28,7 +28,7 @@ public class IgnoredCallsRunTests
 
         Assert.Equal("Statement", silenced.Mutant.Mutator.ToString());
         Assert.Equal("register.Add(age);", silenced.Mutant.OriginalText);
-        Assert.Equal("*.Add", silenced.Mutant.IgnoredBy);
+        Assert.Equal(["*.Add"], silenced.Mutant.IgnoredBy);
         Assert.Empty(silenced.KilledBy);
 
         Assert.Equal(1, report.Ignored);

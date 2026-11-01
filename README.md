@@ -288,8 +288,8 @@ and its arguments - `ConfigureAwait(false)`'s literal, an exception's message - 
 neither what the call is made on, which it passes along, nor the body of a lambda or a local
 function handed to it, which is code of its own. A silenced mutant is
 still generated, never tested, and reported as **ignored**: outside the score, counted per family,
-counted per rule with a rule that silenced nothing named, and the count stands beside the score
-itself. The choice is the project's, it is versioned, and the report shows it rather than hiding it
+counted per rule - every rule that silences it, and a rule that silenced nothing is named - and the
+count stands beside the score itself. The choice is the project's, it is versioned, and the report shows it rather than hiding it
 ([DEC0026](docs/decisions/0026-a-project-names-the-calls-it-silences-and-the-report-counts-what-it-chose-not-to-hear-en.md)).
 A series refuses to continue under another list, as it refuses other exclusions.
 
