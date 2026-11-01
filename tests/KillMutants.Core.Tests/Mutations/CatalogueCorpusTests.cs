@@ -45,6 +45,7 @@ public class CatalogueCorpusTests
             // Dropping the fallback would leave an `int?` where an `int` is required (RB-015), so the
             // forced fallback is the one mutant, and it has to compile where the drop could not.
             { "coalesce that removes nullability, its fallback forced", "int? count", "int M({0}) => count ?? 0;" },
+            { "coalesce inside an expression tree, whose left is a call", "int unused", "System.Linq.Expressions.Expression<System.Func<string?, string>> M({0}) => s => s.ToString() ?? \"x\";" },
             { "decisions with no negation written", "bool a, bool b, System.Func<bool> f", "bool M({0}) { while (a) { a = f(); } if (a || b) { return f(); } return a && b; }" },
             { "a negated decision and a lambda's", "bool a, System.Func<bool> f", "object M({0}) => !a ? System.Linq.Enumerable.Where(new[] { 1 }, x => f()) : null!;" },
             { "a quantifier over a sequence", "int[] xs", "bool M({0}) => System.Linq.Enumerable.Any(xs, x => x > 0);" },

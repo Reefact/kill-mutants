@@ -1331,7 +1331,10 @@ refusals are the swap's — nothing on either side, a `throw` on the right, whic
 both branches, the same expression on both sides — and the forced form has to convert to what the
 original stood for, as the swap must (RB-011): `count ?? 0` into an `int`, whose drop cannot
 compile, now has the forced fallback as its one mutant. Parenthesised, because `??` binds tighter
-than `?:` and the original may stand on the right of another `??` or in a ternary's condition.
+than `?:` and the original may stand on the right of another `??` or in a ternary's condition. Not
+made inside an expression tree, which accepts no pattern (CS8122): the speculative binding does not
+see that, and the mutant could only ever have been reported as a compile error — found in review of
+#81, and the same boundary `Pattern` already stops at.
 
 **Why no record.** The swap (#17, `be39346`) entered the family without one, and this variant
 applies an accepted principle to a sibling operator rather than choosing between answers; the

@@ -25,7 +25,8 @@ release rather than shipping undocumented.
   when the swap `b ?? a` is refused - the left is a call, a getter that runs code, a fallback that
   cannot stand on the left - the fallback is forced with the left still evaluated,
   `(a is null ? b : b)`, in the manner DEC0017 settled for a ternary. Keeping only `b`, as
-  Stryker.NET does, is still not made, since it drops the left's side effects. Found on
+  Stryker.NET does, is still not made, since it drops the left's side effects; nor is the forced
+  form inside an expression tree, which accepts no pattern. Found on
   `enum-member-name-binding`, where `Nullable.GetUnderlyingType(enumType) ?? enumType` reached no
   test with a nullable enum and no mutant could say so. See RB-034, #77.
 - `Linq` runs by default. It entered the catalogue opt-in until it had been measured (DEC0024); on
