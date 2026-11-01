@@ -111,7 +111,7 @@ exercised end to end against a real fixture project. Fourteen run by default; `N
 | `Assignment` | `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `<<=` `>>=` | its counterpart |
 | `Increment` | `++` `--` | each other, prefix and postfix alike |
 | `Conditional` | `c ? a : b` | `(c \|\| true) ? a : b` and `(c && false) ? a : b`: each branch forced, the condition still evaluated |
-| `NullCoalescing` | `a ?? b` | `a`, and `b ?? a` when `a` only reads a variable, a field or an auto-implemented property |
+| `NullCoalescing` | `a ?? b` | `a`; `b ?? a` when `a` only reads a variable, a field or an auto-implemented property; otherwise `(a is null ? b : b)`, the fallback forced and `a` still evaluated |
 | `BooleanLiteral` | `true` `false` | each other |
 | `Negation` | `!x` | `x` |
 | `NegatedDecision` | the condition of a branch or a loop, or a returned `bool`, when it is not a constant | the decision negated, unless it is a negation, a comparison, an `is`, a literal or a ternary's condition, which other families already make the mutant of |
@@ -144,9 +144,10 @@ Three properties hold across all of them. Each replacement is a **new node of th
 a swapped token ([RB-001](robustness-backlog-en.md)). Each asks the compiler whether the replacement
 would bind before proposing it, so a mutant that cannot compile is never generated
 ([RB-011](robustness-backlog-en.md)). And each family that could produce a mutant identical in
-behaviour to the original declines to: `NullCoalescing` keeps only the left operand, never the right
-one, and swaps the two only when the left operand only reads a variable, a field or an
-auto-implemented property, so no side effect is silently dropped; `Conditional` skips a ternary
+behaviour to the original declines to: `NullCoalescing` never keeps only the right operand - where
+the left does more than read a variable, a field or an auto-implemented property, the fallback is
+forced with the left still evaluated rather than the two swapped, so no side effect is silently
+dropped; `Conditional` skips a ternary
 whose branches are the same expression, and still evaluates the condition it forces; and `NegatedDecision` never puts a `!` in front of one
 already written.
 

@@ -1296,3 +1296,47 @@ target-typed `new`, a `List<T>` by position, a `Dictionary<K, V>` by name and an
 fed by a `Math.Max`, each asserting that the comparison beside the capacity is still mutated; and
 `An_argument_that_is_not_a_framework_capacity_is_still_mutated`, for a `capacity` of the user's own
 and a BCL parameter of another name.
+
+---
+
+## RB-034 — A `??` whose left runs code had no mutant asking whether the left is ever non-null · COVERED
+
+**How it was found.** Running KillMutants `13b0229` against `Reefact/enum-member-name-binding` at
+`bc6eda9`, beside Stryker.NET 5.0.0 on the same commit (#77). Of the 35 mutants Stryker left
+undetected, this was the one true gap KillMutants did not reach: every other Stryker-only survivor
+was either killed by the full suite when applied by hand — five of them, in statically cached code
+Stryker's per-test coverage misjudges — or read as equivalent.
+
+**What happens.** `EnumMemberNames.cs:85` reads `Nullable.GetUnderlyingType(enumType) ?? enumType`.
+Stryker's "remove left" made it `enumType`, and the mutant survived; applied by hand, all 972 tests
+pass. No test calls the method with a nullable enum, so the branch that unwraps one is unverified.
+`NullCoalescing` had two mutants for a `??` and neither could say so: the fallback dropped,
+`Nullable.GetUnderlyingType(enumType)`, is killed because a plain enum makes it `null` and the next
+line throws; the swap is refused because the left is a call, and `b ?? a` would skip it whenever
+`b` is set (#17). Keeping only `b`, as Stryker does, was deliberately not made either: it discards
+the left operand and with it any side effect, turning a coverage signal into an unrelated behaviour
+change.
+
+**The rule.** The question is asked without dropping the call, in the manner DEC0017 settled for a
+ternary — forced, still evaluated: `a ?? b` becomes `(a is null ? b : b)`. `a` still runs, so a
+side effect in it keeps happening (RB-015); the result is always `b`, so the mutant survives
+exactly when no test reaches the site with a non-null left and notices. It is made only where the
+swap is not: for a left that only reads, the two ask the same thing and would be judged twice. The
+refusals are the swap's — nothing on either side, a `throw` on the right, which has no type to give
+both branches, the same expression on both sides — and the forced form has to convert to what the
+original stood for, as the swap must (RB-011): `count ?? 0` into an `int`, whose drop cannot
+compile, now has the forced fallback as its one mutant. Parenthesised, because `??` binds tighter
+than `?:` and the original may stand on the right of another `??` or in a ternary's condition.
+
+**Why no record.** The swap (#17, `be39346`) entered the family without one, and this variant
+applies an accepted principle to a sibling operator rather than choosing between answers; the
+maintainer may still want one, since it changes what the default catalogue makes.
+
+**Our tests.** `NullCoalescingMutatorTests.A_left_that_runs_code_is_forced_to_its_fallback_and_still_evaluated`
+is the line above; `A_property_whose_getter_runs_code_is_not_swapped`,
+`A_left_operand_that_does_more_than_read_is_not_swapped` and
+`A_fallback_that_cannot_be_null_is_not_swapped` now assert the forced fallback beside the drop;
+`A_fallback_that_removes_nullability_is_not_dropped` asserts it alone; `A_throw_fallback_is_not_forced`
+and `The_fallback_is_dropped_and_the_operands_are_swapped` hold the refusals and the swap's
+precedence; `The_forced_fallback_is_a_parenthesised_conditional_on_the_left_being_null` is the
+RB-001 check. `CatalogueCorpusTests` compiles both shapes and finds each emits differently.
