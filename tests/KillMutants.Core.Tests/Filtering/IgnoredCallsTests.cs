@@ -119,6 +119,38 @@ public class IgnoredCallsTests
         Assert.Null(statement.IgnoredBy);
     }
 
+    /// <summary>
+    /// Review of #74. What a call is made on passes through it rather than being consumed by it:
+    /// the value of <c>x + 1</c> is observed after <c>ConfigureAwait</c>, and a chain ending in an
+    /// ignored <c>ToList</c> is not a chain the project asked to silence.
+    /// </summary>
+    [Theory]
+    [InlineData("class C { async System.Threading.Tasks.Task<int> M(int x) " +
+                "=> await System.Threading.Tasks.Task.FromResult(x + 1).ConfigureAwait(false); }",
+                "*.ConfigureAwait", "x + 1")]
+    [InlineData("using System.Linq; class C { System.Collections.Generic.List<int> M(System.Collections.Generic.IEnumerable<int> xs, int a) " +
+                "=> xs.Take(a + 1).ToList(); }",
+                "*.ToList", "a + 1")]
+    public void What_a_call_is_made_on_is_not_silenced(string source, string rule, string heard)
+    {
+        IReadOnlyList<Mutant> mutants = Generate(source, rule);
+
+        Assert.Contains(mutants, mutant => mutant.OriginalText == heard && mutant.IgnoredBy is null);
+    }
+
+    /// <summary>Review of #74: <c>base("…")</c> binds to the constructor <c>new</c> would.</summary>
+    [Fact]
+    public void A_constructor_initializer_is_recognised_as_the_constructor_it_calls()
+    {
+        IReadOnlyList<Mutant> mutants = Generate(
+            "class E : System.ArgumentException { public E() : base(\"message\") { } }",
+            "System.ArgumentException.ctor");
+
+        Mutant literal = Assert.Single(mutants, mutant => mutant.Mutator.ToString() == "StringLiteral");
+
+        Assert.Equal("System.ArgumentException.ctor", literal.IgnoredBy);
+    }
+
     /// <summary>The message of a thrown exception, the most ordinary StringLiteral noise.</summary>
     [Fact]
     public void A_constructor_is_recognised_as_ctor()
