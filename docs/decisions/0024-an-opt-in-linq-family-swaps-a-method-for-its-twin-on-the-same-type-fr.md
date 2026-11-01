@@ -30,9 +30,15 @@ Les deux trous confirmés se lient différemment. À `DocumentedByInvalidSignatu
 receveur est un `ImmutableArray<IMethodSymbol>`, donc `candidates.Any(...)` se lie à
 `System.Linq.ImmutableArrayExtensions.Any`, et non à `System.Linq.Enumerable.Any` ; à
 `ExampleDoesNotCallDocumentedFactoryAnalyzer.cs:76`, l'appel suit `.OfType<T>()` et se lie à
-`Enumerable.Any`. L'API de Roslyn renvoie des `ImmutableArray` partout, et `Span` et `ReadOnlySpan`
-ont leurs propres `Any`, `All`, `Min` et `Max` dans d'autres classes d'extension. Le même dépôt
-déclare une méthode à lui nommée `ErrorCodeFactory.Any()`, sans `All` à côté.
+`Enumerable.Any`. L'API de Roslyn renvoie des `ImmutableArray` partout. Dans les assemblages de
+référence de .NET 10.0.14, `System.Linq.ImmutableArrayExtensions` déclare `Any` et `All`, tandis que
+`System.MemoryExtensions` ne déclare ni l'un ni l'autre sur `Span` ou `ReadOnlySpan`, ni `Min` ni
+`Max`. Le même dépôt déclare une méthode à lui nommée `ErrorCodeFactory.Any()`, sans `All` à côté.
+
+Une méthode peut retourner par référence - `ref bool Any()` - ce qu'`IMethodSymbol` signale à part
+du type de retour, par `ReturnsByRef` et `ReturnsByRefReadonly`. Une variable locale `ref`
+initialisée depuis un tel appel, `ref bool r = ref x.Any();`, ne compile pas depuis un appel qui
+retourne par valeur.
 
 Comptés par leur nom dans les projets de production de ce dépôt, et non par liaison : 13 `.Any(`,
 dont 11 avec un prédicat, 9 `.OrderBy(`, 6 `.ThenBy(`, 2 `.Skip(`, 2 `.Except(`, 1 `.Concat(`, et
@@ -52,24 +58,29 @@ se lie à une méthode du même type conteneur avec le même type de retour ; le
 `All`, `Min` ↔ `Max`, `MinBy` ↔ `MaxBy`, `OrderBy` ↔ `OrderByDescending`, `ThenBy` ↔
 `ThenByDescending`, `Order` ↔ `OrderDescending`, `Skip` ↔ `Take`, `SkipWhile` ↔ `TakeWhile`,
 `SkipLast` ↔ `TakeLast`, `Union` ↔ `Intersect` et `Concat` ↔ `Except` ; la famille est d'abord
-optionnelle, et son statut par défaut est décidé après qu'elle a été mesurée.
+optionnelle, et son statut par défaut est décidé après qu'elle a été mesurée. À la relecture du compte
+rendu, le mainteneur a demandé que la façon dont la valeur est retournée, par valeur ou par
+référence, fasse partie de la règle.
 
 ## Décision
 
 Dans ce contexte, nous décidons d'ajouter une famille `Linq` optionnelle qui échange le nom de la
 méthode d'un appel avec sa contrepartie parmi les onze paires ci-dessus, quand la contrepartie se lie
-à une méthode du même type conteneur que l'original, avec le même type de retour.
+à une méthode du même type conteneur que l'original, avec le même type de retour, retourné de la
+même façon.
 
 ## Justification
 
 Lier à une jumelle, plutôt qu'à `System.Linq.Enumerable` et `Queryable`, est ce qui atteint les deux
 trous confirmés : l'un d'eux se lie à `ImmutableArrayExtensions`, et une règle qui nomme des classes
-le raterait, comme elle raterait toute surcharge sur `Span`. La règle de la jumelle ne nomme rien et
-garde pourtant la garantie que l'issue demandait : `ErrorCodeFactory.Any()` n'a pas de `All` sur son
+le raterait, comme elle raterait toute autre bibliothèque qui déclare la paire sur un type à elle. La
+règle de la jumelle ne nomme rien et garde pourtant la garantie que l'issue demandait : `ErrorCodeFactory.Any()` n'a pas de `All` sur son
 type et est laissé tranquille, et un type utilisateur qui déclare bien les deux noms avec la même
 forme est échangé comme une paire que l'utilisateur a rendue comparable. Exiger le même type de
-retour est ce qui fait compiler le mutant par construction, comme RB-011 le fait pour les opérateurs :
-la valeur de l'appel garde son type partout où elle est utilisée.
+retour, retourné de la même façon, est ce qui fait compiler le mutant par construction, comme RB-011
+le fait pour les opérateurs : la valeur de l'appel garde son type partout où elle est utilisée, et un
+retour `ref` n'est jamais échangé contre un retour par valeur, ce qu'une variable locale `ref`
+initialisée depuis l'appel refuserait.
 
 Les onze paires sont celles dont les deux membres ont la même forme et dont l'échange change ce que
 l'appel calcule - un quantificateur, un extrême, un ordre, un côté d'une séquence, une opération
@@ -113,7 +124,7 @@ contre une autre, et que `--with` et `--without` agissent sur des familles.
 * **Description :** la proposition de l'issue : n'échanger qu'un appel lié à l'une de ces deux
   classes.
 * **Pourquoi rejetée :** elle rate `ImmutableArrayExtensions.Any`, qui est l'un des deux trous qui
-  motivent la famille, et toute surcharge sur `Span` avec lui.
+  motivent la famille, et avec lui toute bibliothèque qui déclare la paire sur un type à elle.
 
 ### Alternative 4 — Par défaut dès la première version
 
@@ -129,11 +140,11 @@ contre une autre, et que `--with` et `--without` agissent sur des familles.
 
 * Un trou de la forme trouvée deux fois sur l'échantillon - un quantificateur qu'un test n'exerce que
   d'un côté - est rapporté, ce qu'aucune famille ne pouvait faire.
-* Chaque mutant que la famille propose se lie, avec le type de l'appel inchangé, donc aucun n'échoue à
-  compiler.
-* La règle atteint tout type de collection qui offre la paire, `ImmutableArray` et `Span` compris, et
-  une méthode propre à l'utilisateur n'est échangée que si son type déclare la contrepartie avec la
-  même forme.
+* Chaque mutant que la famille propose se lie, avec le type de l'appel et sa façon de le retourner
+  inchangés, donc aucun n'échoue à compiler.
+* La règle atteint tout type sur lequel une bibliothèque déclare la paire, `ImmutableArray` compris,
+  et une méthode propre à l'utilisateur n'est échangée que si son type déclare la contrepartie avec
+  la même forme.
 * Le catalogue par défaut, et tout score pris avec lui, restent inchangés.
 
 ### Négatives

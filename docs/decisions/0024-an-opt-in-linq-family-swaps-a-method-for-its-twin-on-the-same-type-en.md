@@ -29,9 +29,14 @@ The two confirmed gaps bind differently. At `DocumentedByInvalidSignatureAnalyze
 is an `ImmutableArray<IMethodSymbol>`, so `candidates.Any(...)` binds to
 `System.Linq.ImmutableArrayExtensions.Any`, not to `System.Linq.Enumerable.Any`; at
 `ExampleDoesNotCallDocumentedFactoryAnalyzer.cs:76` the call follows `.OfType<T>()` and binds to
-`Enumerable.Any`. Roslyn's API returns `ImmutableArray` throughout, and `Span` and `ReadOnlySpan` have
-their own `Any`, `All`, `Min` and `Max` in other extension classes. The same repository declares a
-method of its own named `ErrorCodeFactory.Any()`, with no `All` beside it.
+`Enumerable.Any`. Roslyn's API returns `ImmutableArray` throughout. In the reference assemblies of
+.NET 10.0.14, `System.Linq.ImmutableArrayExtensions` declares both `Any` and `All`, while
+`System.MemoryExtensions` declares neither on `Span` or `ReadOnlySpan`, nor `Min` or `Max`. The same
+repository declares a method of its own named `ErrorCodeFactory.Any()`, with no `All` beside it.
+
+A method may return by reference - `ref bool Any()` - which `IMethodSymbol` reports apart from the
+return type, as `ReturnsByRef` and `ReturnsByRefReadonly`. A `ref` local initialized from such a
+call, `ref bool r = ref x.Any();`, does not compile from a call that returns by value.
 
 Counted by name in that repository's production projects, not by binding: 13 `.Any(`, 11 of them with
 a predicate, 9 `.OrderBy(`, 6 `.ThenBy(`, 2 `.Skip(`, 2 `.Except(`, 1 `.Concat(`, and no `.All(`,
@@ -50,23 +55,27 @@ binds to a method of the same containing type with the same return type; the pai
 `All`, `Min` ↔ `Max`, `MinBy` ↔ `MaxBy`, `OrderBy` ↔ `OrderByDescending`, `ThenBy` ↔
 `ThenByDescending`, `Order` ↔ `OrderDescending`, `Skip` ↔ `Take`, `SkipWhile` ↔ `TakeWhile`,
 `SkipLast` ↔ `TakeLast`, `Union` ↔ `Intersect` and `Concat` ↔ `Except`; the family is opt-in first,
-and its default status is decided after it has been measured.
+and its default status is decided after it has been measured. On review of the record, the maintainer
+asked that the way the value is returned, by value or by reference, be part of the rule.
 
 ## Decision
 
 In this context, we decide to add an opt-in `Linq` family that swaps a call's method name with its
 counterpart from the eleven pairs above, when the counterpart binds to a method of the same
-containing type as the original with the same return type.
+containing type as the original, with the same return type returned the same way.
 
 ## Rationale
 
 Binding to a twin, rather than to `System.Linq.Enumerable` and `Queryable`, is what reaches both
 confirmed gaps: one of them binds to `ImmutableArrayExtensions`, and a rule that names classes would
-miss it, as it would miss every `Span` overload. The twin rule names nothing and still keeps the
+miss it, as it would miss any other library that declares the pair on a type of its own. The twin
+rule names nothing and still keeps the
 guarantee the issue asked for: `ErrorCodeFactory.Any()` has no `All` on its type and is left alone,
 and a user type that does declare both names with the same shape is swapped as a pair the user made
-comparable. Requiring the same return type is what makes the mutant compile by construction, as RB-011
-does for operators: the call's value keeps its type wherever it is used.
+comparable. Requiring the same return type, returned the same way, is what makes the mutant compile
+by construction, as RB-011 does for operators: the call's value keeps its type wherever it is used,
+and a `ref` return is never swapped for a value return, which a `ref` local initialized from the call
+would refuse.
 
 The eleven pairs are those whose two members have the same shape and whose swap changes what the call
 computes - a quantifier, an extreme, an order, a side of a sequence, a set operation. The pairs left
@@ -104,7 +113,7 @@ and `--with` and `--without` act on families.
 
 * **Description:** the issue's proposal: swap only a call bound to one of those two classes.
 * **Why rejected:** it misses `ImmutableArrayExtensions.Any`, which is one of the two gaps that
-  motivate the family, and every `Span` overload with it.
+  motivate the family, and with it any library that declares the pair on a type of its own.
 
 ### Alternative 4 — Default from the first version
 
@@ -119,9 +128,10 @@ and `--with` and `--without` act on families.
 
 * A gap of the shape found twice on the sample - a quantifier that a test exercises on one side only
   - is reported, which no family could do.
-* Every mutant the family proposes binds, with the call's type unchanged, so none fails to compile.
-* The rule reaches every collection type that offers the pair, `ImmutableArray` and `Span` included,
-  and a user's own method is swapped only when its type declares the counterpart with the same shape.
+* Every mutant the family proposes binds, with the call's type and its way of returning it unchanged,
+  so none fails to compile.
+* The rule reaches every type on which a library declares the pair, `ImmutableArray` included, and a
+  user's own method is swapped only when its type declares the counterpart with the same shape.
 * The default catalogue, and every score taken with it, are unchanged.
 
 ### Negative
