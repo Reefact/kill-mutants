@@ -37,6 +37,9 @@ namespace KillMutants.Cli;
 /// </param>
 /// <param name="Progress">What the console shows while the run runs; <c>log</c> unless asked. See DEC0023.</param>
 /// <param name="Slow">How long a mutant runs before it is named as slow, or null for the default.</param>
+/// <param name="IgnoreCalls">
+/// The calls the project does not hear about, already validated; empty for none. See DEC0026.
+/// </param>
 internal sealed record RunSettings(
     string Directory,
     string Configuration,
@@ -55,7 +58,8 @@ internal sealed record RunSettings(
     string? TargetFramework = null,
     IReadOnlyList<string>? IgnoreUntracked = null,
     ProgressMode Progress = ProgressMode.Log,
-    TimeSpan? Slow = null)
+    TimeSpan? Slow = null,
+    IReadOnlyList<string>? IgnoreCalls = null)
 {
     /// <summary>Resolves what was asked against what the project keeps in its file.</summary>
     /// <param name="options">What the command line asked for.</param>
@@ -95,6 +99,7 @@ internal sealed record RunSettings(
         RejectResumeWithoutItsFiles(options, jsonReportPath);
 
         IReadOnlyList<string> ignoreUntracked = IgnoredUntracked(options, file);
+        IReadOnlyList<string> ignoreCalls = IgnoredCalls(options, file);
 
         return new RunSettings(
             options.Directory,
@@ -114,7 +119,30 @@ internal sealed record RunSettings(
             options.TargetFramework ?? NamedFramework(file?.TargetFramework),
             ignoreUntracked,
             options.Progress ?? CommandLineOptions.ProgressModeOf(file?.Progress) ?? ProgressMode.Log,
-            options.Slow ?? SlowIn(file));
+            options.Slow ?? SlowIn(file),
+            ignoreCalls);
+    }
+
+    /// <summary>
+    /// The calls the project does not hear about, from the command line or else the file, refused
+    /// from either when a pattern is empty or would silence every call (DEC0026).
+    /// </summary>
+    private static IReadOnlyList<string> IgnoredCalls(CommandLineOptions options, ConfigurationFile? file)
+    {
+        IReadOnlyList<string> patterns = options.IgnoreCalls ?? file?.IgnoreCalls ?? [];
+
+        try
+        {
+            Filtering.IgnoredCalls.Validate(patterns);
+        }
+        catch (ArgumentException refused) when (options.IgnoreCalls is null && file is not null)
+        {
+            throw new ArgumentException(
+                $"'ignoreCalls' in '{Path.Combine(file.Directory, ConfigurationFile.Name)}': {refused.Message}",
+                refused);
+        }
+
+        return patterns;
     }
 
     /// <summary>The threshold the file names, already refused by <see cref="RejectImpossible"/> if unreadable.</summary>

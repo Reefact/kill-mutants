@@ -37,6 +37,10 @@ public sealed class MutationTestReport
     /// run having been stopped - a target set aside at its baseline or its coverage keeps its mutants
     /// selected and gives them none (DEC0022). Null reads as <paramref name="results"/>' count.
     /// </param>
+    /// <param name="ignoreCalls">
+    /// The rules of <c>--ignore-calls</c> as the project wrote them, so the report can count what
+    /// each silenced, a rule that silenced nothing included (DEC0026).
+    /// </param>
     public MutationTestReport(
         IReadOnlyList<MutantResult> results,
         TimeSpan duration = default,
@@ -49,7 +53,8 @@ public sealed class MutationTestReport
         IReadOnlyList<WidenedProject>? widened = null,
         Func<string, bool>? inTheChange = null,
         IReadOnlyList<SetAside>? setAside = null,
-        int? selected = null)
+        int? selected = null,
+        IReadOnlyList<string>? ignoreCalls = null)
     {
         ArgumentNullException.ThrowIfNull(results);
 
@@ -72,7 +77,19 @@ public sealed class MutationTestReport
         Detected = CountOutcome(MutantOutcome.Detected);
         Undetected = CountOutcome(MutantOutcome.Undetected);
         Untestable = CountOutcome(MutantOutcome.Untestable);
+        Ignored = CountOutcome(MutantOutcome.Ignored);
         Score = MutationScore.FromCounts(Detected, Undetected);
+
+        // Every rule the project wrote, in its order, with what it silenced - a rule that silenced
+        // nothing included, because that is how a project learns a pattern no longer matches what it
+        // once did (DEC0026).
+        IgnoredByRule =
+        [
+            .. (ignoreCalls ?? []).Select(rule => new IgnoredRule(
+                rule,
+                results.Count(result => result.Status == MutantStatus.Ignored &&
+                                        string.Equals(result.Mutant.IgnoredBy, rule, StringComparison.Ordinal)))),
+        ];
         UndetectedFromWidening = Widened.Count == 0 || inTheChange is null
             ? 0
             : results.Count(result =>
@@ -90,7 +107,8 @@ public sealed class MutationTestReport
                     family.Count(),
                     family.Count(result => result.Outcome == MutantOutcome.Detected),
                     family.Count(result => result.Outcome == MutantOutcome.Undetected),
-                    family.Count(result => result.Outcome == MutantOutcome.Untestable)))
+                    family.Count(result => result.Outcome == MutantOutcome.Untestable),
+                    family.Count(result => result.Outcome == MutantOutcome.Ignored)))
                 .OrderByDescending(family => family.Total)
                 .ThenBy(family => family.Mutator.ToString(), StringComparer.Ordinal),
         ];
@@ -147,6 +165,15 @@ public sealed class MutationTestReport
     /// </summary>
     public int Untestable { get; }
 
+    /// <summary>How many mutants the project chose not to hear about, by <c>--ignore-calls</c> (DEC0026).</summary>
+    public int Ignored { get; }
+
+    /// <summary>
+    /// Each rule of <c>--ignore-calls</c> with the number of mutants it silenced, in the order the
+    /// project wrote them, a rule that silenced nothing included.
+    /// </summary>
+    public IReadOnlyList<IgnoredRule> IgnoredByRule { get; }
+
     /// <summary>The share of judged mutants the suite detected.</summary>
     /// <remarks>
     /// Computed whatever the scope, and <em>reported</em> only for a full run. A partial run's
@@ -192,7 +219,12 @@ public sealed class MutationTestReport
     /// established nothing, and a run that established nothing must not report success - the same
     /// rule ADR-0009 already applies to an undefined score against a threshold.
     /// </remarks>
-    public bool IsInconclusive => Total > 0 && Score.IsUndefined;
+    /// <summary>
+    /// True when mutants were generated and not one could be judged. A mutant the project chose to
+    /// ignore is not one that could not be judged: a change whose only mutants the project silenced
+    /// has nothing to answer for, as a change with no mutants has (DEC0010, DEC0026).
+    /// </summary>
+    public bool IsInconclusive => Total - Ignored > 0 && Score.IsUndefined;
 
     /// <summary>True when the change left a project with no tests reaching it at all.</summary>
     public bool LostCoverage => CoverageLost.Count > 0;

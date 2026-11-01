@@ -72,6 +72,11 @@ public sealed record RunPlan(
 /// were none, which is also what a plan written before DEC0022 says. A later run of the series
 /// generates them as new mutants once the cause is fixed.
 /// </param>
+/// <param name="IgnoreCalls">
+/// The rules of <c>--ignore-calls</c>, or null for none, which is also what a plan written before
+/// DEC0026 says. A mutant one run ignored and another tested is a verdict nobody can read, so the
+/// list is compared as the exclusions are.
+/// </param>
 /// <remarks>
 /// <para>
 /// A mutant's key covers the mutation and nothing else: not the rest of the file, not the tests, not
@@ -101,7 +106,8 @@ public sealed record RunIdentity(
     string? TestFramework = null,
     IReadOnlyList<string>? With = null,
     string? TargetFramework = null,
-    IReadOnlyList<string>? NotGenerated = null)
+    IReadOnlyList<string>? NotGenerated = null,
+    IReadOnlyList<string>? IgnoreCalls = null)
 {
     /// <summary>
     /// Why this run cannot continue the one that recorded <paramref name="earlier"/>, phrased for a
@@ -194,6 +200,11 @@ public sealed record RunIdentity(
         if (!SameSet(Exclude, earlier.Exclude))
         {
             return "the exclusions differ";
+        }
+
+        if (!SameSet(IgnoreCalls ?? [], earlier.IgnoreCalls ?? []))
+        {
+            return "the calls ignored differ";
         }
 
         if (Scope is not null && earlier.Scope is not null && Scope != earlier.Scope)

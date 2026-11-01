@@ -27,4 +27,11 @@ public enum MutantOutcome
 
     /// <summary>The suite was never asked, because KillMutants could not produce a testable mutant.</summary>
     Untestable,
+
+    /// <summary>
+    /// The project chose not to hear about it, by a rule it versions (DEC0026). Outside the score like
+    /// an untestable mutant, but for the opposite reason: not a limitation of the tool, a decision of
+    /// the project, which the report shows by rule so that the choice is never silent.
+    /// </summary>
+    Ignored,
 }

@@ -12,6 +12,7 @@ internal sealed class MutantGenerator
     private readonly MutatorCatalog _catalog;
     private readonly bool _reachesConstants;
     private readonly PathFilter _exclusions;
+    private readonly IgnoredCalls _ignoredCalls;
     private readonly string _root;
 
     private MutantId _nextId = MutantId.First;
@@ -22,13 +23,19 @@ internal sealed class MutantGenerator
     /// The directory the run was pointed at. Mutants record their file relative to it, so that a
     /// mutant's key is the same on a CI runner and on a laptop - see <see cref="MutantKey"/>.
     /// </param>
-    public MutantGenerator(MutatorCatalog catalog, PathFilter? exclusions = null, string? root = null)
+    /// <param name="ignoredCalls">The calls the project does not hear about (DEC0026), or none.</param>
+    public MutantGenerator(
+        MutatorCatalog catalog,
+        PathFilter? exclusions = null,
+        string? root = null,
+        IgnoredCalls? ignoredCalls = null)
     {
         ArgumentNullException.ThrowIfNull(catalog);
 
         _catalog = catalog;
         _reachesConstants = catalog.Mutators.Any(mutator => mutator.ReachesConstants);
         _exclusions = exclusions ?? PathFilter.None;
+        _ignoredCalls = ignoredCalls ?? IgnoredCalls.None;
         _root = root ?? string.Empty;
     }
 
@@ -109,6 +116,12 @@ internal sealed class MutantGenerator
                 // constant propose nothing.
                 bool? readConstant = null;
 
+                // Likewise once per node, and only once something is proposed: a call the project
+                // does not hear still has its mutants generated, marked with the rule, so that the
+                // report counts what was silenced rather than losing it (DEC0026).
+                string? ignoredBy = null;
+                bool askedIgnored = false;
+
                 foreach (IMutator mutator in _catalog.Mutators)
                 {
                     if (!observable && !mutator.ReachesConstants)
@@ -125,7 +138,13 @@ internal sealed class MutantGenerator
                             break;
                         }
 
-                        mutants.Add(new Mutant(_nextId, candidate, _root));
+                        if (!askedIgnored)
+                        {
+                            ignoredBy = _ignoredCalls.RuleSilencing(node, semanticModel);
+                            askedIgnored = true;
+                        }
+
+                        mutants.Add(new Mutant(_nextId, candidate, _root, ignoredBy));
                         _nextId = _nextId.Next();
                     }
                 }

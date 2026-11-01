@@ -179,4 +179,21 @@ public class RunIdentityTests
         Assert.NotEqual(once, RunIdentity.FingerprintOf(["a", "b"]));
         Assert.Equal(64, once.Length);
     }
+
+    /// <summary>
+    /// DEC0026: a mutant one run ignored and another tested is a verdict nobody can read, so the
+    /// list of ignored calls is compared as the exclusions are - as a set, and absent reads as none.
+    /// </summary>
+    [Fact]
+    public void A_series_refuses_another_list_of_ignored_calls()
+    {
+        RunIdentity guards = Identity() with { IgnoreCalls = ["*.ThrowIfNull", "*.ConfigureAwait"] };
+        RunIdentity reordered = Identity() with { IgnoreCalls = ["*.ConfigureAwait", "*.ThrowIfNull"] };
+        RunIdentity fewer = Identity() with { IgnoreCalls = ["*.ThrowIfNull"] };
+
+        Assert.Null(guards.WhyNotContinuedBy(reordered));
+        Assert.Equal("the calls ignored differ", guards.WhyNotContinuedBy(fewer));
+        Assert.Equal("the calls ignored differ", fewer.WhyNotContinuedBy(Identity()));
+        Assert.Null((Identity() with { IgnoreCalls = [] }).WhyNotContinuedBy(Identity()));
+    }
 }

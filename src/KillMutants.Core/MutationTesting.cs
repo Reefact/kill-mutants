@@ -88,6 +88,10 @@ public static class MutationTesting
     /// The one framework the test projects run on, or null when none was named. Needed for a test
     /// project that targets several; a project that does not offer it stops the run. See DEC0021.
     /// </param>
+    /// <param name="ignoreCalls">
+    /// The calls the project does not hear about: a mutant of such a call's statement or arguments is
+    /// generated, reported as ignored and never tested. See DEC0026.
+    /// </param>
     /// <exception cref="ArgumentException">A named mutator family does not exist.</exception>
     /// <exception cref="Projects.ProjectAnalysisException">The projects could not be analysed.</exception>
     /// <exception cref="BaselineVerificationException">The unmutated code does not pass its tests.</exception>
@@ -120,13 +124,14 @@ public static class MutationTesting
         IProgress<Reporting.MutantResult>? verdicts = null,
         Execution.RunContinuation? continuation = null,
         string? targetFramework = null,
+        IEnumerable<string>? ignoreCalls = null,
         CancellationToken cancellationToken = default,
         CancellationToken stopToken = default)
     {
         var session = new MutationTestSession(
             new XUnitTestRunner(), configuration, timeoutPolicy: null, workerCount, measureCoverage,
             exclude, Mutations.Mutators.MutatorCatalog.Of(mutators, withoutMutators, withMutators), verifyKills,
-            changes, progress, verdicts, continuation, targetFramework);
+            changes, progress, verdicts, continuation, targetFramework, Filtering.IgnoredCalls.Of(ignoreCalls));
 
         return session.RunAsync(searchDirectory, cancellationToken, stopToken);
     }

@@ -269,6 +269,29 @@ dotnet killmutants --without StringLiteral,BooleanLiteral
 dotnet killmutants --mutators Comparison,LogicalOperator,Arithmetic
 ```
 
+A family is a blunt instrument for a finer choice. Measured on `Reefact/slugger`, `Statement` left
+144 survivors, 116 of them argument guards - `ArgumentNullException.ThrowIfNull(x)` and its
+siblings, covered by tests that never pass `null` - burying 9 real gaps. A project says which
+**calls** it does not want to hear about with `--ignore-calls` (`ignoreCalls` in
+`killmutants.json`):
+
+```bash
+dotnet killmutants --ignore-calls 'System.ArgumentNullException.ThrowIfNull' \
+  --ignore-calls 'System.ArgumentException.ThrowIf*' --ignore-calls '*.ConfigureAwait'
+```
+
+A pattern is matched against the fully qualified name of the method the call **binds to**, with `*`
+and `?` as `--exclude` has them and case as C# has it, so a method of your own that merely shares a
+name with `ThrowIfNull` is not caught; a constructor is `System.ArgumentException.ctor`. A bare
+`ThrowIfNull` recognises nothing, and the report says so. A recognised call silences its statement
+and its arguments - `ConfigureAwait(false)`'s literal, an exception's message - and nothing beyond:
+the body of a lambda or a local function handed to the call is code of its own. A silenced mutant is
+still generated, never tested, and reported as **ignored**: outside the score, counted per family,
+counted per rule with a rule that silenced nothing named, and the count stands beside the score
+itself. The choice is the project's, it is versioned, and the report shows it rather than hiding it
+([DEC0026](docs/decisions/0026-a-project-names-the-calls-it-silences-and-the-report-counts-what-it-chose-not-to-hear-en.md)).
+A series refuses to continue under another list, as it refuses other exclusions.
+
 Two families run only when they are asked for. `NumericLiteral` moves each integer a constant, a field
 or a property is initialized with one step each way — `MinimumNouns = 100` becomes `101`, then `99` —
 which asks whether the tests check a threshold *at* its boundary or only somewhere around it. No
@@ -334,7 +357,7 @@ and so the catalogue that produced a score is versioned with the code that was s
 ```
 
 Every option that states a habit has a key — `configuration`, `exclude`, `mutators`, `with`,
-`without`, `parallel`, `coverage`, `breakAt`, `verifyKills`, `reportJson`, `stopAfter` — and anything given on
+`without`, `parallel`, `coverage`, `breakAt`, `verifyKills`, `reportJson`, `stopAfter`, `ignoreCalls` — and anything given on
 the command line wins, so the file states the habit and the command line states the exception.
 `--since` and `--resume` say what one run is about, and have none. A list on the command line replaces the file's rather than
 adding to it. Paths in the file are relative to the file. A misspelt key stops the run rather than

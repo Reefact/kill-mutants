@@ -521,4 +521,41 @@ public class ConsoleReportWriterTests
         string.Join(
             ' ',
             output.ReplaceLineEndings("\n").Split('\n', StringSplitOptions.RemoveEmptyEntries));
+
+    /// <summary>
+    /// DEC0026: what the project chose not to hear is shown where the choice is made and where it
+    /// moves the number - by rule, a rule that silenced nothing included, and beside the score.
+    /// </summary>
+    [Fact]
+    public void What_the_project_ignored_is_counted_by_rule_and_beside_the_score()
+    {
+        IReadOnlyList<Mutant> mutants = new MutantGenerator(
+                MutatorCatalog.Default, ignoredCalls: KillMutants.Filtering.IgnoredCalls.Of(["*.ThrowIfNull"]))
+            .Generate(TestCompilation.From(
+                    "class C { bool M(object x, int a) { System.ArgumentNullException.ThrowIfNull(x); return a >= 18; } }",
+                    "/src/Ages.cs"),
+                cancellationToken: TestContext.Current.CancellationToken);
+        Mutant guard = Assert.Single(mutants, mutant => mutant.IgnoredBy is not null);
+        MutantResult[] results =
+        [
+            new(guard, MutantStatus.Ignored),
+            .. mutants.Where(mutant => mutant.IgnoredBy is null).Select(mutant => new MutantResult(mutant, MutantStatus.Killed)),
+        ];
+
+        var writer = new StringWriter();
+
+        ConsoleReportWriter.Write(writer, new MutationTestReport(results, ignoreCalls: ["*.ThrowIfNull", "*.Nobody"]));
+
+        string output = writer.ToString().ReplaceLineEndings("\n");
+
+        Assert.Contains("Ignored: 1 (by the project's rules)", output, StringComparison.Ordinal);
+        Assert.Contains(
+            "Ignored by the project's rules (1)\n\n" +
+            "  *.ThrowIfNull  1 mutant\n" +
+            "  *.Nobody       silenced nothing - the pattern recognises no call of this run\n",
+            output,
+            StringComparison.Ordinal);
+        Assert.Contains("Mutation score: 100% (1 ignored by the project's rules)", output, StringComparison.Ordinal);
+        Assert.Contains("1 ignored", output[output.IndexOf("By mutator", StringComparison.Ordinal)..], StringComparison.Ordinal);
+    }
 }

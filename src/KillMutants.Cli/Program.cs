@@ -258,7 +258,7 @@ internal static class Program
                 settings.MeasureCoverage, settings.Exclude, settings.Mutators,
                 settings.WithoutMutators, settings.WithMutators, settings.VerifyKills, changes,
                 progress, files?.Log, files?.Continuation, stopToken: stopToken,
-                targetFramework: settings.TargetFramework)
+                targetFramework: settings.TargetFramework, ignoreCalls: settings.IgnoreCalls)
             .ConfigureAwait(false);
 
         // Progress goes to stderr and the report to stdout, so piping the report somewhere useful
@@ -532,7 +532,8 @@ internal static class Program
             [.. settings.WithoutMutators.Select(family => family.ToString())],
             settings.Exclude,
             With: [.. (settings.WithMutators ?? []).Select(family => family.ToString())],
-            TargetFramework: settings.TargetFramework);
+            TargetFramework: settings.TargetFramework,
+            IgnoreCalls: settings.IgnoreCalls is { Count: > 0 } ignored ? ignored : null);
 
         bool continues = false;
 
@@ -777,7 +778,7 @@ internal static class Program
               A project may keep its habits in killmutants.json, in the directory above. Every
               option below that states a habit has a key there - configuration, exclude, mutators,
               with, without, parallel, coverage, breakAt, verifyKills, reportJson, stopAfter,
-              targetFramework, ignoreUntracked, progress, slow - and
+              targetFramework, ignoreUntracked, progress, slow, ignoreCalls - and
               anything given on the command line wins. --since and --resume say what one run is
               about, and have none.
 
@@ -846,6 +847,16 @@ internal static class Program
                                         may change between versions: tools read --report-json.
                   --slow <time>         Name a mutant still running after this long - 30s by
                                         default - once, at the moment it happens.
+                  --ignore-calls <pattern>
+                                        Do not test a mutant of this call's statement or arguments:
+                                        it is reported as ignored, outside the score, and counted
+                                        by rule. Repeatable. Matched against the fully qualified
+                                        name of the method the call binds to, such as
+                                        'System.ArgumentNullException.ThrowIfNull', with '*' as in
+                                        --exclude: '*.ConfigureAwait', 'System.ArgumentException.ThrowIf*'.
+                                        A constructor is 'System.ArgumentException.ctor'. Code handed to the call - a
+                                        lambda, a local function - is not silenced. Pass 'none' to
+                                        clear an ignoreCalls the file sets.
               -h, --help                Show this help.
 
             Exit codes:

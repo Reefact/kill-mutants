@@ -34,6 +34,7 @@ public static class ConsoleReportWriter
 
         WriteTotals(writer, report);
         WriteFamilies(writer, report);
+        WriteIgnored(writer, report);
         WriteWarnings(writer, report);
 
         writer.WriteLine();
@@ -192,7 +193,7 @@ public static class ConsoleReportWriter
         {
             if (report.HasScore && report.MeasuredEverything)
             {
-                writer.WriteLine($"Mutation score: {report.Score}");
+                writer.WriteLine($"Mutation score: {report.Score}{IgnoredBeside(report)}");
 
                 return;
             }
@@ -209,7 +210,7 @@ public static class ConsoleReportWriter
             if (report.HasScore)
             {
                 foreach (string line in Wrap(
-                             $"Mutation score: {report.Score}, over the part measured only - " +
+                             $"Mutation score: {report.Score}{IgnoredBeside(report)}, over the part measured only - " +
                              $"{Format(report.SetAside.Count)} part(s) set aside above. See DEC0022.",
                              width: 88))
                 {
@@ -415,6 +416,49 @@ public static class ConsoleReportWriter
             // different and often more urgent finding than a surviving mutant.
             writer.WriteLine($"No coverage: {Format(report.Uncovered)}");
         }
+
+        if (report.Ignored > 0)
+        {
+            writer.WriteLine($"Ignored: {Format(report.Ignored)} (by the project's rules)");
+        }
+    }
+
+    /// <summary>
+    /// What the score line says beside the percentage when the project silenced something: the one
+    /// reader a percentage can mislead is the one who reads nothing else, so the count goes where
+    /// that reader looks (DEC0026).
+    /// </summary>
+    private static string IgnoredBeside(MutationTestReport report) =>
+        report.Ignored > 0
+            ? $" ({Format(report.Ignored)} ignored by the project's rules)"
+            : string.Empty;
+
+    /// <summary>
+    /// Each rule of <c>--ignore-calls</c> with what it silenced, a rule that silenced nothing first
+    /// of all: that one is a method renamed or a pattern that never matched, and obeying it in
+    /// silence would be the tool lying by omission about what the project asked (DEC0026).
+    /// </summary>
+    private static void WriteIgnored(TextWriter writer, MutationTestReport report)
+    {
+        if (report.IgnoredByRule.Count == 0)
+        {
+            return;
+        }
+
+        int ruleWidth = report.IgnoredByRule.Max(rule => rule.Rule.Length);
+
+        writer.WriteLine();
+        writer.WriteLine($"Ignored by the project's rules ({Format(report.Ignored)})");
+        writer.WriteLine();
+
+        foreach (IgnoredRule rule in report.IgnoredByRule)
+        {
+            writer.WriteLine(
+                $"  {rule.Rule.PadRight(ruleWidth)}  " +
+                (rule.Mutants == 0
+                    ? "silenced nothing - the pattern recognises no call of this run"
+                    : $"{Format(rule.Mutants)} {Plural(rule.Mutants, "mutant")}"));
+        }
     }
 
     /// <summary>
@@ -450,10 +494,14 @@ public static class ConsoleReportWriter
                 ? string.Empty
                 : $"  ({family.Score})";
 
+            string ignored = family.Ignored > 0
+                ? $", {Format(family.Ignored)} ignored"
+                : string.Empty;
+
             writer.WriteLine(
                 $"  {family.Mutator.ToString().PadRight(nameWidth)}  " +
                 $"{Format(family.Total).PadLeft(totalWidth)} {Plural(family.Total, "mutant")}, " +
-                $"{Format(family.Detected).PadLeft(detectedWidth)} detected{score}");
+                $"{Format(family.Detected).PadLeft(detectedWidth)} detected{score}{ignored}");
         }
     }
 
