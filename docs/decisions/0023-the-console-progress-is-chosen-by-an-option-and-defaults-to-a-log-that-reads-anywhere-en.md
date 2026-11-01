@@ -30,7 +30,7 @@ option the user sets.
 The options of the command line are short and say what they act on: `--exclude`, `--since`,
 `--stop-after`, `--no-coverage`, `--report-json`. None concerns what is shown on the console. The tool
 has no release yet: no tag exists, the version is `0.1.0-alpha`, and the changelog holds only
-unreleased changes, so no pipeline can depend on an option's name or default today.
+unreleased changes, so no pipeline can depend on an option's name, values or default today.
 [DEC0009](0009-exit-codes-are-a-public-contract-en.md) treats the exit codes as a public contract
 because tools depend on them; the JSON report is the channel the tool offers to tools.
 
@@ -55,10 +55,10 @@ rewritten in place is what the reporter's comments say makes a captured log unre
 form that cannot do harm as the default, and the pleasant one on request, trades a small loss for the
 user at a terminal against a failure for the user whose output is captured.
 
-Deciding the name and the default before the first release is what keeps the decision cheap: nothing
-depends on them yet, and after a release a pipeline will, as the exit codes show with DEC0009.
-Leaving the form of the lines out of the commitment, with the JSON report as the machine channel,
-keeps the display free to improve without a record each time.
+Deciding the name, the values and the default before the first release is what keeps the decision
+cheap: nothing depends on them yet, and after a release a pipeline will, as the exit codes show with
+DEC0009. Leaving the form of the lines out of the commitment, with the JSON report as the machine
+channel, keeps the display free to improve without a record each time.
 
 The name `--progress` says what the option acts on, as the other options do, and does not read as
 naming where the report goes, which `--report-json` already does.
@@ -91,15 +91,17 @@ naming where the report goes, which `--report-json` already does.
 * The form of the output no longer depends on a guess, and a user whose output surprises them can
   change it.
 * The default is readable in a terminal, a file and a CI log alike.
-* The display can change between versions: only the name and the default are held, and the help says
-  the JSON report is what tools read.
+* The display can change between versions: the option's name, its three values and its default are
+  held as a contract, the form of the lines is not, and the help says the JSON report is what tools
+  read.
 
 ### Negative
 
 * A person at a terminal who sets nothing gets dated lines, not a live line, until they ask for
   `--progress live`.
 * The command line has one more option to learn.
-* The name and the default will have to be kept once the tool is released.
+* The option's name, its three values and its default will have to be kept once the tool is released:
+  a script that passes `--progress none` depends on the value as much as on the name.
 
 ### Risks
 
