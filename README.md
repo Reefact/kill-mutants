@@ -268,7 +268,7 @@ dotnet killmutants --without StringLiteral,BooleanLiteral
 dotnet killmutants --mutators Comparison,LogicalOperator,Arithmetic
 ```
 
-One family runs only when it is asked for. `NumericLiteral` moves each integer a constant, a field
+Two families run only when they are asked for. `NumericLiteral` moves each integer a constant, a field
 or a property is initialized with one step each way — `MinimumNouns = 100` becomes `101`, then `99` —
 which asks whether the tests check a threshold *at* its boundary or only somewhere around it. No
 operator is involved there, so no other family can ask it. Literals are everywhere and most are not
@@ -284,6 +284,19 @@ constant had when it was compiled, so a constant only the tests read would survi
 assert; a constant the project reads changes there with the mutant, and a test can notice. Mutants in
 a constant are tested against the whole suite, since there is nothing to measure coverage on
 ([DEC0019](docs/decisions/0019-numeric-literals-are-an-opt-in-family-that-reaches-the-constants-its-project-reads-en.md)).
+
+`Linq` swaps a call for its counterpart - `Any` for `All`, `Min` for `Max`, `OrderBy` for
+`OrderByDescending`, `Skip` for `Take`, `Union` for `Intersect`, eleven pairs in all - which asks
+whether a test exercises a quantifier, an order or a slice on both sides, or on one only. A call is
+swapped only when the counterpart binds to a twin of the method called: declared on the same type,
+returning the same type the same way. So the rule names no class - `ImmutableArray`'s `Any` is
+reached as `Enumerable`'s is - and leaves alone a method of your own that merely shares a name. It
+is off by default until it has been measured (DEC0024):
+
+```bash
+dotnet killmutants --with Linq
+dotnet killmutants --mutators Linq
+```
 
 Code marked `[ExcludeFromCodeCoverage]` is left alone: the attribute already says this code is not
 part of what the tests are expected to cover.

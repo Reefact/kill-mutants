@@ -33,6 +33,14 @@ release rather than shipping undocumented.
 
 ### Added
 
+- An opt-in `Linq` family, run with `--with Linq` or `--mutators Linq`, swaps a call for its
+  counterpart in eleven pairs - `Any`/`All`, `Min`/`Max`, `MinBy`/`MaxBy`, `OrderBy`/
+  `OrderByDescending`, `ThenBy`/`ThenByDescending`, `Order`/`OrderDescending`, `Skip`/`Take`,
+  `SkipWhile`/`TakeWhile`, `SkipLast`/`TakeLast`, `Union`/`Intersect`, `Concat`/`Except` - when the
+  counterpart binds to a twin of the method called: same containing type, same return type,
+  returned the same way. The rule names no class, so `ImmutableArray`'s `Any` is reached as
+  `Enumerable`'s is, and a method of your own that merely shares a name is left alone. Two
+  `Any` → `All` gaps confirmed on `first-class-errors` motivated it. See DEC0024, #63.
 - `--ignore-untracked <pattern>` (and `ignoreUntracked` in `killmutants.json`) names the untracked
   files a `--resume` series does not count when it reads its tree, such as the `.received` files a
   snapshot test writes beside its source. Each file ignored is named on standard error and recorded

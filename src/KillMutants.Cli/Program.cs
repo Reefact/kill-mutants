@@ -794,8 +794,8 @@ internal static class Program
                                         property KillMutantsTestSupport to true, which says it is
                                         test scaffolding rather than code under test.
               -m, --mutators <list>     Only run these mutator families, comma separated.
-                  --with <list>         Add these families to the others. NumericLiteral runs
-                                        only when it is named here or in --mutators.
+                  --with <list>         Add these families to the others. NumericLiteral and
+                                        Linq run only when named here or in --mutators.
                   --without <list>      Leave these families out. Applied after the two above.
                                         Pass 'none' to run every family even when the file
                                         excludes some.
