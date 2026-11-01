@@ -6,6 +6,7 @@
 |---|---|---|---|
 | 2026-11-01 | Proposé | Première rédaction | |
 | 2026-11-01 | Accepté | À la demande du mainteneur | |
+| 2026-11-01 | Remplacé par DEC0027 | Seulement le statut sur demande ; les onze paires et la règle des jumelles demeurent | |
 
 ## Contexte
 

@@ -6,6 +6,7 @@
 |---|---|---|---|
 | 2026-11-01 | Proposed | First draft | |
 | 2026-11-01 | Accepted | At the maintainer's request | |
+| 2026-11-01 | Superseded by DEC0027 | Only the opt-in status; the eleven pairs and the twin rule stand | |
 
 ## Context
 
