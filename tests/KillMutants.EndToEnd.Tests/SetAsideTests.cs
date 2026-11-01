@@ -114,9 +114,10 @@ public class SetAsideTests
     }
 
     /// <summary>
-    /// #66. On a fresh clone whose test projects leave their output type to a package, no test
-    /// project is recognised until NuGet has restored them, and the refusal pointed at a project it
-    /// had set aside. It now names the unrestored projects and the command, first.
+    /// #66, as it was met: on a fresh clone whose test projects leave their output type to a package,
+    /// no test project is recognised until NuGet has restored them, and the refusal pointed at an
+    /// unrelated project it had set aside. It now names the unrestored projects, by path, and the
+    /// command - before what was set aside, which still follows (review of #71).
     /// </summary>
     [Fact]
     public async Task A_refusal_for_no_test_project_names_those_that_were_never_restored()
@@ -124,14 +125,24 @@ public class SetAsideTests
         using var fixture = FixtureCopy.Create();
         fixture.LeaveTheSuitesOutputTypeToAPackage();
 
+        string probe = Path.Combine(fixture.Root, "tools", "probe", "Probe.csproj");
+        Directory.CreateDirectory(Path.GetDirectoryName(probe)!);
+        await File.WriteAllTextAsync(probe, "<Project Sdk=\"Microsoft.NET.Sdk\">", TestContext.Current.CancellationToken);
+
         ProjectAnalysisException refused = await Assert.ThrowsAsync<ProjectAnalysisException>(() =>
             MutationTesting.RunAsync(
                 fixture.Root, mutators: Families, cancellationToken: TestContext.Current.CancellationToken));
 
-        Assert.StartsWith("No xUnit test project was found", refused.Message, StringComparison.Ordinal);
-        Assert.Contains("1 project(s) reference xUnit but have not been restored", refused.Message, StringComparison.Ordinal);
-        Assert.Contains("Run 'dotnet restore'", refused.Message, StringComparison.Ordinal);
-        Assert.Contains("  Sample.Library.Tests", refused.Message, StringComparison.Ordinal);
+        string message = refused.Message;
+        int restore = message.IndexOf("1 project(s) reference xUnit but have not been restored", StringComparison.Ordinal);
+        int setAside = message.IndexOf("1 project(s) could not be read and were set aside", StringComparison.Ordinal);
+
+        Assert.StartsWith("No xUnit test project was found", message, StringComparison.Ordinal);
+        Assert.True(restore > 0, message);
+        Assert.True(setAside > restore, message);
+        Assert.Contains("Run 'dotnet restore'", message, StringComparison.Ordinal);
+        Assert.Contains("  Sample.Library.Tests/Sample.Library.Tests.csproj", message, StringComparison.Ordinal);
+        Assert.Contains("tools/probe/Probe.csproj: ", message, StringComparison.Ordinal);
     }
 
     /// <summary>Once restored, the restore is not what is wrong, and the refusal does not say it is.</summary>
