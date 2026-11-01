@@ -19,8 +19,11 @@ namespace KillMutants.Mutations.Mutators;
 /// unassigned where it is read (CS0165), and removing a <c>return</c>, a <c>throw</c>, a <c>break</c>
 /// or a <c>yield break</c> changes what the compiler concludes about reachability; both need a flow
 /// analysis this family does not make. Stryker.NET refuses assignments for the same reason, and on
-/// <c>Reefact/slugger</c> its 139 judged statement mutants were calls. A call that writes an
-/// <c>out</c> argument is an assignment in disguise and is refused with them.
+/// <c>Reefact/slugger</c> its 139 judged statement mutants were calls. A call or a <c>yield</c>
+/// whose expression assigns a variable - <c>f(x = 1);</c>, <c>f(out x);</c>,
+/// <c>yield return n = 1;</c> - is an assignment in disguise and is refused with them: removing it
+/// can leave the variable unassigned where it is read next (CS0165). A compound assignment or an
+/// increment needs the variable assigned already, so <c>yield return items[i++];</c> is removed.
 /// </para>
 /// <para>
 /// A <c>yield return</c> is the one control-flow statement whose removal needs no such analysis:
@@ -63,7 +66,7 @@ internal sealed class StatementMutator : IMutator
     private static bool IsACallStatement(StatementSyntax statement, SemanticModel semanticModel) =>
         statement is ExpressionStatementSyntax call &&
         IsACall(call.Expression) &&
-        !WritesAnOutArgument(call) &&
+        !AssignsAVariable(call) &&
         !CallsAMethodTheCompilerDrops(call.Expression, semanticModel);
 
     /// <summary>
@@ -79,7 +82,7 @@ internal sealed class StatementMutator : IMutator
     /// </remarks>
     private static bool IsAYieldTheIteratorCanLose(StatementSyntax statement)
     {
-        if (!statement.IsKind(SyntaxKind.YieldReturnStatement))
+        if (!statement.IsKind(SyntaxKind.YieldReturnStatement) || AssignsAVariable(statement))
         {
             return false;
         }
@@ -110,11 +113,17 @@ internal sealed class StatementMutator : IMutator
         _ => false,
     };
 
-    private static bool WritesAnOutArgument(ExpressionStatementSyntax statement) =>
+    /// <summary>
+    /// True when the statement assigns a variable with <c>=</c> or through an <c>out</c> argument,
+    /// outside any lambda it holds. Review of #69 found <c>yield return n = 1;</c>, whose removal
+    /// leaves <c>n</c> unassigned at the next <c>yield return n;</c>.
+    /// </summary>
+    private static bool AssignsAVariable(StatementSyntax statement) =>
         statement
             .DescendantNodes(inner => inner is not AnonymousFunctionExpressionSyntax)
-            .OfType<ArgumentSyntax>()
-            .Any(argument => argument.RefKindKeyword.IsKind(SyntaxKind.OutKeyword));
+            .Any(inner =>
+                inner.IsKind(SyntaxKind.SimpleAssignmentExpression) ||
+                (inner is ArgumentSyntax argument && argument.RefKindKeyword.IsKind(SyntaxKind.OutKeyword)));
 
     /// <summary>
     /// True for a call the compiler removes by itself: to a method marked <c>[Conditional]</c>, such
