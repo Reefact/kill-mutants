@@ -667,13 +667,21 @@ internal sealed class MutationTestSession
         {
             int index = timedOut[confirmed];
 
+            // Started and finished, as in the main pass: a timeout re-run alone is where a test host
+            // the budget did not bring down shows, which is what --slow exists to name (review of #73).
+            MutantInProgress started = MutantInProgress.Started(mutants[index], budget);
+
             _progress?.Report(new MutationTestProgress(
                 MutationTestPhase.ConfirmingTimeouts, confirmed, timedOut.Length,
-                mutants[index].Id.ToString()));
+                mutants[index].Id.ToString(), Mutant: started));
 
             MutantResult alone = await TestMutantAsync(
                     compilation, sandbox, mutants[index], coverage, budget, cancellationToken)
                 .ConfigureAwait(false);
+
+            _progress?.Report(new MutationTestProgress(
+                MutationTestPhase.ConfirmingTimeouts, confirmed + 1, timedOut.Length,
+                mutants[index].Id.ToString(), Mutant: started with { Status = alone.Status }));
 
             // The second verdict wins - that is the whole point of taking it. But a timeout that
             // does not survive being re-run alone is evidence about the budget, and replacing the
@@ -749,12 +757,18 @@ internal sealed class MutationTestSession
         {
             Mutant mutant = killed[(int)((long)taken * killed.Length / wanted)];
 
+            MutantInProgress started = MutantInProgress.Started(mutant, budget);
+
             _progress?.Report(new MutationTestProgress(
-                MutationTestPhase.ReVerifyingKills, taken, wanted, mutant.Id.ToString()));
+                MutationTestPhase.ReVerifyingKills, taken, wanted, mutant.Id.ToString(), Mutant: started));
 
             MutantResult again = await TestMutantAsync(
                     compilation, sandbox, mutant, coverage, budget, cancellationToken)
                 .ConfigureAwait(false);
+
+            _progress?.Report(new MutationTestProgress(
+                MutationTestPhase.ReVerifyingKills, taken + 1, wanted, mutant.Id.ToString(),
+                Mutant: started with { Status = again.Status }));
 
             run.KillsReVerified++;
 

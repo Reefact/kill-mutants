@@ -237,6 +237,32 @@ public class ConsoleProgressReporterTests : IDisposable
     }
 
     /// <summary>
+    /// Review of #73: a timeout re-run alone is where a test host the budget did not bring down
+    /// shows, so a mutant confirmed that way is watched like any other - and its second verdict is
+    /// not counted again among the verdicts.
+    /// </summary>
+    [Fact]
+    public void A_mutant_confirmed_alone_is_watched_and_not_counted_twice()
+    {
+        using ConsoleProgressReporter progress = Reporter(ProgressMode.Live);
+
+        progress.Report(new MutationTestProgress(MutationTestPhase.TestingMutants, 0, 1, Mutant: Mutant("M1")));
+        progress.Report(new MutationTestProgress(
+            MutationTestPhase.TestingMutants, 1, 1, Mutant: Mutant("M1") with { Status = Mutations.MutantStatus.Timeout }));
+        progress.Report(new MutationTestProgress(MutationTestPhase.ConfirmingTimeouts, 0, 1, "M1", Mutant: Mutant("M1")));
+        _clock.Advance(TimeSpan.FromSeconds(30));
+        progress.CheckForSlowMutants();
+        progress.Report(new MutationTestProgress(
+            MutationTestPhase.ConfirmingTimeouts, 1, 1, "M1", Mutant: Mutant("M1") with { Status = Mutations.MutantStatus.Killed }));
+        progress.Report(new MutationTestProgress(MutationTestPhase.TestingMutants, 1, 1));
+
+        string written = _log.ToString();
+
+        Assert.Contains("Slow — Conditional  Rendering/Renderer.cs:440  running for 30s", written, StringComparison.Ordinal);
+        Assert.EndsWith("killed 0 · survived 0 · no coverage 0 · timed out 1", written.TrimEnd(), StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// #65: the live line is rewritten in place - no line break - with a bar of plain characters, the
     /// count, the mutant in progress and the verdicts so far.
     /// </summary>

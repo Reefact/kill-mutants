@@ -225,7 +225,13 @@ internal sealed class ConsoleProgressReporter : IProgress<MutationTestProgress>,
         if (mutant.Status is { } status)
         {
             _running.Remove(mutant.Id);
-            _reached[status] = _reached.GetValueOrDefault(status) + 1;
+
+            // Only the main pass's verdicts are counted: a timeout confirmed alone, or a kill tested
+            // again, is a second run of a mutant already counted, not another verdict.
+            if (value.Phase == MutationTestPhase.TestingMutants)
+            {
+                _reached[status] = _reached.GetValueOrDefault(status) + 1;
+            }
         }
         else
         {
