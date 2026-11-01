@@ -41,6 +41,10 @@ public class CatalogueCorpusTests
             { "coalesce onto a constant", "string? a", "string M({0}) => a ?? \"x\";" },
             { "chained coalesce", "string? a, string? b, string c", "string M({0}) => a ?? b ?? c;" },
             { "coalesce with nothing on the left", "string? s", "string? M({0}) => null ?? s;" },
+            { "coalesce whose left is a call, forced and still evaluated", "System.Type t", "System.Type M({0}) => System.Nullable.GetUnderlyingType(t) ?? t;" },
+            // Dropping the fallback would leave an `int?` where an `int` is required (RB-015), so the
+            // forced fallback is the one mutant, and it has to compile where the drop could not.
+            { "coalesce that removes nullability, its fallback forced", "int? count", "int M({0}) => count ?? 0;" },
             { "decisions with no negation written", "bool a, bool b, System.Func<bool> f", "bool M({0}) { while (a) { a = f(); } if (a || b) { return f(); } return a && b; }" },
             { "a negated decision and a lambda's", "bool a, System.Func<bool> f", "object M({0}) => !a ? System.Linq.Enumerable.Where(new[] { 1 }, x => f()) : null!;" },
             { "a quantifier over a sequence", "int[] xs", "bool M({0}) => System.Linq.Enumerable.Any(xs, x => x > 0);" },
@@ -140,9 +144,6 @@ public class CatalogueCorpusTests
             // `Any()` without a predicate has no `All()` counterpart to bind to (DEC0024). Handed back
             // as an object so that no family sees a returned bool to negate.
             { "a quantifier without a predicate", "int[] xs", "object M({0}) => System.Linq.Enumerable.Any(xs);" },
-
-            // Dropping the fallback would leave an `int?` where an `int` is required (RB-015).
-            { "a coalesce that removes nullability", "int? a", "int M({0}) => a ?? 0;" },
 
             // The ternary declares `first`, and swapping its branches would orphan it (RB-016).
             { "a conditional over a list pattern", "int[] xs", "int M({0}) => xs is [var first, ..] ? first : xs[^1];" },

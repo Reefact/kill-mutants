@@ -1400,3 +1400,53 @@ supprime, et `--ignore-calls` est le moyen de la faire taire.
 alimenté par un `Math.Max`, chacun vérifiant que la comparaison voisine de la capacité est toujours
 mutée ; et `An_argument_that_is_not_a_framework_capacity_is_still_mutated`, pour un `capacity` de
 l'utilisateur et un paramètre de la BCL d'un autre nom.
+
+---
+
+## RB-034 — Un `??` dont la gauche exécute du code n'avait aucun mutant demandant si elle est jamais non nulle · COUVERT
+
+**Comment il a été trouvé.** En lançant KillMutants `13b0229` sur `Reefact/enum-member-name-binding`
+à `bc6eda9`, à côté de Stryker.NET 5.0.0 sur le même commit (#77). Sur les 35 mutants que Stryker a
+laissés non détectés, c'était le seul vrai trou que KillMutants n'atteignait pas : tout autre
+survivant propre à Stryker a été soit tué par la suite complète une fois appliqué à la main — cinq
+d'entre eux, dans du code mis en cache statique que la couverture par test de Stryker juge mal —
+soit lu comme équivalent.
+
+**Ce qui se passe.** `EnumMemberNames.cs:85` s'écrit `Nullable.GetUnderlyingType(enumType) ?? enumType`.
+Le « remove left » de Stryker en a fait `enumType`, et le mutant a survécu ; appliqué à la main, les
+972 tests passent. Aucun test n'appelle la méthode avec un enum nullable, donc la branche qui le
+déballe n'est pas vérifiée. `NullCoalescing` avait deux mutants pour un `??` et aucun ne pouvait le
+dire : le repli retiré, `Nullable.GetUnderlyingType(enumType)`, est tué parce qu'un enum ordinaire
+le rend `null` et que la ligne suivante lève ; l'échange est refusé parce que la gauche est un
+appel, et que `b ?? a` le sauterait dès que `b` est défini (#17). Ne garder que `b`, comme le fait
+Stryker, n'était délibérément pas produit non plus : cela jette l'opérande de gauche et avec lui
+tout effet de bord, transformant un signal de couverture en un changement de comportement sans
+rapport.
+
+**La règle.** La question est posée sans retirer l'appel, à la manière que DEC0017 a arrêtée pour un
+ternaire — forcé, toujours évalué : `a ?? b` devient `(a is null ? b : b)`. `a` s'exécute encore,
+donc un effet de bord qu'il porte continue de se produire (RB-015) ; le résultat est toujours `b`,
+donc le mutant survit exactement quand aucun test n'atteint le site avec une gauche non nulle en le
+remarquant. Il n'est produit que là où l'échange ne l'est pas : pour une gauche qui se limite à
+lire, les deux posent la même question et seraient jugés deux fois. Les refus sont ceux de
+l'échange — rien d'un côté ou de l'autre, un `throw` à droite, qui n'a pas de type à donner aux deux
+branches, la même expression des deux côtés — et la forme forcée doit se convertir vers ce que
+l'original représentait, comme l'échange le doit (RB-011) : `count ?? 0` vers un `int`, dont le
+retrait ne compile pas, a désormais le repli forcé pour seul mutant. Entre parenthèses, parce que
+`??` lie plus fort que `?:` et que l'original peut se trouver à droite d'un autre `??` ou dans la
+condition d'un ternaire.
+
+**Pourquoi pas de record.** L'échange (#17, `be39346`) est entré dans la famille sans record, et
+cette variante applique un principe accepté à un opérateur frère plutôt que de choisir entre des
+réponses ; le mainteneur peut tout de même en vouloir un, puisqu'elle change ce que le catalogue par
+défaut produit.
+
+**Nos tests.** `NullCoalescingMutatorTests.A_left_that_runs_code_is_forced_to_its_fallback_and_still_evaluated`
+est la ligne ci-dessus ; `A_property_whose_getter_runs_code_is_not_swapped`,
+`A_left_operand_that_does_more_than_read_is_not_swapped` et
+`A_fallback_that_cannot_be_null_is_not_swapped` vérifient désormais le repli forcé à côté du retrait ;
+`A_fallback_that_removes_nullability_is_not_dropped` le vérifie seul ; `A_throw_fallback_is_not_forced`
+et `The_fallback_is_dropped_and_the_operands_are_swapped` tiennent les refus et la précédence de
+l'échange ; `The_forced_fallback_is_a_parenthesised_conditional_on_the_left_being_null` est la
+vérification RB-001. `CatalogueCorpusTests` compile les deux formes et constate que chacune émet
+différemment.

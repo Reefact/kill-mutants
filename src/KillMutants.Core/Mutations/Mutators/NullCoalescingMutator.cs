@@ -5,16 +5,27 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace KillMutants.Mutations.Mutators;
 
 /// <summary>
-/// Drops the fallback of a null-coalescing expression, <c>a ?? b</c> becoming <c>a</c>, and swaps
-/// its operands, <c>a ?? b</c> becoming <c>b ?? a</c>, where the swap can be asked honestly.
+/// Drops the fallback of a null-coalescing expression, <c>a ?? b</c> becoming <c>a</c>; swaps its
+/// operands, <c>a ?? b</c> becoming <c>b ?? a</c>, where the swap can be asked honestly; and where
+/// it cannot, forces the fallback while still evaluating the left, <c>(a is null ? b : b)</c>.
 /// </summary>
 /// <remarks>
 /// <para>
 /// A surviving mutant of the first kind says no test ever reaches the expression with a null left
 /// operand, so the fallback is unverified - one of the cheapest ways to find a default nobody
-/// exercises. The mirror mutation, keeping only <c>b</c>, is deliberately not produced: it discards
-/// the left operand and with it any side effect, which turns a missing-coverage signal into an
-/// unrelated behaviour change.
+/// exercises. The mirror mutation, keeping only <c>b</c> as Stryker.NET does, is deliberately not
+/// produced: it discards the left operand and with it any side effect, which turns a
+/// missing-coverage signal into an unrelated behaviour change.
+/// </para>
+/// <para>
+/// The mirror question - does any test reach the expression with a non-null left operand, and
+/// notice - is still asked, in the manner DEC0017 settled for a ternary: the fallback forced, the
+/// left still evaluated, <c>a ?? b</c> becoming <c>(a is null ? b : b)</c>. Measured on
+/// Reefact/enum-member-name-binding at bc6eda9 (#77):
+/// <c>Nullable.GetUnderlyingType(enumType) ?? enumType</c> had its fallback dropped and killed, its
+/// swap refused for the call, and no mutant asked whether a nullable enum ever reached the line -
+/// none does, and Stryker's <c>enumType</c> survived the whole suite. Made only where the swap is
+/// not: for a left that only reads, the two ask the same thing and would be judged twice - RB-034.
 /// </para>
 /// <para>
 /// The swap asks what neither of those can: which operand wins when both are set. Measured on
@@ -49,16 +60,19 @@ internal sealed class NullCoalescingMutator : IMutator
                 Name, coalesce, coalesce.Left.WithTriviaFrom(coalesce));
         }
 
-        if (!CanBeSwapped(coalesce, semanticModel))
+        if (CanBeSwapped(coalesce, semanticModel) &&
+            Swapped(coalesce) is { } swapped &&
+            Fits(swapped, coalesce, expected, semanticModel))
         {
+            yield return new MutationCandidate(Name, coalesce, swapped);
             yield break;
         }
 
-        BinaryExpressionSyntax swapped = Swapped(coalesce);
-
-        if (SwapFits(swapped, coalesce, expected, semanticModel))
+        if (CanBeForced(coalesce) &&
+            Forced(coalesce) is { } forced &&
+            Fits(forced, coalesce, expected, semanticModel))
         {
-            yield return new MutationCandidate(Name, coalesce, swapped);
+            yield return new MutationCandidate(Name, coalesce, forced);
         }
     }
 
@@ -113,6 +127,19 @@ internal sealed class NullCoalescingMutator : IMutator
         !IsNothing(coalesce.Left) &&
         !IsNothing(coalesce.Right) &&
         !coalesce.Right.IsKind(SyntaxKind.CoalesceExpression) &&
+        !coalesce.Right.IsKind(SyntaxKind.ThrowExpression) &&
+        !SyntaxFactory.AreEquivalent(coalesce.Left, coalesce.Right);
+
+    /// <summary>True when forcing the fallback asks a question the drop and the swap do not.</summary>
+    /// <remarks>
+    /// Nothing on either side is refused as the swap refuses it: <c>null ?? b</c> cannot be tested
+    /// for null at all, and <c>a ?? null</c> forced answers <c>null</c> whatever <c>a</c> is, a
+    /// question about code nobody writes on purpose. A <c>throw</c> on the right has no type to
+    /// give both branches. The same expression on both sides forces into the original.
+    /// </remarks>
+    private static bool CanBeForced(BinaryExpressionSyntax coalesce) =>
+        !IsNothing(coalesce.Left) &&
+        !IsNothing(coalesce.Right) &&
         !coalesce.Right.IsKind(SyntaxKind.ThrowExpression) &&
         !SyntaxFactory.AreEquivalent(coalesce.Left, coalesce.Right);
 
@@ -201,23 +228,53 @@ internal sealed class NullCoalescingMutator : IMutator
             .WithTriviaFrom(coalesce);
 
     /// <summary>
-    /// True when the swapped expression binds, and converts to what the original stood for.
+    /// The fallback forced and the left still evaluated, <c>(a is null ? b : b)</c>: a conditional
+    /// of its own, parenthesised because <c>??</c> binds tighter than <c>?:</c> and the original may
+    /// stand where that matters - the right of another <c>??</c>, the condition of a ternary.
+    /// </summary>
+    private static ParenthesizedExpressionSyntax Forced(BinaryExpressionSyntax coalesce)
+    {
+        ExpressionSyntax left = coalesce.Left.WithoutTrivia();
+        ExpressionSyntax right = coalesce.Right.WithoutTrivia();
+
+        return SyntaxFactory
+            .ParenthesizedExpression(
+                SyntaxFactory.ConditionalExpression(
+                    SyntaxFactory.IsPatternExpression(
+                        left.WithTrailingTrivia(SyntaxFactory.Space),
+                        SyntaxFactory.Token(SyntaxKind.IsKeyword).WithTrailingTrivia(SyntaxFactory.Space),
+                        SyntaxFactory.ConstantPattern(
+                            SyntaxFactory.LiteralExpression(SyntaxKind.NullLiteralExpression))),
+                    SyntaxFactory.Token(SyntaxKind.QuestionToken)
+                        .WithLeadingTrivia(SyntaxFactory.Space)
+                        .WithTrailingTrivia(SyntaxFactory.Space),
+                    right,
+                    SyntaxFactory.Token(SyntaxKind.ColonToken)
+                        .WithLeadingTrivia(SyntaxFactory.Space)
+                        .WithTrailingTrivia(SyntaxFactory.Space),
+                    right))
+            .WithTriviaFrom(coalesce);
+    }
+
+    /// <summary>
+    /// True when the candidate binds, and converts to what the original stood for.
     /// </summary>
     /// <remarks>
     /// The swap has a type question of its own, and it is the reverse of the first mutation's. The
     /// left operand of <c>??</c> has to be able to be null, so <c>count ?? 0</c> cannot become
     /// <c>0 ?? count</c> at all: the compiler refuses it, and asking it is what keeps the mutant
     /// from being generated (RB-011). What binds then has to fit where the original stood, by the
-    /// same conversion rule as the first mutation.
+    /// same conversion rule as the first mutation - and so does the forced fallback, whose type is
+    /// the fallback's own: <c>count ?? 0</c> forced is an <c>int</c> wherever the original stood.
     /// </remarks>
-    private static bool SwapFits(
-        BinaryExpressionSyntax swapped,
+    private static bool Fits(
+        ExpressionSyntax candidate,
         BinaryExpressionSyntax original,
         ITypeSymbol expected,
         SemanticModel semanticModel)
     {
         ITypeSymbol? type = semanticModel.GetSpeculativeTypeInfo(
-            original.SpanStart, swapped, SpeculativeBindingOption.BindAsExpression).Type;
+            original.SpanStart, candidate, SpeculativeBindingOption.BindAsExpression).Type;
 
         if (type is null || type.TypeKind == TypeKind.Error)
         {

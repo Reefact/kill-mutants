@@ -124,7 +124,7 @@ nomme (DEC0019, DEC0024).
 | `Assignment` | `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `<<=` `>>=` | son homologue |
 | `Increment` | `++` `--` | l'un l'autre, en préfixe comme en suffixe |
 | `Conditional` | `c ? a : b` | `(c \|\| true) ? a : b` et `(c && false) ? a : b` : chaque branche forcée, la condition toujours évaluée |
-| `NullCoalescing` | `a ?? b` | `a`, et `b ?? a` quand `a` se limite à lire une variable, un champ ou une propriété automatique |
+| `NullCoalescing` | `a ?? b` | `a` ; `b ?? a` quand `a` se limite à lire une variable, un champ ou une propriété automatique ; sinon `(a is null ? b : b)`, le repli forcé et `a` toujours évalué |
 | `BooleanLiteral` | `true` `false` | l'un l'autre |
 | `Negation` | `!x` | `x` |
 | `NegatedDecision` | la condition d'un branchement ou d'une boucle, ou un `bool` renvoyé, quand ce n'est pas une constante | la décision niée, sauf s'il s'agit d'une négation, d'une comparaison, d'une expression `is`, d'un littéral ou de la condition d'un ternaire, dont d'autres familles produisent déjà le mutant |
@@ -157,10 +157,11 @@ Trois propriétés valent pour toutes. Chaque remplacement est un **nouveau nœu
 jeton échangé ([RB-001](robustness-backlog-fr.md)). Chacune demande au compilateur si le remplacement
 se lierait avant de le proposer : un mutant qui ne compile pas n'est jamais engendré
 ([RB-011](robustness-backlog-fr.md)). Et chaque famille qui pourrait produire un mutant au
-comportement identique à l'original s'en abstient : `NullCoalescing` ne conserve que l'opérande de
-gauche, jamais celui de droite, et n'échange les deux que si l'opérande de gauche se limite à lire
-une variable, un champ ou une propriété automatique, de sorte qu'aucun effet de bord n'est
-silencieusement supprimé ; `Conditional` laisse tranquille un ternaire dont les deux branches sont la
+comportement identique à l'original s'en abstient : `NullCoalescing` ne conserve jamais le seul
+opérande de droite — là où celui de gauche fait plus que lire une variable, un champ ou une
+propriété automatique, le repli est forcé avec la gauche toujours évaluée plutôt que les deux
+échangés, de sorte qu'aucun effet de bord n'est silencieusement supprimé ; `Conditional` laisse
+tranquille un ternaire dont les deux branches sont la
 même expression, et évalue toujours la condition qu'il force ; et `NegatedDecision` ne place jamais de `!` devant un `!` déjà écrit.
 
 **L'instrumentation n'a aucun code propre, et c'est voulu.** Parce que chaque mutant reçoit sa propre

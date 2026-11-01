@@ -22,13 +22,63 @@ public class NullCoalescingMutatorTests
     /// <summary>
     /// The reason this family needs the semantic model. `??` is often there to remove nullability,
     /// and there the left operand does not fit on its own: `int total = count ?? 0` mutated to
-    /// `int total = count` is a compile error, which costs a run and teaches nothing.
+    /// `int total = count` is a compile error, which costs a run and teaches nothing. The forced
+    /// fallback has no such problem - `0` is an `int` wherever the original stood - and the swap
+    /// cannot bind, so it is the one mutant (#77).
     /// </summary>
     [Fact]
     public void A_fallback_that_removes_nullability_is_not_dropped()
     {
-        Assert.Empty(MutatorTestBase.MutateAll(
-            Mutator, "int? count", "int M({0}) => count ?? 0;"));
+        IReadOnlyList<string> mutated = MutatorTestBase.MutatedTexts(
+            Mutator, "int? count", "int M({0}) => count ?? 0;");
+
+        Assert.Equal(["(count is null ? 0 : 0)"], mutated);
+    }
+
+    /// <summary>
+    /// The line that found #77, on `Reefact/enum-member-name-binding` at `bc6eda9`: the fallback
+    /// dropped is killed, the swap is refused for the call, and only the fallback forced asks
+    /// whether a nullable enum ever reaches the line - none did, and no test noticed.
+    /// </summary>
+    [Fact]
+    public void A_left_that_runs_code_is_forced_to_its_fallback_and_still_evaluated()
+    {
+        IReadOnlyList<string> mutated = MutatorTestBase.MutatedTexts(
+            Mutator, "System.Type t", "System.Type M({0}) => System.Nullable.GetUnderlyingType(t) ?? t;");
+
+        Assert.Equal(
+            ["System.Nullable.GetUnderlyingType(t)", "(System.Nullable.GetUnderlyingType(t) is null ? t : t)"],
+            mutated);
+    }
+
+    /// <summary>A <c>throw</c> has no type to give both branches of the forced form.</summary>
+    [Fact]
+    public void A_throw_fallback_is_not_forced()
+    {
+        IReadOnlyList<string> mutated = MutatorTestBase.MutatedTexts(
+            Mutator, "string? s", "string M({0}) => s ?? throw new System.InvalidOperationException();");
+
+        Assert.Equal(["s"], mutated);
+    }
+
+    /// <summary>
+    /// The forced form is a conditional of its own, parenthesised, with the fallback in both
+    /// branches and the left operand tested for null - the RB-001 check for this mutation.
+    /// </summary>
+    [Fact]
+    public void The_forced_fallback_is_a_parenthesised_conditional_on_the_left_being_null()
+    {
+        MutationCandidate candidate = MutatorTestBase.MutateAll(
+            Mutator, "System.Func<string?> next, string t", "string M({0}) => next() ?? t;")[1];
+
+        ParenthesizedExpressionSyntax parenthesised =
+            Assert.IsType<ParenthesizedExpressionSyntax>(candidate.Replacement);
+        ConditionalExpressionSyntax forced =
+            Assert.IsType<ConditionalExpressionSyntax>(parenthesised.Expression);
+
+        Assert.Equal("next() is null", forced.Condition.ToString());
+        Assert.Equal("t", forced.WhenTrue.ToString());
+        Assert.Equal("t", forced.WhenFalse.ToString());
     }
 
     /// <summary>The conversion check accepts widening, so a reference-typed fallback stays mutable.</summary>
@@ -74,7 +124,8 @@ public class NullCoalescingMutatorTests
     /// <summary>
     /// Regression test, found in review. A getter is code: this one counts its reads, and
     /// <c>fallback ?? reader.Next</c> would skip it whenever the fallback is set, so the swap could
-    /// be killed by the read it dropped rather than by the precedence it asks about.
+    /// be killed by the read it dropped rather than by the precedence it asks about. The forced
+    /// fallback keeps the getter running, so it is made instead.
     /// </summary>
     [Fact]
     public void A_property_whose_getter_runs_code_is_not_swapped()
@@ -85,7 +136,7 @@ public class NullCoalescingMutatorTests
             "class Reader { int _reads; public string? Next { get { _reads++; return null; } } } " +
             "public string M({0}) => reader.Next ?? fallback;");
 
-        Assert.Equal(["reader.Next"], mutated);
+        Assert.Equal(["reader.Next", "(reader.Next is null ? fallback : fallback)"], mutated);
     }
 
     /// <summary>
@@ -123,7 +174,7 @@ public class NullCoalescingMutatorTests
             $"{type} a, {type} b",
             $"{holder} public string? M({{0}}) => a.{read} ?? b.{read};");
 
-        Assert.Equal([$"a.{read}"], mutated);
+        Assert.Equal([$"a.{read}", $"(a.{read} is null ? b.{read} : b.{read})"], mutated);
     }
 
     [Fact]
@@ -137,7 +188,8 @@ public class NullCoalescingMutatorTests
 
     /// <summary>
     /// The left operand of <c>??</c> has to be able to be null, so a fallback that cannot be has
-    /// nowhere to go: <c>fallback ?? count</c> does not compile, and is not proposed (RB-011).
+    /// nowhere to go: <c>fallback ?? count</c> does not compile, and is not proposed (RB-011). The
+    /// fallback forced is an <c>int</c> where an <c>int?</c> stood, and is.
     /// </summary>
     [Fact]
     public void A_fallback_that_cannot_be_null_is_not_swapped()
@@ -145,12 +197,13 @@ public class NullCoalescingMutatorTests
         IReadOnlyList<string> mutated = MutatorTestBase.MutatedTexts(
             Mutator, "int? count, int fallback", "int? M({0}) => count ?? fallback;");
 
-        Assert.Equal(["count"], mutated);
+        Assert.Equal(["count", "(count is null ? fallback : fallback)"], mutated);
     }
 
     /// <summary>
     /// <c>t ?? next()</c> calls <c>next</c> only when <c>t</c> is null, so the swap would drop the
-    /// call - the side effect the first mutation refuses to lose, lost by the second.
+    /// call - the side effect the first mutation refuses to lose, lost by the second. Forcing the
+    /// fallback keeps the call, so that is the mutant made instead.
     /// </summary>
     [Fact]
     public void A_left_operand_that_does_more_than_read_is_not_swapped()
@@ -158,7 +211,7 @@ public class NullCoalescingMutatorTests
         IReadOnlyList<string> mutated = MutatorTestBase.MutatedTexts(
             Mutator, "System.Func<string?> next, string t", "string M({0}) => next() ?? t;");
 
-        Assert.Equal(["next()"], mutated);
+        Assert.Equal(["next()", "(next() is null ? t : t)"], mutated);
     }
 
     /// <summary><c>null ?? s</c> is <c>s</c>: the first mutation, judged a second time.</summary>
@@ -204,8 +257,8 @@ public class NullCoalescingMutatorTests
 
     /// <summary>
     /// <c>a ?? b ?? c</c> is <c>a ?? (b ?? c)</c>, and swapping the outer one would print as
-    /// <c>b ?? c ?? a</c>, which reads back as a different tree from the one compiled. The inner
-    /// one still swaps.
+    /// <c>b ?? c ?? a</c>, which reads back as a different tree from the one compiled. The outer one
+    /// is forced instead, its parentheses keeping the chain inside; the inner one still swaps.
     /// </summary>
     [Fact]
     public void A_chained_fallback_is_swapped_only_where_it_reads_back_as_written()
@@ -213,7 +266,7 @@ public class NullCoalescingMutatorTests
         IReadOnlyList<string> mutated = MutatorTestBase.MutatedTexts(
             Mutator, "string? a, string? b, string c", "string M({0}) => a ?? b ?? c;");
 
-        Assert.Equal(["a", "b", "c ?? b"], mutated);
+        Assert.Equal(["a", "(a is null ? b ?? c : b ?? c)", "b", "c ?? b"], mutated);
     }
 
     /// <summary>

@@ -28,6 +28,13 @@ release rather than shipping undocumented.
   reserves for it; a `capacity` of the user's own is still mutated. Found on
   `enum-member-name-binding`, where it was the one survivor read as equivalent in both KillMutants'
   and Stryker.NET's reports. See RB-033, #76.
+- `NullCoalescing` asks whether the left of `a ?? b` is ever non-null where it could not before:
+  when the swap `b ?? a` is refused - the left is a call, a getter that runs code, a fallback that
+  cannot stand on the left - the fallback is forced with the left still evaluated,
+  `(a is null ? b : b)`, in the manner DEC0017 settled for a ternary. Keeping only `b`, as
+  Stryker.NET does, is still not made, since it drops the left's side effects. Found on
+  `enum-member-name-binding`, where `Nullable.GetUnderlyingType(enumType) ?? enumType` reached no
+  test with a nullable enum and no mutant could say so. See RB-034, #77.
 - `Statement` also removes a `yield return`, unless it is the only one of its iterator, whose
   removal would not compile. Removing one skips an element and leaves the iterator well-formed, so
   it needs none of the flow analysis that keeps `return`, `throw`, `break` and `yield break` out
