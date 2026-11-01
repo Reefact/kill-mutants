@@ -781,7 +781,10 @@ internal sealed class MutationTestSession
         CSharpCommandLineArguments arguments = CscCommandLine.Parse(
             commandLine, projectUnderTest.ProjectDirectory);
 
-        return ProjectCompilation.Create(arguments, projectUnderTest.ProjectDirectory);
+        return ProjectCompilation.Create(
+            arguments,
+            projectUnderTest.ProjectDirectory,
+            CscCommandLine.ResourceFiles(commandLine, projectUnderTest.ProjectDirectory));
     }
 
     /// <summary>

@@ -29,12 +29,12 @@ internal sealed class ProjectCompilation
 
     /// <summary>
     /// Every file the compiler reads from disk for this project, as full paths: the sources, the
-    /// additional files and the analyzer configuration the command line names.
+    /// additional files, the analyzer configuration and the resources the command line names.
     /// </summary>
     /// <remarks>
-    /// Kept so a series can check that none of them is a file it was told to ignore (DEC0025).
-    /// Embedded resources are left out: the command line names what MSBuild produced under
-    /// <c>obj</c>, never the file a person edits.
+    /// Kept so a series can check that none of them is a file it was told to ignore (DEC0025). The
+    /// resources are given by the caller, read from the raw arguments - see
+    /// <see cref="CscCommandLine.ResourceFiles"/>.
     /// </remarks>
     public IReadOnlyList<string> InputFiles { get; private init; } = [];
 
@@ -70,7 +70,13 @@ internal sealed class ProjectCompilation
     public Compilation Compilation => _generatedCompilation;
 
     /// <summary>Builds the compilation from a parsed <c>csc</c> command line.</summary>
-    public static ProjectCompilation Create(CSharpCommandLineArguments arguments, string projectDirectory)
+    /// <param name="arguments">The parsed command line.</param>
+    /// <param name="projectDirectory">The directory relative references are resolved against.</param>
+    /// <param name="resourceFiles">The files the command line embeds or links, as full paths.</param>
+    public static ProjectCompilation Create(
+        CSharpCommandLineArguments arguments,
+        string projectDirectory,
+        IEnumerable<string>? resourceFiles = null)
     {
         ArgumentNullException.ThrowIfNull(arguments);
 
@@ -142,6 +148,7 @@ internal sealed class ProjectCompilation
                 .. arguments.SourceFiles.Select(file => file.Path),
                 .. arguments.AdditionalFiles.Select(file => file.Path),
                 .. arguments.AnalyzerConfigPaths,
+                .. resourceFiles ?? [],
             ],
         };
     }
