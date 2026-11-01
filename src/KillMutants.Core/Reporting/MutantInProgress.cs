@@ -5,7 +5,7 @@ namespace KillMutants.Reporting;
 /// <summary>A mutant a worker has started or finished testing, as a progress reader names it.</summary>
 /// <param name="Id">The counter this run gave it, as the report and the plan name it.</param>
 /// <param name="Family">The mutator family that proposed it.</param>
-/// <param name="Path">The source file, relative to the directory the run was pointed at.</param>
+/// <param name="Path">The source file, relative to the directory the run was pointed at, with <c>/</c>.</param>
 /// <param name="Line">One-based line.</param>
 /// <param name="Status">What became of it, or null while it is still being tested.</param>
 /// <param name="Budget">The time it was given before it counts as timed out, when known.</param>
@@ -30,7 +30,13 @@ public sealed record MutantInProgress(
     {
         ArgumentNullException.ThrowIfNull(mutant);
 
+        // Written with '/' on every platform, as every other path the tool shows is: the same run
+        // reads the same on Windows, and Windows CI caught the first version writing '\'.
         return new MutantInProgress(
-            mutant.Id.ToString(), mutant.Mutator.ToString(), mutant.RelativePath, mutant.Location.Line, Budget: budget);
+            mutant.Id.ToString(),
+            mutant.Mutator.ToString(),
+            mutant.RelativePath.Replace('\\', '/'),
+            mutant.Location.Line,
+            Budget: budget);
     }
 }
