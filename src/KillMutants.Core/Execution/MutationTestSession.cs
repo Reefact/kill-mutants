@@ -25,6 +25,7 @@ internal sealed class MutationTestSession
     private readonly int _workerCount;
     private readonly bool _measureCoverage;
     private readonly IReadOnlyList<string> _exclude;
+    private readonly IgnoredCalls _ignoredCalls;
     private readonly MutatorCatalog _catalog;
     private readonly int _verifyKills;
     private readonly IChangeSource? _changes;
@@ -46,7 +47,8 @@ internal sealed class MutationTestSession
         IProgress<MutationTestProgress>? progress = null,
         IProgress<MutantResult>? verdicts = null,
         RunContinuation? continuation = null,
-        string? targetFramework = null)
+        string? targetFramework = null,
+        IgnoredCalls? ignoredCalls = null)
     {
         ArgumentNullException.ThrowIfNull(testRunner);
         ArgumentException.ThrowIfNullOrWhiteSpace(configuration);
@@ -68,6 +70,7 @@ internal sealed class MutationTestSession
         _workerCount = workerCount ?? DefaultWorkerCount;
         _measureCoverage = measureCoverage;
         _exclude = [.. exclude ?? []];
+        _ignoredCalls = ignoredCalls ?? IgnoredCalls.None;
         _catalog = catalog ?? MutatorCatalog.Default;
         _verifyKills = verifyKills;
         _changes = changes;
@@ -212,7 +215,8 @@ internal sealed class MutationTestSession
             run.Selection?.Widened,
             run.Selection is { } selection ? selection.Touches : null,
             run.EverythingSetAside(),
-            run.Verdicts.Selected);
+            run.Verdicts.Selected,
+            _ignoredCalls.Rules);
 
     private async Task<MutationTestReport> RunToTheEndAsync(
         string searchDirectory,
@@ -288,7 +292,7 @@ internal sealed class MutationTestSession
             return new MutationTestReport(
                 [], stopwatch.Elapsed, RunEnvironment.Describe(_workerCount, null, [], 0), scope,
                 selection.CoverageLost, selection.UnreadComponents, widened: selection.Widened,
-                setAside: run.EverythingSetAside());
+                setAside: run.EverythingSetAside(), ignoreCalls: _ignoredCalls.Rules);
         }
 
         // The real build comes first and nothing may run MSBuild after injection, so every
@@ -332,7 +336,7 @@ internal sealed class MutationTestSession
         // Every project's mutants are generated before any is tested, which costs nothing - the
         // compilations are all in memory already - and lets a run that is stopped say how many it
         // had selected rather than only how many it reached.
-        var generator = new MutantGenerator(_catalog, exclusions, searchDirectory);
+        var generator = new MutantGenerator(_catalog, exclusions, searchDirectory, _ignoredCalls);
         List<IReadOnlyList<Mutant>> mutantsOf = [];
 
         foreach ((MutationTestTarget target, ProjectCompilation compilation) in targets.Zip(compilations))
@@ -359,6 +363,19 @@ internal sealed class MutationTestSession
             TestFrameworkOf(targets),
             run.Verdicts,
             compilations.SelectMany(compilation => compilation.InputFiles));
+
+        // A mutant the project chose not to hear about is reached here, before any test runs and
+        // after the plan could still refuse the run: its verdict is final from the moment it is
+        // generated, and the log takes it as it takes every other (DEC0014). One a continuing series
+        // inherited is left as inherited - the list is part of the identity, so it was ignored under
+        // the same rule (DEC0026).
+        foreach (Mutant mutant in all)
+        {
+            if (mutant.IgnoredBy is { } rule && !run.Verdicts.IsReached(mutant))
+            {
+                run.Verdicts.Reach(new MutantResult(mutant, MutantStatus.Ignored, $"ignored by the rule '{rule}'"));
+            }
+        }
 
         for (int index = 0; index < targets.Count; index++)
         {

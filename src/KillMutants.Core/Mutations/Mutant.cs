@@ -11,12 +11,13 @@ namespace KillMutants.Mutations;
 /// </remarks>
 public sealed class Mutant
 {
-    internal Mutant(MutantId id, MutationCandidate candidate, string root)
+    internal Mutant(MutantId id, MutationCandidate candidate, string root, string? ignoredBy = null)
     {
         ArgumentNullException.ThrowIfNull(candidate);
         ArgumentNullException.ThrowIfNull(root);
 
         Id = id;
+        IgnoredBy = ignoredBy;
         Mutator = candidate.Mutator;
         OriginalNode = candidate.Original;
         MutatedNode = candidate.Replacement;
@@ -51,6 +52,13 @@ public sealed class Mutant
 
     /// <summary>The expression this mutant puts in its place.</summary>
     public string MutatedText { get; }
+
+    /// <summary>
+    /// The rule of <c>--ignore-calls</c> that silences this mutant, or null for one the run tests. A
+    /// silenced mutant is generated so that the report can count what the project chose not to hear,
+    /// and never tested (DEC0026).
+    /// </summary>
+    public string? IgnoredBy { get; }
 
     internal SyntaxNode OriginalNode { get; }
 

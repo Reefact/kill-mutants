@@ -83,6 +83,8 @@ public sealed record MutantResult(
 
         MutantStatus.CompileError => MutantOutcome.Untestable,
 
+        MutantStatus.Ignored => MutantOutcome.Ignored,
+
         _ => throw new ArgumentOutOfRangeException(
             nameof(Status), Status, "No outcome is defined for this status."),
     };

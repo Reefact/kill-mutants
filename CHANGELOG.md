@@ -33,6 +33,14 @@ release rather than shipping undocumented.
 
 ### Added
 
+- `--ignore-calls <pattern>` (and `ignoreCalls` in `killmutants.json`) names the calls a project does
+  not want to hear about, by the fully qualified name of the method or constructor the call binds to,
+  with `*` as in `--exclude`. A mutant of such a call's statement or arguments is generated, never
+  tested, and reported as `Ignored`: outside the score, counted per family and per rule - a rule
+  that silenced nothing is named - and beside the score itself; `totals.ignored`, `ignoredCalls` and
+  each mutant's `ignoredBy` in the JSON. The body of a lambda or local function handed to the call is
+  not silenced. A series refuses to continue under another list. See DEC0026 (#42).
+
 - An opt-in `Linq` family, run with `--with Linq` or `--mutators Linq`, swaps a call for its
   counterpart in eleven pairs - `Any`/`All`, `Min`/`Max`, `MinBy`/`MaxBy`, `OrderBy`/
   `OrderByDescending`, `ThenBy`/`ThenByDescending`, `Order`/`OrderDescending`, `Skip`/`Take`,

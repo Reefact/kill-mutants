@@ -89,7 +89,20 @@ public static class JsonReportWriter
             detected = report.Detected,
             undetected = report.Undetected,
             untestable = report.Untestable,
+
+            // Outside the score by the project's own choice, not the tool's limitation, so it is
+            // neither untestable nor undetected: its own count, beside the ones that define the
+            // score (DEC0026).
+            ignored = report.Ignored,
         },
+
+        // Every rule the project wrote, with what it silenced, a rule that silenced nothing
+        // included: the choice that moves the score is published next to the score it moved.
+        ignoredCalls = report.IgnoredByRule.Select(rule => new
+        {
+            rule = rule.Rule,
+            mutants = rule.Mutants,
+        }).ToArray(),
         // The binary answer a partial run gives in place of a percentage, published so a CI job can
         // read it without re-deriving it from the counts. Both are meaningful on a full run too.
         hasUndetected = report.HasUndetected,
@@ -218,6 +231,7 @@ public static class JsonReportWriter
         detected = family.Detected,
         undetected = family.Undetected,
         untestable = family.Untestable,
+        ignored = family.Ignored,
 
         // Null on a partial run for the same reason the run's own score is: a per-family ratio over
         // a population defined by the diff is the whole objection in miniature. The counts stay.
@@ -244,6 +258,9 @@ public static class JsonReportWriter
         character = result.Mutant.Location.Character,
         original = result.Mutant.OriginalText,
         mutated = result.Mutant.MutatedText,
+
+        // The rule of --ignore-calls that silenced this mutant, or null for one that was tested.
+        ignoredBy = result.Mutant.IgnoredBy,
 
         // With the three fields above and these names, a kill can be reproduced by hand: put the
         // mutation in the file at that position, run these tests, watch them fail. A verdict nobody

@@ -22,6 +22,11 @@ namespace KillMutants.Cli;
 /// </param>
 /// <param name="Progress">What the console shows while the run runs: <c>log</c>, <c>live</c> or <c>none</c>.</param>
 /// <param name="Slow">How long a mutant runs before it is named as slow, written as <c>30s</c>.</param>
+/// <param name="IgnoreCalls">
+/// The calls the project does not hear about, by the fully qualified name of the method or
+/// constructor, with <c>*</c>: a mutant of such a call's statement or arguments is reported as
+/// ignored and never tested. See DEC0026.
+/// </param>
 /// <remarks>
 /// <para>
 /// Every setting is optional and every one mirrors a command-line option, because the file exists to
@@ -50,7 +55,8 @@ internal sealed record ConfigurationFile(
     string? TargetFramework = null,
     IReadOnlyList<string>? IgnoreUntracked = null,
     string? Progress = null,
-    string? Slow = null)
+    string? Slow = null,
+    IReadOnlyList<string>? IgnoreCalls = null)
 {
     /// <summary>The file KillMutants looks for in the directory it was pointed at.</summary>
     public const string Name = "killmutants.json";

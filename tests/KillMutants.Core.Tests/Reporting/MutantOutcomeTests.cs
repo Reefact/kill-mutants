@@ -16,6 +16,7 @@ public class MutantOutcomeTests
     [InlineData(MutantStatus.Survived, MutantOutcome.Undetected)]
     [InlineData(MutantStatus.NoCoverage, MutantOutcome.Undetected)]
     [InlineData(MutantStatus.CompileError, MutantOutcome.Untestable)]
+    [InlineData(MutantStatus.Ignored, MutantOutcome.Ignored)]
     public void Each_status_means_one_thing_for_the_score(MutantStatus status, MutantOutcome expected)
     {
         Assert.Equal(expected, Result(status).Outcome);
@@ -77,4 +78,34 @@ public class MutantOutcomeTests
         .Generate(TestCompilation.From("class C { bool M(int a) => a >= 18; }"))[0];
 
     private static MutantResult Result(MutantStatus status) => new(Mutant, status);
+
+    /// <summary>
+    /// DEC0026: a mutant the project chose not to hear about is outside the score, by the project's
+    /// own choice rather than the tool's limitation, and so counted apart from the untestable ones.
+    /// </summary>
+    [Fact]
+    public void A_mutant_the_project_ignored_is_left_out_of_the_score_and_counted_apart()
+    {
+        var report = new MutationTestReport(
+            [Result(MutantStatus.Killed), Result(MutantStatus.Ignored), Result(MutantStatus.CompileError)]);
+
+        Assert.Equal("100%", report.Score.ToString());
+        Assert.Equal(1, report.Ignored);
+        Assert.Equal(1, report.Untestable);
+        Assert.False(report.IsInconclusive);
+    }
+
+    /// <summary>
+    /// A selection whose only mutants the project silenced has nothing to answer for, as a change
+    /// with no mutants has: it is not a selection that could not be tested (DEC0010).
+    /// </summary>
+    [Fact]
+    public void A_report_of_ignored_mutants_only_is_not_inconclusive()
+    {
+        var report = new MutationTestReport([Result(MutantStatus.Ignored), Result(MutantStatus.Ignored)]);
+
+        Assert.True(report.Score.IsUndefined);
+        Assert.False(report.IsInconclusive);
+        Assert.False(report.HasUndetected);
+    }
 }

@@ -24,6 +24,10 @@ namespace KillMutants.Cli;
 /// The untracked files a series does not count, or null when the option was not given.
 /// </param>
 /// <param name="Progress">What the console shows while the run runs, or null when it was not given.</param>
+/// <param name="IgnoreCalls">
+/// The calls the project does not hear about, or null when the option was not given; empty for
+/// <c>--ignore-calls none</c>.
+/// </param>
 /// <param name="Slow">How long a mutant runs before it is named as slow, or null when not given.</param>
 /// <remarks>
 /// Every setting is nullable, and that is the point: <c>--configuration Release</c> and saying
@@ -51,7 +55,8 @@ internal sealed record CommandLineOptions(
     string? TargetFramework = null,
     IReadOnlyList<string>? IgnoreUntracked = null,
     ProgressMode? Progress = null,
-    TimeSpan? Slow = null)
+    TimeSpan? Slow = null,
+    IReadOnlyList<string>? IgnoreCalls = null)
 {
     /// <summary>
     /// Parses the command line. The defaults are chosen so that <c>dotnet killmutants</c> with no
@@ -88,6 +93,7 @@ internal sealed record CommandLineOptions(
         List<string>? ignoreUntracked = null;
         ProgressMode? progress = null;
         TimeSpan? slow = null;
+        List<string>? ignoreCalls = null;
 
         for (int index = 0; index < args.Count; index++)
         {
@@ -261,6 +267,30 @@ internal sealed record CommandLineOptions(
 
                     break;
 
+                case "--ignore-calls":
+                    index++;
+
+                    if (index >= args.Count || string.IsNullOrWhiteSpace(args[index]))
+                    {
+                        throw new ArgumentException(
+                            $"'{argument}' needs a pattern naming a method or constructor, such as " +
+                            $"'System.ArgumentNullException.ThrowIfNull' or '*.ConfigureAwait', or '{EmptyList}'.");
+                    }
+
+                    // 'none' empties the list and replaces the file's, as it does for a family list;
+                    // a pattern after it fills the list again. What a pattern may be is settled in
+                    // RunSettings, so the file and the command line are refused by one rule.
+                    if (string.Equals(args[index], EmptyList, StringComparison.OrdinalIgnoreCase))
+                    {
+                        ignoreCalls = [];
+                    }
+                    else
+                    {
+                        (ignoreCalls ??= []).Add(args[index]);
+                    }
+
+                    break;
+
                 case "--progress":
                     index++;
                     progress = ProgressModeOf(index < args.Count ? args[index] : null)
@@ -374,7 +404,8 @@ internal sealed record CommandLineOptions(
             targetFramework,
             ignoreUntracked,
             progress,
-            slow);
+            slow,
+            ignoreCalls);
     }
 
     /// <summary>The values <c>--progress</c> takes, for messages refusing one.</summary>

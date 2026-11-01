@@ -224,4 +224,52 @@ public class JsonReportWriterTests
         Assert.Equal(
             JsonValueKind.Null, json.RootElement.GetProperty("undetectedFromWidening").ValueKind);
     }
+
+    /// <summary>DEC0026: the choice that moves the score is published next to the score it moved.</summary>
+    [Fact]
+    public void What_the_project_ignored_is_published_by_rule_by_family_and_by_mutant()
+    {
+        IReadOnlyList<Mutant> mutants = new MutantGenerator(
+                MutatorCatalog.Default, ignoredCalls: KillMutants.Filtering.IgnoredCalls.Of(["*.ThrowIfNull"]))
+            .Generate(TestCompilation.From(
+                    "class C { bool M(object x, int a) { System.ArgumentNullException.ThrowIfNull(x); return a >= 18; } }",
+                    "/src/Ages.cs"),
+                cancellationToken: TestContext.Current.CancellationToken);
+        Mutant guard = Assert.Single(mutants, mutant => mutant.IgnoredBy is not null);
+        MutantResult[] results =
+        [
+            new(guard, MutantStatus.Ignored),
+            .. mutants.Where(mutant => mutant.IgnoredBy is null).Select(mutant => new MutantResult(mutant, MutantStatus.Killed)),
+        ];
+
+        var writer = new StringWriter();
+
+        JsonReportWriter.Write(writer, new MutationTestReport(results, ignoreCalls: ["*.ThrowIfNull", "*.Nobody"]));
+
+        using JsonDocument json = JsonDocument.Parse(writer.ToString());
+        JsonElement root = json.RootElement;
+
+        Assert.Equal(1, root.GetProperty("totals").GetProperty("ignored").GetInt32());
+        Assert.Equal(1.0, root.GetProperty("score").GetDouble());
+
+        JsonElement rules = root.GetProperty("ignoredCalls");
+
+        Assert.Equal(2, rules.GetArrayLength());
+        Assert.Equal("*.ThrowIfNull", rules[0].GetProperty("rule").GetString());
+        Assert.Equal(1, rules[0].GetProperty("mutants").GetInt32());
+        Assert.Equal(0, rules[1].GetProperty("mutants").GetInt32());
+
+        JsonElement statement = Assert.Single(
+            root.GetProperty("mutants").EnumerateArray(),
+            mutant => mutant.GetProperty("status").GetString() == "Ignored");
+
+        Assert.Equal("Ignored", statement.GetProperty("outcome").GetString());
+        Assert.Equal("*.ThrowIfNull", statement.GetProperty("ignoredBy").GetString());
+
+        JsonElement family = Assert.Single(
+            root.GetProperty("byMutator").EnumerateArray(),
+            family => family.GetProperty("mutator").GetString() == "Statement");
+
+        Assert.Equal(1, family.GetProperty("ignored").GetInt32());
+    }
 }

@@ -21,4 +21,10 @@ public enum MutantStatus
 
     /// <summary>No test exercises the mutated code, so running the suite would prove nothing.</summary>
     NoCoverage,
+
+    /// <summary>
+    /// The project said it does not want to hear about this call, so the mutant was never tested.
+    /// It is still generated and counted, so the report shows what the project chose (DEC0026).
+    /// </summary>
+    Ignored,
 }

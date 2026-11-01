@@ -8,6 +8,7 @@ namespace KillMutants.Reporting;
 /// <param name="Detected">Of those, the ones the suite noticed.</param>
 /// <param name="Undetected">The ones it did not, whether they ran or could not have.</param>
 /// <param name="Untestable">The ones KillMutants could not build.</param>
+/// <param name="Ignored">The ones the project chose not to hear about, by <c>--ignore-calls</c> (DEC0026).</param>
 /// <remarks>
 /// Reported because the families do not carry equal signal, and the difference is large enough to
 /// act on. Measured against this repository: the operator families kill between 45% and 55% of what
@@ -21,7 +22,8 @@ public sealed record MutatorSummary(
     int Total,
     int Detected,
     int Undetected,
-    int Untestable)
+    int Untestable,
+    int Ignored = 0)
 {
     /// <summary>The share of this family's judged mutants that the suite detected.</summary>
     public MutationScore Score { get; } = MutationScore.FromCounts(Detected, Undetected);
