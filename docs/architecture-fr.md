@@ -110,9 +110,10 @@ la composition. Voir DEC0011 pour ce à quoi sert ce contrat.
 | CLI | `KillMutants.Cli` | `dotnet killmutants`, seuils et codes de sortie (DEC0009) |
 
 **Le catalogue.** Seize familles, chacune un `IMutator` distinct, chacune avec ses propres tests et
-chacune exercée de bout en bout contre un vrai projet de fixture. Quatorze s'exécutent par défaut ;
-`NumericLiteral` et `Linq` ne s'exécutent que lorsque `--with` les ajoute ou que `--mutators` les
-nomme (DEC0019, DEC0024).
+chacune exercée de bout en bout contre un vrai projet de fixture. Quinze s'exécutent par défaut ;
+`NumericLiteral` ne s'exécute que lorsque `--with` l'ajoute ou que `--mutators` la nomme (DEC0019).
+`Linq` était sur demande jusqu'à ce qu'elle ait été mesurée (DEC0024), et s'exécute par défaut depuis
+(DEC0027).
 
 | Famille | Réécrit | En |
 |---|---|---|
@@ -132,7 +133,7 @@ nomme (DEC0019, DEC0024).
 | `StringLiteral` | `"texte"` | `""`, et `""` en une chaîne non vide |
 | `Statement` | une instruction qui ne fait qu'appeler quelque chose : `f();`, `await f();`, `x?.f();`, `new X();` - sauf si elle assigne une variable (`=` ou `out`) ou appelle une méthode `[Conditional]` ; et un `yield return`, sauf s'il assigne une variable ou s'il est le seul de son itérateur (#62) | `{ }` - DEC0020 |
 | `NumericLiteral` *(sur demande)* | un littéral entier dans l'initialiseur d'une constante, d'un champ ou d'une propriété, hors d'un motif - une `const` seulement quand son propre projet la lit | `n + 1` et `n - 1`, chacun seulement s'il garde le type du littéral et tient dans le type où il est utilisé |
-| `Linq` *(sur demande)* | un appel à l'un des membres de onze paires - `Any`/`All`, `Min`/`Max`, `MinBy`/`MaxBy`, `OrderBy`/`OrderByDescending`, `ThenBy`/`ThenByDescending`, `Order`/`OrderDescending`, `Skip`/`Take`, `SkipWhile`/`TakeWhile`, `SkipLast`/`TakeLast`, `Union`/`Intersect`, `Concat`/`Except` - quand la contrepartie se lie à une jumelle : une méthode du même type conteneur, avec le même type de retour, retourné de la même façon | la contrepartie - DEC0024 |
+| `Linq` | un appel à l'un des membres de onze paires - `Any`/`All`, `Min`/`Max`, `MinBy`/`MaxBy`, `OrderBy`/`OrderByDescending`, `ThenBy`/`ThenByDescending`, `Order`/`OrderDescending`, `Skip`/`Take`, `SkipWhile`/`TakeWhile`, `SkipLast`/`TakeLast`, `Union`/`Intersect`, `Concat`/`Except` - quand la contrepartie se lie à une jumelle : une méthode du même type conteneur, avec le même type de retour, retourné de la même façon | la contrepartie - DEC0024 |
 
 **Ce qu'il ne mute délibérément pas.** Le catalogue est sélectif et non exhaustif : chaque mutant
 coûte une exécution de tests, donc un opérateur gagne sa place au signal qu'il porte. L'inventaire

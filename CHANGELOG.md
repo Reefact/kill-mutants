@@ -35,6 +35,12 @@ release rather than shipping undocumented.
   Stryker.NET does, is still not made, since it drops the left's side effects. Found on
   `enum-member-name-binding`, where `Nullable.GetUnderlyingType(enumType) ?? enumType` reached no
   test with a nullable enum and no mutant could say so. See RB-034, #77.
+- `Linq` runs by default. It entered the catalogue opt-in until it had been measured (DEC0024); on
+  `enum-member-name-binding` it made five mutants on three hundred, every one compiled, four killed
+  and the one survivor a low-value finding, which is `Statement`'s profile. `--with Linq` is no
+  longer needed and still works; `--without Linq` (or `"without": ["Linq"]`) leaves it out. A series
+  started before this change does not continue across it, since its plan names another catalogue.
+  See DEC0027, #82.
 - `Statement` also removes a `yield return`, unless it is the only one of its iterator, whose
   removal would not compile. Removing one skips an element and leaves the iterator well-formed, so
   it needs none of the flow analysis that keeps `return`, `throw`, `break` and `yield break` out

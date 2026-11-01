@@ -26,15 +26,15 @@ public class MutatorCatalogTests
     }
 
     /// <summary>
-    /// Noisy enough that a project which did not ask for it must not pay for it (DEC0019), and not
-    /// yet measured by this tool, so not in the default catalogue until it is (DEC0024).
+    /// Noisy enough that a project which did not ask for it must not pay for it (DEC0019). `Linq`
+    /// was opt-in until measured (DEC0024), and is in the default catalogue since (DEC0027).
     /// </summary>
     [Fact]
-    public void Numeric_literals_and_Linq_are_opt_in()
+    public void Numeric_literals_are_opt_in_and_Linq_no_longer_is()
     {
-        Assert.Equal([NumericLiteral, Linq], MutatorCatalog.OptInNames);
+        Assert.Equal([NumericLiteral], MutatorCatalog.OptInNames);
         Assert.DoesNotContain(NumericLiteral, MutatorCatalog.Default.Mutators.Select(m => m.Name));
-        Assert.DoesNotContain(Linq, MutatorCatalog.Default.Mutators.Select(m => m.Name));
+        Assert.Contains(Linq, MutatorCatalog.Default.Mutators.Select(m => m.Name));
     }
 
     [Fact]
@@ -48,7 +48,7 @@ public class MutatorCatalogTests
     {
         MutatorCatalog catalog = MutatorCatalog.Of(added: [NumericLiteral]);
 
-        Assert.Equal(MutatorCatalog.Names.Except([Linq]), catalog.Mutators.Select(m => m.Name));
+        Assert.Equal(MutatorCatalog.Names, catalog.Mutators.Select(m => m.Name));
     }
 
     [Fact]
