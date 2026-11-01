@@ -43,6 +43,7 @@ internal sealed class MutatorCatalog
     private static readonly IReadOnlyList<IMutator> OptIn =
     [
         new NumericLiteralMutator(),
+        new LinqMutator(),
     ];
 
     private static readonly IReadOnlyList<IMutator> Every = [.. Default.Mutators, .. OptIn];

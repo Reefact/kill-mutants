@@ -97,9 +97,9 @@ what the contract is for.
 | Results | `KillMutants.Reporting` | `MutationTestReport`, console and JSON writers, progress |
 | CLI | `KillMutants.Cli` | `dotnet killmutants`, thresholds and exit codes (DEC0009) |
 
-**The catalogue.** Fifteen families, each a separate `IMutator`, each with its own tests and each
-exercised end to end against a real fixture project. Fourteen run by default; `NumericLiteral` runs
-only when `--with` adds it or `--mutators` names it (DEC0019).
+**The catalogue.** Sixteen families, each a separate `IMutator`, each with its own tests and each
+exercised end to end against a real fixture project. Fourteen run by default; `NumericLiteral` and
+`Linq` run only when `--with` adds them or `--mutators` names them (DEC0019, DEC0024).
 
 | Family | Rewrites | Into |
 |---|---|---|
@@ -119,6 +119,7 @@ only when `--with` adds it or `--mutators` names it (DEC0019).
 | `StringLiteral` | `"text"` | `""`, and `""` into a non-empty string |
 | `Statement` | a statement that only calls something: `f();`, `await f();`, `x?.f();`, `new X();` - unless it assigns a variable (`=` or `out`) or calls a `[Conditional]` method; and a `yield return`, unless it assigns a variable or is the only one of its iterator (#62) | `{ }` - DEC0020 |
 | `NumericLiteral` *(opt-in)* | an integer literal in the initializer of a constant, a field or a property, outside a pattern - a `const` only when its own project reads it | `n + 1` and `n - 1`, each only when it keeps the literal's type and fits the type it is used as |
+| `Linq` *(opt-in)* | a call to one member of eleven pairs - `Any`/`All`, `Min`/`Max`, `MinBy`/`MaxBy`, `OrderBy`/`OrderByDescending`, `ThenBy`/`ThenByDescending`, `Order`/`OrderDescending`, `Skip`/`Take`, `SkipWhile`/`TakeWhile`, `SkipLast`/`TakeLast`, `Union`/`Intersect`, `Concat`/`Except` - when the counterpart binds to a twin: a method of the same containing type, with the same return type, returned the same way | the counterpart - DEC0024 |
 
 **What it deliberately does not mutate.** The catalogue is selective rather than exhaustive: every
 mutant costs a test run, so an operator earns its place by the signal it carries. The inventory below
@@ -130,6 +131,7 @@ was measured by running the catalogue over each form rather than read off the la
 | `^=` | **Future candidate.** `^` is mutated but its compound form is not, which is an inconsistency rather than a decision. |
 | Numeric literals outside an initializer | **Future candidate.** `random.Next(100)` and loop bounds are reached by nothing, but most such literals are noise: to revisit once `NumericLiteral` has been measured - DEC0019. |
 | `-x` | **Future candidate**, below the others: most sign errors are already reachable through the arithmetic family. |
+| Other LINQ swaps - `First` ↔ `FirstOrDefault` and its kin, `First` ↔ `Last`, `Sum`, `Count` and `Average`, `Reverse` ↔ `AsEnumerable` - and a `Linq` call through `?.` | **Not supported.** The `OrDefault` swaps trade an exception for a `null` and were near-equivalent six times out of six where measured; `First` ↔ `Last` is equivalent on one element; the others change the type or meet an overload ambiguity. A call through `?.` does not bind on its own, and the family is measured before it grows - DEC0024. |
 | `+x` | **Not supported.** Removing a unary plus changes nothing, so the mutant is equivalent by construction and can never be killed. |
 | `~x` | **Not supported for now.** Removing it changes the value so drastically that any test touching the expression kills it; the mutant is nearly free to write and nearly worthless. |
 | `?.`, `as` | **Not supported.** Both mutate into forms that usually throw rather than compute, so they measure whether a test touches the line, not whether it checks the result - and `?.` often does not even compile once the null path is removed. |

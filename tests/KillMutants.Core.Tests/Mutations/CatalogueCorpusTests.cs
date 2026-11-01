@@ -43,6 +43,9 @@ public class CatalogueCorpusTests
             { "coalesce with nothing on the left", "string? s", "string? M({0}) => null ?? s;" },
             { "decisions with no negation written", "bool a, bool b, System.Func<bool> f", "bool M({0}) { while (a) { a = f(); } if (a || b) { return f(); } return a && b; }" },
             { "a negated decision and a lambda's", "bool a, System.Func<bool> f", "object M({0}) => !a ? System.Linq.Enumerable.Where(new[] { 1 }, x => f()) : null!;" },
+            { "a quantifier over a sequence", "int[] xs", "bool M({0}) => System.Linq.Enumerable.Any(xs, x => x > 0);" },
+            { "an order, then a slice of it", "int[] xs", "object M({0}) => System.Linq.Enumerable.Take(System.Linq.Enumerable.OrderBy(xs, x => x), 1);" },
+            { "a quantifier over an immutable array, bound outside Enumerable", "System.Collections.Immutable.ImmutableArray<int> xs", "bool M({0}) => System.Linq.ImmutableArrayExtensions.Any(xs, x => x > 0);" },
             { "an awaited decision handed back", "System.Func<System.Threading.Tasks.Task<bool>> f", "async System.Threading.Tasks.Task<bool> M({0}) => await f();" },
             { "an out into a declared local behind &&", "string? s", "int M({0}) { int y; if (s != null && int.TryParse(s, out y)) { return y; } return 0; }" },
             { "an out into a declared local behind ||", "string? s", "int M({0}) { int y; if (s == null || !int.TryParse(s, out y)) { return 0; } return y; }" },
@@ -132,6 +135,10 @@ public class CatalogueCorpusTests
             // `DateTime - DateTime` is defined; `DateTime + DateTime` is not. Same rule, no list of
             // special cases.
             { "date difference", "System.DateTime a, System.DateTime b", "object M({0}) => a - b;" },
+
+            // `Any()` without a predicate has no `All()` counterpart to bind to (DEC0024). Handed back
+            // as an object so that no family sees a returned bool to negate.
+            { "a quantifier without a predicate", "int[] xs", "object M({0}) => System.Linq.Enumerable.Any(xs);" },
 
             // Dropping the fallback would leave an `int?` where an `int` is required (RB-015).
             { "a coalesce that removes nullability", "int? a", "int M({0}) => a ?? 0;" },

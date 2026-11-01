@@ -109,9 +109,10 @@ la composition. Voir DEC0011 pour ce à quoi sert ce contrat.
 | Résultats | `KillMutants.Reporting` | `MutationTestReport`, écritures console et JSON, progression |
 | CLI | `KillMutants.Cli` | `dotnet killmutants`, seuils et codes de sortie (DEC0009) |
 
-**Le catalogue.** Quinze familles, chacune un `IMutator` distinct, chacune avec ses propres tests et
+**Le catalogue.** Seize familles, chacune un `IMutator` distinct, chacune avec ses propres tests et
 chacune exercée de bout en bout contre un vrai projet de fixture. Quatorze s'exécutent par défaut ;
-`NumericLiteral` ne s'exécute que lorsque `--with` l'ajoute ou que `--mutators` la nomme (DEC0019).
+`NumericLiteral` et `Linq` ne s'exécutent que lorsque `--with` les ajoute ou que `--mutators` les
+nomme (DEC0019, DEC0024).
 
 | Famille | Réécrit | En |
 |---|---|---|
@@ -131,6 +132,7 @@ chacune exercée de bout en bout contre un vrai projet de fixture. Quatorze s'ex
 | `StringLiteral` | `"texte"` | `""`, et `""` en une chaîne non vide |
 | `Statement` | une instruction qui ne fait qu'appeler quelque chose : `f();`, `await f();`, `x?.f();`, `new X();` - sauf si elle assigne une variable (`=` ou `out`) ou appelle une méthode `[Conditional]` ; et un `yield return`, sauf s'il assigne une variable ou s'il est le seul de son itérateur (#62) | `{ }` - DEC0020 |
 | `NumericLiteral` *(sur demande)* | un littéral entier dans l'initialiseur d'une constante, d'un champ ou d'une propriété, hors d'un motif - une `const` seulement quand son propre projet la lit | `n + 1` et `n - 1`, chacun seulement s'il garde le type du littéral et tient dans le type où il est utilisé |
+| `Linq` *(sur demande)* | un appel à l'un des membres de onze paires - `Any`/`All`, `Min`/`Max`, `MinBy`/`MaxBy`, `OrderBy`/`OrderByDescending`, `ThenBy`/`ThenByDescending`, `Order`/`OrderDescending`, `Skip`/`Take`, `SkipWhile`/`TakeWhile`, `SkipLast`/`TakeLast`, `Union`/`Intersect`, `Concat`/`Except` - quand la contrepartie se lie à une jumelle : une méthode du même type conteneur, avec le même type de retour, retourné de la même façon | la contrepartie - DEC0024 |
 
 **Ce qu'il ne mute délibérément pas.** Le catalogue est sélectif et non exhaustif : chaque mutant
 coûte une exécution de tests, donc un opérateur gagne sa place au signal qu'il porte. L'inventaire
@@ -142,6 +144,7 @@ ci-dessous a été mesuré en passant le catalogue sur chaque forme, pas lu dans
 | `^=` | **Candidat futur.** `^` est muté mais pas sa forme composée : c'est une incohérence, pas une décision. |
 | Littéraux numériques hors d'un initialiseur | **Candidat futur.** Rien n'atteint `random.Next(100)` ni les bornes de boucle, mais la plupart de ces littéraux sont du bruit : à réexaminer une fois `NumericLiteral` mesurée - DEC0019. |
 | `-x` | **Candidat futur**, en dessous des autres : la plupart des erreurs de signe sont déjà atteignables par la famille arithmétique. |
+| Les autres échanges LINQ - `First` ↔ `FirstOrDefault` et ses semblables, `First` ↔ `Last`, `Sum`, `Count` et `Average`, `Reverse` ↔ `AsEnumerable` - et un appel `Linq` à travers `?.` | **Non supporté.** Les échanges `OrDefault` troquent une exception contre un `null` et se sont montrés quasi équivalents six fois sur six là où ils ont été mesurés ; `First` ↔ `Last` est équivalent sur un élément ; les autres changent le type ou rencontrent une ambiguïté de surcharge. Un appel à travers `?.` ne se lie pas seul, et la famille est mesurée avant de grandir - DEC0024. |
 | `+x` | **Non supporté.** Retirer un plus unaire ne change rien : le mutant est équivalent par construction et ne peut jamais être tué. |
 | `~x` | **Non supporté pour l'instant.** Le retirer change la valeur si radicalement que tout test touchant l'expression le tue ; le mutant est presque gratuit à écrire et presque sans valeur. |
 | `?.`, `as` | **Non supportés.** Les deux mutent vers des formes qui lèvent plutôt qu'elles ne calculent : elles mesurent si un test touche la ligne, pas s'il en vérifie le résultat — et `?.` ne compile souvent même plus une fois le chemin null retiré. |

@@ -14,6 +14,7 @@ public class MutatorCatalogTests
     private static readonly MutatorName Comparison = MutatorName.Create("Comparison");
     private static readonly MutatorName StringLiteral = MutatorName.Create("StringLiteral");
     private static readonly MutatorName NumericLiteral = MutatorName.Create("NumericLiteral");
+    private static readonly MutatorName Linq = MutatorName.Create("Linq");
 
     [Fact]
     public void The_default_catalog_runs_every_family_but_the_opt_in_ones()
@@ -24,12 +25,16 @@ public class MutatorCatalogTests
         Assert.Equal(defaults, MutatorCatalog.Of().Mutators.Select(m => m.Name));
     }
 
-    /// <summary>Noisy enough that a project which did not ask for it must not pay for it - DEC0019.</summary>
+    /// <summary>
+    /// Noisy enough that a project which did not ask for it must not pay for it (DEC0019), and not
+    /// yet measured by this tool, so not in the default catalogue until it is (DEC0024).
+    /// </summary>
     [Fact]
-    public void Numeric_literals_are_opt_in()
+    public void Numeric_literals_and_Linq_are_opt_in()
     {
-        Assert.Equal([NumericLiteral], MutatorCatalog.OptInNames);
+        Assert.Equal([NumericLiteral, Linq], MutatorCatalog.OptInNames);
         Assert.DoesNotContain(NumericLiteral, MutatorCatalog.Default.Mutators.Select(m => m.Name));
+        Assert.DoesNotContain(Linq, MutatorCatalog.Default.Mutators.Select(m => m.Name));
     }
 
     [Fact]
@@ -43,7 +48,7 @@ public class MutatorCatalogTests
     {
         MutatorCatalog catalog = MutatorCatalog.Of(added: [NumericLiteral]);
 
-        Assert.Equal(MutatorCatalog.Names, catalog.Mutators.Select(m => m.Name));
+        Assert.Equal(MutatorCatalog.Names.Except([Linq]), catalog.Mutators.Select(m => m.Name));
     }
 
     [Fact]
@@ -101,7 +106,7 @@ public class MutatorCatalogTests
     [Theory]
     [InlineData("Comparisons")]
     [InlineData("comparison")]
-    [InlineData("Linq")]
+    [InlineData("Lambda")]
     public void An_unknown_family_is_rejected_with_the_list_of_real_ones(string name)
     {
         ArgumentException error = Assert.Throws<ArgumentException>(
