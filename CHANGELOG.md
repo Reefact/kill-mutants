@@ -16,6 +16,11 @@ release rather than shipping undocumented.
 
 ### Changed
 
+- A strong-named project is measured. The compilation rebuilt from its command line could not
+  sign with the key file it names, so every emit failed with CS7027, "Assembly signing not
+  supported", and the project was set aside at the baseline before a mutant was tested; it is now
+  given the provider `csc` uses, and the mutant keeps the identity its tests were compiled
+  against. Found on `jbogard/MediatR`, which signs its packages. See RB-035.
 - A declaration or an assignment inside a lambda, an anonymous method or a local function no
   longer refuses the expression around it (RB-016, RB-030): the variable is scoped to the function,
   so the call around it is mutated and probed without orphaning anything, while the expression

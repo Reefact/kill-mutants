@@ -96,11 +96,17 @@ internal sealed class ProjectCompilation
             syntaxTrees.Add(CSharpSyntaxTree.ParseText(text, parseOptions, sourceFile.Path));
         }
 
+        // The parsed options name the key file of a strong-named project, but signing needs a
+        // provider to read it, and only csc itself supplies one: without it every emit of such a
+        // project fails with CS7027, "Assembly signing not supported", and its baseline is set
+        // aside before a mutant is tested. Signed, the mutant keeps the identity the test
+        // assembly was built against. Found on jbogard/MediatR - RB-035.
         CSharpCompilation compilation = CSharpCompilation.Create(
             assemblyName: arguments.CompilationName ?? Path.GetFileNameWithoutExtension(arguments.OutputFileName),
             syntaxTrees: syntaxTrees,
             references: ResolveReferences(arguments, projectDirectory),
-            options: RelaxWarningsAsErrors(arguments.CompilationOptions));
+            options: RelaxWarningsAsErrors(arguments.CompilationOptions)
+                .WithStrongNameProvider(new DesktopStrongNameProvider(arguments.KeyFileSearchPaths)));
 
         // MSBuild names the generators on the command line but not the code they contribute, so
         // they have to be run here or the compilation is missing whatever they produce.

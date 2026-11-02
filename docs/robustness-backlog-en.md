@@ -1348,3 +1348,36 @@ is the line above; `A_property_whose_getter_runs_code_is_not_swapped`,
 and `The_fallback_is_dropped_and_the_operands_are_swapped` hold the refusals and the swap's
 precedence; `The_forced_fallback_is_a_parenthesised_conditional_on_the_left_being_null` is the
 RB-001 check. `CatalogueCorpusTests` compiles both shapes and finds each emits differently.
+
+---
+
+## RB-035 — A strong-named project could not be compiled again, so it was never measured · COVERED
+
+**How it was found.** Measuring the `Linq` family on `jbogard/MediatR` at `62010ba`, in a scratch
+copy whose only change took `xunit.v3` from 3.2.2 to 4.0.2 (#82). Its suites pass, 270 and 107
+tests, yet the run set `MediatR` aside at the baseline and measured nothing:
+
+```text
+error CS7027: Error signing output with public key from file '../../MediatR.snk' -- Assembly signing not supported.
+```
+
+**What happens.** A strong-named project's command line carries `/keyfile:`, and the compilation
+rebuilt from it knows which key to sign with, but signing also needs a provider to read the key, and
+the options parsed from a command line come without one; `csc` supplies its own, which is why the
+same project builds. Every emit of such a project failed: the baseline, and so every mutant. Strong
+naming is common among public libraries - MediatR signs both its packages and its tests - so the
+whole of each such project was out of reach.
+
+**The rule.** The compilation is given the provider `csc` would use, reading the key from the
+command line's own search paths, so a key file named relative to the project resolves as it does
+for the build. Signed, the mutant keeps the identity the test assembly was compiled against, rather
+than an unsigned assembly of the same name standing in for it.
+
+**Checked on the real case.** With the provider, the MediatR run passes its baseline and measures
+715 mutants in 17 minutes; without it, it stops at the baseline as above. A probe outside the tool
+showed the same split: the parsed options alone fail with CS7027, and with the provider the same
+compilation emits.
+
+**Our tests.** `StrongNameSigningTests.A_project_signed_with_a_key_file_above_it_emits_a_signed_assembly`,
+on MediatR's shape - a key file two directories above the project, named relative to it - asserts
+that the baseline emits and carries a public key. It fails with CS7027 without the provider.

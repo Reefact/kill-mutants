@@ -1459,3 +1459,40 @@ et `The_fallback_is_dropped_and_the_operands_are_swapped` tiennent les refus et 
 l'échange ; `The_forced_fallback_is_a_parenthesised_conditional_on_the_left_being_null` est la
 vérification RB-001. `CatalogueCorpusTests` compile les deux formes et constate que chacune émet
 différemment.
+
+---
+
+## RB-035 — Un projet signé par nom fort ne pouvait pas être recompilé, donc n'était jamais mesuré · COUVERT
+
+**Comment il a été trouvé.** En mesurant la famille `Linq` sur `jbogard/MediatR` à `62010ba`, dans
+une copie de travail dont le seul changement faisait passer `xunit.v3` de 3.2.2 à 4.0.2 (#82). Ses
+suites passent, 270 et 107 tests, et pourtant l'exécution a mis `MediatR` de côté dès la baseline et
+n'a rien mesuré :
+
+```text
+error CS7027: Error signing output with public key from file '../../MediatR.snk' -- Assembly signing not supported.
+```
+
+**Ce qui se passe.** La ligne de commande d'un projet signé par nom fort porte `/keyfile:`, et la
+compilation reconstruite à partir d'elle sait avec quelle clé signer, mais signer demande aussi un
+fournisseur pour lire la clé, et les options analysées depuis une ligne de commande n'en ont pas ;
+`csc` fournit le sien, et c'est pourquoi le même projet se construit. Chaque émission d'un tel projet
+échouait : la baseline, et donc chaque mutant. La signature par nom fort est courante parmi les
+bibliothèques publiques — MediatR signe ses paquets comme ses tests — si bien que chacun de ces
+projets était hors de portée en entier.
+
+**La règle.** La compilation reçoit le fournisseur qu'utiliserait `csc`, qui lit la clé depuis les
+chemins de recherche de la ligne de commande elle-même, de sorte qu'un fichier de clé nommé
+relativement au projet se résout comme pour le build. Signé, le mutant garde l'identité contre
+laquelle l'assembly de test a été compilée, plutôt qu'une assembly non signée du même nom qui en
+tiendrait lieu.
+
+**Vérifié sur le cas réel.** Avec le fournisseur, l'exécution sur MediatR passe sa baseline et
+mesure 715 mutants en 17 minutes ; sans lui, elle s'arrête à la baseline comme ci-dessus. Une sonde
+hors de l'outil a montré la même séparation : les options analysées seules échouent avec CS7027, et
+avec le fournisseur la même compilation s'émet.
+
+**Nos tests.** `StrongNameSigningTests.A_project_signed_with_a_key_file_above_it_emits_a_signed_assembly`,
+sur la forme de MediatR — un fichier de clé deux répertoires au-dessus du projet, nommé relativement à
+lui — vérifie que la baseline s'émet et porte une clé publique. Il échoue avec CS7027 sans le
+fournisseur.
