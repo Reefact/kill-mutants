@@ -160,8 +160,39 @@ internal sealed class ProjectCompilation
                 .. resourceFiles ?? [],
                 .. arguments.MetadataReferences.Select(reference => Resolved(reference.Reference, projectDirectory)),
                 .. arguments.AnalyzerReferences.Select(analyzer => Resolved(analyzer.FilePath, projectDirectory)),
+                .. KeyFileOf(arguments, projectDirectory),
             ],
         };
+    }
+
+    /// <summary>
+    /// The strong-name key the compilation signs with, resolved as the provider resolves it, or
+    /// nothing when it does not sign.
+    /// </summary>
+    /// <remarks>
+    /// Read on every emit since RB-035, so it is an input like the source: a series told to ignore
+    /// an untracked <c>*.snk</c> must refuse when that key was in fact read (DEC0025), and it can
+    /// only when the key is here - review of #86.
+    /// </remarks>
+    private static IEnumerable<string> KeyFileOf(CSharpCommandLineArguments arguments, string projectDirectory)
+    {
+        string? keyFile = arguments.CompilationOptions.CryptoKeyFile;
+
+        if (string.IsNullOrEmpty(keyFile))
+        {
+            return [];
+        }
+
+        if (Path.IsPathRooted(keyFile))
+        {
+            return [Path.GetFullPath(keyFile)];
+        }
+
+        string? found = arguments.KeyFileSearchPaths
+            .Select(searchPath => Path.GetFullPath(Path.Combine(searchPath, keyFile)))
+            .FirstOrDefault(File.Exists);
+
+        return [found ?? Resolved(keyFile, projectDirectory)];
     }
 
     /// <summary>Emits the compilation exactly as it stands, with no mutation applied.</summary>
