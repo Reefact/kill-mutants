@@ -1487,6 +1487,16 @@ relativement au projet se résout comme pour le build. Signé, le mutant garde l
 laquelle l'assembly de test a été compilée, plutôt qu'une assembly non signée du même nom qui en
 tiendrait lieu.
 
+**Et la clé est une entrée.** Lue à chaque émission, elle a sa place avec le source parmi ce que la
+compilation consomme, et la revue de #86 a trouvé les deux endroits qui l'ignoraient. Une série à
+qui l'on dit d'ignorer un `*.snk` non suivi ne refuse qu'un fichier ignoré que la compilation lit
+(DEC0025), et la clé n'en faisait pas partie. Et une exécution partielle attribue un fichier modifié
+au projet qui le consomme, à partir des items du projet ; la clé est une propriété,
+`AssemblyOriginatorKeyFile`, et celle de MediatR se trouve deux répertoires au-dessus du projet, si
+bien qu'un diff ne portant qu'une nouvelle clé n'était attribué à rien — comme l'a été autrefois un
+générateur hors de tout projet. La compilation liste désormais la clé qu'elle résout, et les entrées
+du projet l'incluent dès que `SignAssembly` est positionné.
+
 **Vérifié sur le cas réel.** Avec le fournisseur, l'exécution sur MediatR passe sa baseline et
 mesure 715 mutants en 17 minutes ; sans lui, elle s'arrête à la baseline comme ci-dessus. Une sonde
 hors de l'outil a montré la même séparation : les options analysées seules échouent avec CS7027, et
@@ -1495,4 +1505,7 @@ avec le fournisseur la même compilation s'émet.
 **Nos tests.** `StrongNameSigningTests.A_project_signed_with_a_key_file_above_it_emits_a_signed_assembly`,
 sur la forme de MediatR — un fichier de clé deux répertoires au-dessus du projet, nommé relativement à
 lui — vérifie que la baseline s'émet et porte une clé publique. Il échoue avec CS7027 sans le
-fournisseur.
+fournisseur. `The_key_file_above_the_project_is_an_input_of_the_compilation` tient la première
+moitié de la règle des entrées, et `AnalyzerInputTests.The_key_a_project_signs_with_is_one_of_its_inputs`
+la seconde, depuis les deux requêtes qui lisent les entrées d'un projet, pour un projet qui signe et
+un qui ne signe pas.

@@ -69,6 +69,39 @@ public class AnalyzerInputTests
                 Path.Combine("Microsoft.NET.Sdk", "analyzers"), StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// The strong-name key is a property rather than an item, and commonly sits above the project,
+    /// so neither membership nor the directory rule claimed it: a diff carrying only a new key was
+    /// attributed to nothing. It is an input once the project signs, and only then (review of #86).
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task The_key_a_project_signs_with_is_one_of_its_inputs(bool signs)
+    {
+        using var project = new TemporaryProject(
+            $"""
+             <PropertyGroup>
+               <SignAssembly>{signs.ToString().ToLowerInvariant()}</SignAssembly>
+               <AssemblyOriginatorKeyFile>..\Sample.snk</AssemblyOriginatorKeyFile>
+             </PropertyGroup>
+             """);
+
+        foreach (IReadOnlyList<string> inputs in new[]
+                 {
+                     await new MsBuildQuery("Debug", readInputFiles: true)
+                         .GetInputFilesAsync(project.ProjectPath, cancellationToken: TestContext.Current.CancellationToken),
+                     (await new MsBuildQuery("Debug", readInputFiles: true)
+                         .GetProjectFactsAsync(project.ProjectPath, cancellationToken: TestContext.Current.CancellationToken))
+                         .InputFiles,
+                 })
+        {
+            string key = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(project.ProjectPath)!, "..", "Sample.snk"));
+
+            Assert.Equal(signs, inputs.Contains(key));
+        }
+    }
+
     private sealed class TemporaryProject : IDisposable
     {
         private readonly string _root;

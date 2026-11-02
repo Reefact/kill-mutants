@@ -1373,6 +1373,15 @@ command line's own search paths, so a key file named relative to the project res
 for the build. Signed, the mutant keeps the identity the test assembly was compiled against, rather
 than an unsigned assembly of the same name standing in for it.
 
+**And the key is an input.** Read on every emit, it belongs with the source among what the
+compilation consumes, and review of #86 found both places that did not know it. A series told to
+ignore an untracked `*.snk` refuses only an ignored file the compilation reads (DEC0025), and the
+key was not among those. And a partial run attributes a changed file to the project that consumes
+it, from the project's items; the key is a property, `AssemblyOriginatorKeyFile`, and MediatR's sits
+two directories above the project, so a diff carrying only a new key was attributed to nothing - as
+a generator outside every project once was. The compilation now lists the key it resolves, and the
+project's inputs include it whenever `SignAssembly` is set.
+
 **Checked on the real case.** With the provider, the MediatR run passes its baseline and measures
 715 mutants in 17 minutes; without it, it stops at the baseline as above. A probe outside the tool
 showed the same split: the parsed options alone fail with CS7027, and with the provider the same
@@ -1381,3 +1390,6 @@ compilation emits.
 **Our tests.** `StrongNameSigningTests.A_project_signed_with_a_key_file_above_it_emits_a_signed_assembly`,
 on MediatR's shape - a key file two directories above the project, named relative to it - asserts
 that the baseline emits and carries a public key. It fails with CS7027 without the provider.
+`The_key_file_above_the_project_is_an_input_of_the_compilation` holds the first half of the input
+rule, and `AnalyzerInputTests.The_key_a_project_signs_with_is_one_of_its_inputs` the second, from
+both queries that read a project's inputs, for a project that signs and one that does not.

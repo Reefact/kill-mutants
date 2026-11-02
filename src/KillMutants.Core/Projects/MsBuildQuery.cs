@@ -76,7 +76,7 @@ internal sealed class MsBuildQuery
 
         if (_readInputFiles)
         {
-            arguments.AddRange(InputItemNames.Select(item => $"-getItem:{item}"));
+            arguments.AddRange(InputArguments);
         }
 
         string output = await RunRawAsync(projectPath, arguments, cancellationToken).ConfigureAwait(false);
@@ -114,7 +114,7 @@ internal sealed class MsBuildQuery
                 "ProjectReference",
                 identity => Path.GetFullPath(Path.Combine(directory, identity)),
                 reference => !RunsAtRunTime(reference)),
-            InputFiles: [.. InputItemNames.SelectMany(item => ReadFullPaths(root, item))]);
+            InputFiles: ReadInputFiles(root, directory));
     }
 
     /// <summary>Reads an MSBuild boolean, which is written in whatever case the author felt like.</summary>
@@ -282,13 +282,51 @@ internal sealed class MsBuildQuery
             arguments.Add($"-p:TargetFramework={targetFramework}");
         }
 
-        arguments.AddRange(InputItemNames.Select(item => $"-getItem:{item}"));
+        arguments.AddRange(InputArguments);
 
         string output = await RunRawAsync(projectPath, arguments, cancellationToken).ConfigureAwait(false);
 
         using JsonDocument json = ParseJson(projectPath, output);
 
-        return [.. InputItemNames.SelectMany(item => ReadFullPaths(json.RootElement, item))];
+        return ReadInputFiles(json.RootElement, Path.GetDirectoryName(Path.GetFullPath(projectPath))!);
+    }
+
+    /// <summary>What a query asks for to learn a project's inputs: the items, and the signing key.</summary>
+    private static IEnumerable<string> InputArguments =>
+    [
+        .. InputItemNames.Select(item => $"-getItem:{item}"),
+        "-getProperty:SignAssembly",
+        "-getProperty:AssemblyOriginatorKeyFile",
+    ];
+
+    /// <summary>
+    /// The files a project's items name, and the key it signs with, as absolute paths.
+    /// </summary>
+    /// <remarks>
+    /// The key is a property, not an item, and it commonly sits above the project - MediatR names
+    /// <c>..\..\MediatR.snk</c> - so neither membership nor the directory rule claimed it, and a diff
+    /// carrying only a new key was attributed to nothing, as a generator outside every project once
+    /// was (review of #86). The compiler reads it on every emit since RB-035, so it is an input like
+    /// the source. It is resolved against the project's directory, as MSBuild hands it to
+    /// <c>/keyfile:</c>, and only when the project signs.
+    /// </remarks>
+    private static IReadOnlyList<string> ReadInputFiles(JsonElement root, string projectDirectory)
+    {
+        string Property(string name) =>
+            root.TryGetProperty("Properties", out JsonElement properties) &&
+            properties.TryGetProperty(name, out JsonElement value)
+                ? value.GetString() ?? string.Empty
+                : string.Empty;
+
+        string keyFile = Property("AssemblyOriginatorKeyFile");
+
+        return
+        [
+            .. InputItemNames.SelectMany(item => ReadFullPaths(root, item)),
+            .. IsTrue(Property("SignAssembly")) && keyFile.Length > 0
+                ? [Path.GetFullPath(Path.Combine(projectDirectory, keyFile.Replace('\\', Path.DirectorySeparatorChar)))]
+                : Array.Empty<string>(),
+        ];
     }
 
     /// <summary>
