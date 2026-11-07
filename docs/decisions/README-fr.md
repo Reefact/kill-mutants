@@ -138,3 +138,4 @@ celle qui empêche un agent de merger une pull request.
 | [DEC0025](0025-a-series-names-the-untracked-files-that-do-not-make-its-tree-dirty-fr.md) | Une série nomme les fichiers non suivis qui ne rendent pas son arbre sale, et un motif qui pourrait couvrir du code est refusé | Accepté |
 | [DEC0026](0026-a-project-names-the-calls-it-silences-and-the-report-counts-what-it-chose-not-to-hear-fr.md) | Un projet nomme les appels qu'il fait taire, et le rapport compte ce qu'il a choisi de ne pas entendre | Accepté |
 | [DEC0027](0027-linq-runs-by-default-and-without-leaves-it-out-fr.md) | `Linq` s'exécute par défaut, et `--without` l'écarte | Accepté |
+| [DEC0028](0028-the-tool-is-published-as-killmutants-and-its-command-is-killmutants-fr.md) | L'outil est publié sous `KillMutants`, et sa commande est `killmutants` | Accepté |
