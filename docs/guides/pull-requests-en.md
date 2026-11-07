@@ -154,9 +154,16 @@ records why abstaining beats both refusing the run and passing with a warning at
 - uses: actions/checkout@v4
   with:
     fetch-depth: 0          # --since needs the base revision in the clone
+- uses: actions/setup-dotnet@v4
+  with:
+    dotnet-version: '10.0.x'
 
-- run: dotnet tool restore
-- run: dotnet killmutants --since origin/${{ github.base_ref }} --report-json artifacts/mutation.json
+# Not on nuget.org yet: the tool is packed from its repository, as in Continuous integration.
+- run: git clone --depth 1 --branch main https://github.com/Reefact/kill-mutants "$RUNNER_TEMP/kill-mutants-src"
+- run: dotnet pack "$RUNNER_TEMP/kill-mutants-src/src/KillMutants.Cli" -c Release -o "$RUNNER_TEMP/kill-mutants-pack"
+- run: dotnet tool install KillMutants --tool-path "$RUNNER_TEMP/tools" --add-source "$RUNNER_TEMP/kill-mutants-pack" --prerelease
+
+- run: '"$RUNNER_TEMP/tools/killmutants" --since origin/${{ github.base_ref }} --report-json artifacts/mutation.json'
 ```
 
 The run exits `1` on an undetected mutant and the job goes red with the findings in its log; the

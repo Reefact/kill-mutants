@@ -43,6 +43,12 @@ un job mal configuré au vert pour toujours.
 
 ## Un job GitHub Actions prêt à l'emploi
 
+KillMutants n'est pas encore sur nuget.org : le job l'empaquette donc depuis son dépôt avant de s'en
+servir. Le clone va dans `RUNNER_TEMP`, hors de l'espace de travail : pointée sur l'espace de travail,
+l'exécution trouverait aussi les projets de test de KillMutants. Épinglez `--branch` sur un tag de
+confiance plutôt que sur `main`. Une fois le paquet publié, les trois étapes d'installation se
+réduisent à un seul `dotnet tool install`.
+
 ```yaml
 name: mutation
 
@@ -61,10 +67,14 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - run: dotnet tool restore
+      # Pas encore sur nuget.org : empaqueter l'outil depuis son propre dépôt. Le clone se place hors de
+      # l'espace de travail, pour que les projets de test de KillMutants ne soient pas trouvés par l'exécution.
+      - run: git clone --depth 1 --branch main https://github.com/Reefact/kill-mutants "$RUNNER_TEMP/kill-mutants-src"
+      - run: dotnet pack "$RUNNER_TEMP/kill-mutants-src/src/KillMutants.Cli" -c Release -o "$RUNNER_TEMP/kill-mutants-pack"
+      - run: dotnet tool install KillMutants --tool-path "$RUNNER_TEMP/tools" --add-source "$RUNNER_TEMP/kill-mutants-pack" --prerelease
 
       # L'échéance se place sous le délai du job, avec de la marge pour écrire le rapport.
-      - run: dotnet killmutants --break-at 80 --stop-after 80m --report-json artifacts/mutation.json
+      - run: $RUNNER_TEMP/tools/killmutants --break-at 80 --stop-after 80m --report-json artifacts/mutation.json
 
       # Conservé quoi qu'il arrive : le journal et le plan disent ce qu'une exécution tuée a jugé.
       - uses: actions/upload-artifact@v4

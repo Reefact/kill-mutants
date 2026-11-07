@@ -61,21 +61,32 @@ vocabulary.
 
 ## Install
 
-KillMutants is a `dotnet` tool. It is not on nuget.org yet, so pack it from a clone of this
-repository and install it from the folder you packed into:
+KillMutants is a `dotnet` tool. It is not on nuget.org yet, so you pack it from a clone of its
+repository and install it from the folder you packed into. The packing happens in that clone; the
+install itself can run from anywhere:
 
 ```bash
+git clone https://github.com/Reefact/kill-mutants
+cd kill-mutants
 dotnet pack src/KillMutants.Cli -c Release -o ./artifacts
 dotnet tool install --global KillMutants --add-source ./artifacts --prerelease
 ```
 
-Prefer a tool that travels with one repository? Install it there instead, recorded in
-`.config/dotnet-tools.json`, and run it as `dotnet killmutants`:
+Prefer a tool that travels with one repository? Leave the clone, go to the root of **your**
+repository, and record the tool in the manifest there. The package source is then the folder you
+packed into, written as a path, since `./artifacts` no longer means anything from here:
 
 ```bash
+cd /path/to/your-repository
 dotnet new tool-manifest
-dotnet tool install KillMutants --add-source ./artifacts --prerelease
+dotnet tool install KillMutants --add-source /path/to/kill-mutants/artifacts --prerelease
+dotnet killmutants
 ```
+
+The manifest records the package and its version, not where it came from. Whoever runs
+`dotnet tool restore` next — a colleague, a CI job — needs the same package source within reach,
+which for now means packing the tool first
+([Continuous integration](./continuous-integration-en.md#a-ready-made-github-actions-job) shows how).
 
 Nothing is added to your test projects: no package, no attribute, no base class. The only
 requirement is that your tests run on **xUnit 4** — the `xunit.v3` package family at version 4,
