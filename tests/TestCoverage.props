@@ -1,0 +1,33 @@
+<Project>
+
+  <!--
+    Code coverage for a test project, under Microsoft.Testing.Platform. A test project opts in with
+
+        <Import Project="../TestCoverage.props" />
+
+    and gets both halves: the collector and the settings that configure it. It exists so that the
+    SonarQube Cloud analysis (.github/workflows/sonar.yml) has an OpenCover report to read; nothing
+    else asks for coverage, and a `dotnet test` run that does not pass the coverlet option collects none.
+
+    coverlet.MTP rather than coverlet.collector: the collector is a VSTest data collector, and nothing
+    loads it once `dotnet test` runs on Microsoft.Testing.Platform. coverlet.MTP is the same project's
+    extension for this platform and still emits OpenCover, which is what Sonar reads. It is referenced
+    with plain PrivateAssets="all": an MTP extension self-registers through generated code that names
+    its builder hook, so it needs its compile assets (the shape just-dummies measured).
+
+    Imported from here rather than from a Directory.Build.props under tests/, because tests/fixtures
+    holds repositories the end-to-end tests run the tool against. Each fixture stops the property walk
+    with a Directory.Build.props of its own, so they would not inherit it anyway; an explicit import
+    in the two test projects says so where it applies instead of relying on that.
+  -->
+  <ItemGroup>
+    <PackageReference Include="coverlet.MTP" PrivateAssets="all" />
+
+    <!-- Copied beside the test application, where the platform looks for it. Linked from one file so
+         the two suites cannot drift apart in what they measure. -->
+    <None Include="$(MSBuildThisFileDirectory)testconfig.json"
+          Link="testconfig.json"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

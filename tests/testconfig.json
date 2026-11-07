@@ -1,0 +1,8 @@
+{
+  "platformOptions": {
+    "Coverlet": {
+      "format": "opencover",
+      "excludeByAttribute": "Obsolete,GeneratedCode,GeneratedCodeAttribute,CompilerGeneratedAttribute,ExcludeFromCodeCoverage,ExcludeFromCodeCoverageAttribute"
+    }
+  }
+}
