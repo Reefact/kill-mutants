@@ -154,8 +154,23 @@ _is_local() {
 # releases then publish different artifacts under one nuget.org identity — the second either
 # overwriting the story of the first or landing as a --skip-duplicate no-op. No count taken
 # inside a single train can see that.
+#
+# Only an identity some release can PUBLISH is a collision, so a duplicate counts when at least one
+# of its claimants is on a train. Projects on no train are never packed by a release, and the test
+# fixtures are exactly that: six of them are called Sample.Library, because each is a small
+# repository of its own that the end-to-end tests run the tool against. Counting them blocked the
+# first train that ever declared a project, before anything reached `dotnet pack` - and only then,
+# since the rehearsal skips a train with no projects and so never ran this guard until one existed.
+# A fixture that takes the name of a published package is still refused, by the same rule.
+#
+# The claimants on a train, as folded ids; an id they share with ANY project is a collision.
+published_ids="$(printf '%s\n' "$local_map" | while IFS='|' read -r _id _tr _pr; do
+    if [ -n "$_id" ] && [ -n "$_tr" ]; then _fold "$_id"; printf '\n'; fi
+  done)"
 duplicate_ids="$(printf '%s\n' "$local_map" | cut -d'|' -f1 | grep -v '^$' \
-  | tr '[:upper:]' '[:lower:]' | sort | uniq -d)"
+  | tr '[:upper:]' '[:lower:]' | sort | uniq -d | while IFS= read -r _dup; do
+    if printf '%s\n' "$published_ids" | grep -Fxq "$_dup"; then printf '%s\n' "$_dup"; fi
+  done)"
 if [ -n "$duplicate_ids" ]; then
   echo "error: more than one project resolves to the same PackageId:" >&2
   printf '%s\n' "$duplicate_ids" | while IFS= read -r _dup; do
