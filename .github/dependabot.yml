@@ -1,0 +1,40 @@
+# Weekly dependency updates, for the packages the tool is built from and for the actions its
+# workflows run. Each update arrives as a pull request and is checked by `ci` like any other: nothing
+# here merges on its own, so a bump that changes a verdict is caught by the suite that measures them.
+#
+# Minor and patch updates are grouped, one pull request per ecosystem and week, because they are
+# reviewed the same way and one at a time they bury the history. Majors stay one per pull request:
+# a major is where a dependency is allowed to break something, and it is read on its own.
+#
+# The prefix follows the repository's commit convention. No scope is added: tools/trains.sh maps
+# scopes to release trains, and a `deps` scope would match none, so the notes would drop the bump.
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    # The fixtures are not dependencies of the tool. Each is a small repository of its own that the
+    # end-to-end tests run KillMutants against, pinning its versions inline as a user's project would,
+    # so a version there is part of what a test asserts and moves only when a test means it to.
+    exclude-paths:
+      - tests/fixtures/**
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+    groups:
+      nuget-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    groups:
+      actions-minor-and-patch:
+        update-types:
+          - minor
+          - patch
