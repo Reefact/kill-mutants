@@ -2,8 +2,10 @@
 
 ## Supported versions
 
-Only the most recent version of `KillMutants` published on nuget.org receives security fixes,
-pre-releases included. A fix ships as a new version; an earlier version is not patched.
+Each package this repository publishes is versioned on its own release train (see
+[`RELEASING.md`](RELEASING.md)), so support is defined per package: only the most recent version of
+**each package** published on nuget.org receives security fixes, pre-releases included. A fix ships
+as a new version of the package concerned; an earlier version is not patched.
 
 A mutation score moves with the tool's version, so projects pin KillMutants per repository rather
 than taking updates silently. Moving the pin to the fixed version is the upgrade path, and the one
@@ -37,10 +39,20 @@ repository therefore runs that repository's code, with the permissions of whoeve
 exactly as `dotnet test` would. Running KillMutants on a repository you do not trust is running
 untrusted code, and that is not a vulnerability in KillMutants.
 
+What counts is what **KillMutants itself** does, as distinct from what the code under test does
+while KillMutants runs it. A snapshot test that writes a `.received` file beside its source when a
+mutant changes its output is that test's own behaviour: KillMutants reports such files at the end of
+a run, as the README describes, but they are not a vulnerability.
+
 In scope, for example:
 
-- KillMutants writing, deleting or reading outside the directories a run is documented to use;
-- a mutant, or anything a run produces, reaching the source tree it was meant to leave untouched;
+- KillMutants itself writing, deleting or reading outside the directories a run is documented to
+  use;
+- KillMutants itself modifying an original source file, or placing a mutated assembly outside the
+  sandbox it builds for testing;
 - a report or log that leaks something the run had no reason to record;
-- a published package whose contents do not match its provenance attestation (see
-  [`RELEASING.md`](RELEASING.md), "Verifying a published package").
+- a package that fails the integrity check of the channel it came from: a `.nupkg` attached to a
+  GitHub Release that fails its provenance attestation (`gh attestation verify`), or a package
+  downloaded from nuget.org that fails `dotnet nuget verify`. The nuget.org copy is expected **not**
+  to match the attested checksum, since nuget.org repository-signs every upload; see
+  [`RELEASING.md`](RELEASING.md), "Verifying a published package".
