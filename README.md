@@ -1,6 +1,11 @@
 # KillMutants
 
-[![codeql](https://github.com/Reefact/kill-mutants/actions/workflows/codeql.yml/badge.svg)](https://github.com/Reefact/kill-mutants/actions/workflows/codeql.yml)
+|  |  |
+| :-- | :-- |
+| **Build** | [![ci](https://github.com/Reefact/kill-mutants/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Reefact/kill-mutants/actions/workflows/ci.yml) |
+| **Security** | [![codeql](https://github.com/Reefact/kill-mutants/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/Reefact/kill-mutants/actions/workflows/codeql.yml) |
+| **Package** | ![.NET 10](https://img.shields.io/badge/.NET-10-512BD4) |
+| **Project** | [![License: PolyForm Internal Use 1.0.0](https://img.shields.io/badge/License-PolyForm%20Internal%20Use%201.0.0-blue)](LICENSE) [![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-fe5196?logo=conventionalcommits&logoColor=white)](https://www.conventionalcommits.org) |
 
 > A modern, opinionated mutation testing tool for .NET, built for xUnit 4.
 
