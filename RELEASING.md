@@ -62,73 +62,66 @@ attacks. A dry run is enough to satisfy it: see "Rehearsing" below.
 
 ## Package naming
 
-Following the convention every Reefact repository already shares — `DiagnosticCatalog`
-/ `DiagnosticCatalog.Cli` (`dcat`), `JustDummies` / `JustDummies.Cli` (`dum`),
-`FirstClassErrors` / `FirstClassErrors.Cli` (`fce`):
+Settled by [DEC0028](docs/decisions/0028-the-tool-is-published-as-killmutants-and-its-command-is-killmutants-en.md),
+before the first publish:
 
 | Train | `PackageId` | `ToolCommandName` |
 | ----- | ----------- | ----------------- |
 | `lib` | `KillMutants.Core` | — |
-| `cli` | `KillMutants.Cli` | `dotnet-killmutants` — typed `dotnet killmutants` |
+| `cli` | `KillMutants` | `killmutants` |
 
 The repository name is kebab-case and the package ids are PascalCase, suffixed with a dot
 (`KillMutants.Xunit`, ...). No package id carries a hyphen, which is why one glob covers
-them all.
+them all. The hyphen lives only in the GitHub slug: the domain is `killmutants.io` and the
+packages are `KillMutants*` — the same split this organisation already has between
+`just-dummies`, `justdummies.io` and `JustDummies`.
 
-One deliberate departure, for now: the sibling repositories give the engine the BARE name
-(`DiagnosticCatalog`, `JustDummies`, `FirstClassErrors`) and suffix only the satellites,
-whereas the engine here is `KillMutants.Core`. Nothing in the pipeline cares — the glob,
-the trains and the workflows are all written against ids they never spell out — so `Core`
-can stay, or a bare `KillMutants` can join or replace it later, with no release change.
+A nuget.org package id is immutable: renaming in the source tree is a refactor, renaming
+after a publish is not a rename at all — it is a second package plus an unlisted first one,
+and consumers of the old id are left on a dead end. That is why the names were decided
+before anything was published, and why changing either one now takes a new record, not an
+edit here.
 
-The deadline for settling it is the first `lib-v*` tag, not the next merge. A nuget.org
-package id is immutable: renaming in the source tree is a refactor, renaming after a
-publish is not a rename at all — it is a second package plus an unlisted first one, and
-consumers of the old id are left on a dead end. Before anything is published the choice
-is free; after, it is permanent.
-
-Worth doing early either way: reserve the `KillMutants.` prefix on nuget.org (prefix
+Worth doing before the first tag: reserve the `KillMutants.` prefix on nuget.org (prefix
 reservation, for a verified owner). The package ids match a domain the project owns, and
 an id nobody has claimed is an id anybody can claim.
 
-`PackageId` and `ToolCommandName` are independent properties, and the convention uses
-that: you install `DiagnosticCatalog.Cli` and you type `dcat`. The short name belongs to
-the COMMAND, never to the package.
+### Why the tool takes the bare name
 
-Stryker.NET does the opposite — `Stryker.Core` publishes as `stryker`, `Stryker.CLI` as
-`dotnet-stryker` — so its package ids match none of its project names. The `dotnet-`
-prefix there is not decoration and not a leftover: the `dotnet` driver dispatches
-`dotnet <foo>` to a `dotnet-<foo>` command, which is why Stryker is invoked as
-`dotnet stryker` everywhere, this organisation's own mutation workflows included.
+The sibling repositories give the bare name to the library and suffix the tool —
+`DiagnosticCatalog` / `DiagnosticCatalog.Cli` (`dcat`), `JustDummies` / `JustDummies.Cli`
+(`dum`). This one departs from that on purpose: KillMutants is used through its command
+line, nobody consumes the engine as a library, and the engine already carries a suffix of
+its own. The bare name, the one a reader searches nuget.org for, goes to what is actually
+installed. The price is permanent: a library published later carries a suffix.
 
-### Why this tool takes the prefix and the others do not
+### Why the command carries no `dotnet-` prefix
 
-`dcat`, `dum` and `fce` are installed GLOBALLY, which puts the command on PATH and lets a
-short name be typed bare — `fce init`. That is what makes short pay there.
-
-A mutation tool is not installed that way. Scores move with the tool's version, so it is
-pinned per repository through `.config/dotnet-tools.json` — exactly how this organisation
-already pins `dotnet-stryker` at 4.16.0 with `rollForward: false`, so CI and a
-maintainer's machine measure the same thing. A pinned tool is invoked as
-`dotnet <command>`, and the two shapes then diverge (all four rows measured, not assumed):
+The `dotnet` driver dispatches `dotnet <foo>` to a `dotnet-<foo>` command, for a
+manifest-pinned tool as well as one on PATH, and a pinned tool is never on PATH. The shape
+of the invocation therefore depends on how the tool was installed. The four shapes were
+measured with a short unprefixed name, `kmut`; the second row is that measurement with this
+tool's name in place, since the driver's rule looks at the prefix and not at the rest:
 
 | `ToolCommandName` | pinned locally | installed globally |
 | ----------------- | -------------- | ------------------ |
 | `dotnet-killmutants` | `dotnet killmutants` | `dotnet killmutants` |
-| `kmut` | `dotnet kmut` | `kmut` (and `killmutants` is not found) |
+| `killmutants` | `dotnet killmutants` | `killmutants` |
 
-The prefixed name gives ONE invocation that holds in both modes; a short name gives two,
-and the documentation has to branch on how the reader installed it. That is the whole
-reason for the choice — not imitation of Stryker, though Stryker made the same call, and
-`dotnet stryker` followed by `dotnet killmutants` reads as one pipeline.
+The prefix would give one invocation that holds in both modes — the choice Stryker.NET made
+with `dotnet-stryker`. It was declined because it buys that uniformity with the bare
+`killmutants` a global install allows, which is the form the maintainer wants to type. No
+name removes the `dotnet` in front of a pinned tool; the name only decides whether the
+global form keeps it too.
 
-The prefix is not decoration: the `dotnet` driver dispatches `dotnet <foo>` to a
-`dotnet-<foo>` command, for a manifest-pinned tool as well as one on PATH.
+Pinning stays the form to use in CI. Scores move with the tool's version, so it is pinned
+per repository through `.config/dotnet-tools.json` — exactly how this organisation already
+pins `dotnet-stryker` with `rollForward: false`, so CI and a maintainer's machine measure the
+same thing. The documentation shows both invocations, and a CI script uses the pinned one.
 
-No hyphen, matching the product's own name: the repository slug is `kill-mutants`, but the
-domain is `killmutants.io` and the packages are `KillMutants*`. The hyphen lives only in
-the GitHub slug — the same split this organisation already has between `just-dummies`,
-`justdummies.io` and `JustDummies`.
+A short command (`km`) was declined too: short pays for a tool typed bare all day, and a
+pinned mutation tool is typed after `dotnet` in CI, where `dotnet km` saves little and reads
+poorly.
 
 ## Cutting a release
 
@@ -184,7 +177,7 @@ recovery that stays a judgement call, so it is written down rather than guarded.
 The provenance attestation covers the bytes attached to the **GitHub Release**:
 
 ```sh
-gh attestation verify KillMutants.Cli.1.2.3.nupkg --repo Reefact/kill-mutants
+gh attestation verify KillMutants.1.2.3.nupkg --repo Reefact/kill-mutants
 ```
 
 The nuget.org copy deliberately does not match that checksum — nuget.org repository-signs
