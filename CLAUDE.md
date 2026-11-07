@@ -34,9 +34,10 @@ mechanism and drops the reason throws away the expensive half.
 
 ## The documentation is bilingual
 
-`docs/architecture`, `docs/robustness-backlog`, `docs/study/stryker-net` and every decision record
-exist as `-en.md` and `-fr.md`. **The English is canonical**; the French changes with it, in the
-same pass. The root `README.md` is English only.
+`docs/architecture`, `docs/robustness-backlog`, `docs/study/stryker-net`, every guide under
+`docs/guides` and every decision record exist as `-en.md` and `-fr.md`; the two indexes,
+`docs/README.md` and `docs/decisions/README.md`, pair with a `README-fr.md`. **The English is
+canonical**; the French changes with it, in the same pass. The root `README.md` is English only.
 
 `ci.yml` refuses the mechanical half of that. The half that stays here is the half no tool reaches:
 nothing establishes that the French *says* the same thing as the English. A twin rewritten to mean
