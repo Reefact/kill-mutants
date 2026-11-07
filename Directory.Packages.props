@@ -14,9 +14,19 @@
     <!-- Slugger. Names the directories a run works in, from the kill-mutants theme embedded in
          KillMutants.Platform - see Scratch.CreateDirectory for why a name rather than a GUID.
          A prerelease, and it stays one for a while: Slugger cannot ship stable while its own
-         FirstClassErrors is a prerelease (NU5104), and the same rule then binds this tool's first
-         stable version to theirs. The tool is 0.1.0-alpha, so nothing refuses it today. -->
+         FirstClassErrors is a prerelease (NU5104). That rule does not reach this tool: a tool
+         package carries Slugger inside it and declares no dependency, so a stable KillMutants
+         packs over a prerelease Slugger without the warning - measured with pack.sh at 1.0.0.
+         It would reach a library published on the lib train, which declares its dependencies. -->
     <PackageVersion Include="Slugger" Version="1.0.0-preview.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Release. Embeds the SPDX inventory in every package a release train ships; referenced from
+         Directory.Build.targets for each project that declares a <ReleaseTrain>, and pinned here
+         because central package management refuses a PackageReference with no PackageVersion
+         (NU1010) - the fallback pin in Directory.Build.targets applies only without it. -->
+    <PackageVersion Include="Microsoft.Sbom.Targets" Version="4.1.5" />
   </ItemGroup>
 
   <ItemGroup>
