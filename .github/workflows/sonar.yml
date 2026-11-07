@@ -1,0 +1,124 @@
+name: sonar
+
+# SonarQube Cloud analysis of the C# the solution compiles, with the coverage of its test suites.
+#
+# Not part of the `ci` gate. Sonar's quality gate is a reading for the badge and the dashboard: its
+# rules and thresholds change on SonarQube Cloud's side, so a gate on it would turn red for reasons
+# outside the change. `ci` is what decides whether a pull request can merge.
+#
+# THE ORDER OF THE STEPS IS THE DESIGN. The SonarScanner hooks every MSBuild build that runs between
+# `begin` and `end`, and this tool's end-to-end tests run MSBuild themselves: they build the fixtures
+# under tests/fixtures and read their `csc` command lines (DEC0003). Running the tests inside the
+# scanner's window would let it attach its analyzers to those builds - analysing test inputs as if
+# they were this repository's code, and handing the tool a compiler command line no user would have.
+# So the tests run FIRST, with coverage, outside the window; only the solution's own build runs
+# between `begin` and `end`. Sonar maps an OpenCover report to source files by path, so a report
+# produced by an earlier build of the same commit is read exactly as one produced inside the window.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: sonar-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read-only: the analysis is uploaded with SONAR_TOKEN, not with this workflow's token.
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+
+jobs:
+  analyze:
+    name: SonarQube Cloud analysis
+    runs-on: ubuntu-latest
+    # The end-to-end suite alone takes about half an hour on a hosted runner (see `ci`).
+    timeout-minutes: 60
+    # A run that cannot read SONAR_TOKEN skips rather than fail on the empty string the secret
+    # becomes: a pull request from a fork never receives this repository's secrets, and a run
+    # triggered by Dependabot reads the separate Dependabot store. Handing the analysis token to those
+    # runs to analyse a version bump is declined, as in just-dummies. Keyed on the actor that
+    # triggered the run, because that is whom the secret follows.
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # Full history: Sonar attributes issues by blame and tells new code from old.
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Setup Java
+        # The SonarScanner for .NET runs on the JVM; SonarQube Cloud requires Java 17 or later.
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Cache SonarQube Cloud packages
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
+      # Pinned, as every tool this repository runs in CI is: an unpinned scanner changes what is
+      # reported between two runs on the same commit.
+      - name: Install SonarScanner for .NET
+        run: |
+          dotnet tool install --global dotnet-sonarscanner --version 12.1.0
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      # Outside the scanner's window - see the header. coverlet.MTP writes one
+      # coverage.opencover.<timestamp>.xml per suite into the same directory.
+      - name: Build and test with coverage
+        run: |
+          set -euo pipefail
+          dotnet restore KillMutants.slnx -p:Configuration=Release
+          dotnet build KillMutants.slnx -c Release --no-restore
+          dotnet test --solution KillMutants.slnx -c Release --no-build \
+            --coverlet --results-directory artifacts/coverage
+
+      # tests/fixtures holds repositories the end-to-end tests run the tool against: inputs, some of
+      # them deliberately odd, never code this repository ships. They are outside the solution, so the
+      # C# analysis never sees them; the exclusion also keeps Sonar's file-based languages away.
+      - name: Begin analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: >-
+          dotnet-sonarscanner begin
+          /k:"reefact_kill-mutants"
+          /o:"reefact"
+          /d:sonar.token="$SONAR_TOKEN"
+          /d:sonar.host.url="https://sonarcloud.io"
+          /d:sonar.cs.opencover.reportsPaths="artifacts/coverage/coverage.opencover.*.xml"
+          /d:sonar.exclusions="tests/fixtures/**"
+
+      # Rebuilt from scratch so the scanner observes every compilation. Warnings as errors is lifted
+      # for this build only: the scanner must reach `end` to upload what its analyzers report, and
+      # a Sonar rule raised as an error would stop the build first. `ci` keeps enforcing it.
+      - name: Build under the scanner
+        run: >-
+          dotnet build KillMutants.slnx -c Release --no-incremental
+          -p:TreatWarningsAsErrors=false -p:MSBuildTreatWarningsAsErrors=false
+
+      - name: End analysis
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: dotnet-sonarscanner end /d:sonar.token="$SONAR_TOKEN"
