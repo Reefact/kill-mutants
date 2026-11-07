@@ -129,3 +129,4 @@ request.
 | [DEC0025](0025-a-series-names-the-untracked-files-that-do-not-make-its-tree-dirty-en.md) | A series names the untracked files that do not make its tree dirty, and a pattern that could cover code is refused | Accepted |
 | [DEC0026](0026-a-project-names-the-calls-it-silences-and-the-report-counts-what-it-chose-not-to-hear-en.md) | A project names the calls it silences, and the report counts what it chose not to hear | Accepted |
 | [DEC0027](0027-linq-runs-by-default-and-without-leaves-it-out-en.md) | `Linq` runs by default, and `--without` leaves it out | Accepted |
+| [DEC0028](0028-the-tool-is-published-as-killmutants-and-its-command-is-killmutants-en.md) | The tool is published as `KillMutants`, and its command is `killmutants` | Accepted |

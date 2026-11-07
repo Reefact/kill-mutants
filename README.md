@@ -75,6 +75,7 @@ The few choices that are expensive to reverse. Each is recorded in [docs/decisio
 | DEC0025 — A series names the untracked files that do not make its tree dirty, and a pattern that could cover code is refused | [en](docs/decisions/0025-a-series-names-the-untracked-files-that-do-not-make-its-tree-dirty-en.md) | [fr](docs/decisions/0025-a-series-names-the-untracked-files-that-do-not-make-its-tree-dirty-fr.md) |
 | DEC0026 — A project names the calls it silences, and the report counts what it chose not to hear | [en](docs/decisions/0026-a-project-names-the-calls-it-silences-and-the-report-counts-what-it-chose-not-to-hear-en.md) | [fr](docs/decisions/0026-a-project-names-the-calls-it-silences-and-the-report-counts-what-it-chose-not-to-hear-fr.md) |
 | DEC0027 — `Linq` runs by default, and `--without` leaves it out | [en](docs/decisions/0027-linq-runs-by-default-and-without-leaves-it-out-en.md) | [fr](docs/decisions/0027-linq-runs-by-default-and-without-leaves-it-out-fr.md) |
+| DEC0028 — The tool is published as `KillMutants`, and its command is `killmutants` | [en](docs/decisions/0028-the-tool-is-published-as-killmutants-and-its-command-is-killmutants-en.md) | [fr](docs/decisions/0028-the-tool-is-published-as-killmutants-and-its-command-is-killmutants-fr.md) |
 
 ## Installing
 
