@@ -36,6 +36,10 @@ jobs:
     name: Scorecard analysis
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # The default-branch-only contract, enforced rather than assumed. Every trigger but one already
+    # runs there; a manual run lets whoever starts it pick another branch or tag, and would then
+    # publish a score for a revision that is not the repository's. That run is skipped instead.
+    if: github.ref_name == github.event.repository.default_branch
     permissions:
       # Upload the SARIF results to Security -> Code scanning.
       security-events: write
