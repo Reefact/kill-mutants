@@ -1,6 +1,7 @@
 name: sonar
 
-# SonarQube Cloud analysis of the C# the solution compiles, with the coverage of its test suites.
+# SonarQube Cloud analysis of the C# code compiled by the solution, including coverage from its test
+# suites.
 #
 # Not part of the `ci` gate. Sonar's quality gate is a reading for the badge and the dashboard: its
 # rules and thresholds change on SonarQube Cloud's side, so a gate on it would turn red for reasons
@@ -87,6 +88,13 @@ jobs:
 
       # Outside the scanner's window - see the header. coverlet.MTP writes one
       # coverage.opencover.<timestamp>.xml per suite into the same directory.
+      #
+      # WHAT THE COVERAGE FIGURE LEAVES OUT. coverlet.MTP instruments the test host and the assemblies
+      # it loads, not the processes a test starts. CommandLineTests, which holds the exit codes to their
+      # contract (DEC0009), and FilesLeftInTheTreeTests run the real command-line tool, killmutants.dll,
+      # in a `dotnet` process of its own, and nothing those runs execute is counted. KillMutants.Cli can therefore read as less covered
+      # than it is tested: an uncovered line there is a question to check against those tests, not a
+      # finding on its own. Measuring the child process as well is a separate change, not made here.
       - name: Build and test with coverage
         run: |
           set -euo pipefail
