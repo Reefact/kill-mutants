@@ -7,10 +7,13 @@
   </PropertyGroup>
 
   <PropertyGroup>
+    <ReleaseTrain>cli</ReleaseTrain>
+  </PropertyGroup>
+
+  <PropertyGroup>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>killmutants</ToolCommandName>
     <PackageId>KillMutants</PackageId>
-    <Version>0.1.0-alpha</Version>
     <Description>A modern, opinionated mutation testing tool for .NET, built for xUnit 4.</Description>
     <Authors>Reefact</Authors>
     <Company>Reefact</Company>
