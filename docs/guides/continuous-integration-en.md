@@ -40,6 +40,11 @@ have met a threshold, and reporting success would let a misconfigured job stay g
 
 ## A ready-made GitHub Actions job
 
+KillMutants is not on nuget.org yet, so the job packs it from its repository before using it. The
+clone goes into `RUNNER_TEMP`, outside the workspace: pointed at the workspace, the run would also
+find KillMutants' own test projects. Pin `--branch` to a tag you trust rather than `main`. Once the
+package is published, the three installation steps become a single `dotnet tool install`.
+
 ```yaml
 name: mutation
 
@@ -58,10 +63,14 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - run: dotnet tool restore
+      # Not on nuget.org yet: pack the tool from its own repository. The clone sits outside the
+      # workspace, so that KillMutants' own test projects are not found by the run.
+      - run: git clone --depth 1 --branch main https://github.com/Reefact/kill-mutants "$RUNNER_TEMP/kill-mutants-src"
+      - run: dotnet pack "$RUNNER_TEMP/kill-mutants-src/src/KillMutants.Cli" -c Release -o "$RUNNER_TEMP/kill-mutants-pack"
+      - run: dotnet tool install KillMutants --tool-path "$RUNNER_TEMP/tools" --add-source "$RUNNER_TEMP/kill-mutants-pack" --prerelease
 
       # The deadline sits below the job's timeout, with room to write the report.
-      - run: dotnet killmutants --break-at 80 --stop-after 80m --report-json artifacts/mutation.json
+      - run: $RUNNER_TEMP/tools/killmutants --break-at 80 --stop-after 80m --report-json artifacts/mutation.json
 
       # Kept whatever happened: the log and the plan say what a killed run judged.
       - uses: actions/upload-artifact@v4

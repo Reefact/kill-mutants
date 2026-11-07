@@ -62,21 +62,33 @@ reste du vocabulaire.
 
 ## Installer
 
-KillMutants est un outil `dotnet`. Il n'est pas encore sur nuget.org, alors empaquetez-le depuis un
-clone de ce dépôt et installez-le depuis le dossier dans lequel vous l'avez empaqueté :
+KillMutants est un outil `dotnet`. Il n'est pas encore sur nuget.org : vous l'empaquetez donc depuis
+un clone de son dépôt et vous l'installez depuis le dossier dans lequel vous l'avez empaqueté.
+L'empaquetage se fait dans ce clone ; l'installation, elle, peut se lancer de n'importe où :
 
 ```bash
+git clone https://github.com/Reefact/kill-mutants
+cd kill-mutants
 dotnet pack src/KillMutants.Cli -c Release -o ./artifacts
 dotnet tool install --global KillMutants --add-source ./artifacts --prerelease
 ```
 
-Vous préférez un outil qui voyage avec un seul dépôt ? Installez-le là plutôt, consigné dans
-`.config/dotnet-tools.json`, et lancez-le avec `dotnet killmutants` :
+Vous préférez un outil qui voyage avec un seul dépôt ? Quittez le clone, placez-vous à la racine de
+**votre** dépôt et consignez l'outil dans le manifeste qui s'y trouve. La source de paquets est alors
+le dossier dans lequel vous avez empaqueté, écrit comme un chemin, puisque `./artifacts` ne veut plus
+rien dire d'ici :
 
 ```bash
+cd /path/to/your-repository
 dotnet new tool-manifest
-dotnet tool install KillMutants --add-source ./artifacts --prerelease
+dotnet tool install KillMutants --add-source /path/to/kill-mutants/artifacts --prerelease
+dotnet killmutants
 ```
+
+Le manifeste consigne le paquet et sa version, pas son origine. Quiconque lance ensuite
+`dotnet tool restore` — un collègue, un job de CI — a besoin que la même source de paquets soit à
+portée, ce qui, pour l'instant, veut dire empaqueter l'outil d'abord
+([Intégration continue](./continuous-integration-fr.md#un-job-github-actions-prêt-à-lemploi) montre comment).
 
 Rien n'est ajouté à vos projets de test : ni paquet, ni attribut, ni classe de base. La seule
 exigence est que vos tests tournent sur **xUnit 4** — la famille de paquets `xunit.v3` en version 4,
