@@ -167,7 +167,7 @@ chaque mutant par une identité stable et sa position exacte plutôt que de rés
 
 | Champ | Signification |
 | --- | --- |
-| `score`, `scoreDisplay` | le score sous forme de ratio et tel qu'imprimé ; **`null`** sur une exécution partielle ou interrompue, et quand rien n'a pu être testé — jamais un zéro qui n'a pas été mesuré |
+| `score`, `scoreDisplay` | le score sous forme de ratio et tel qu'imprimé. Les deux valent **`null`** sur une exécution partielle ou interrompue. Quand une exécution complète n'a rien pu tester, `score` vaut `null` et `scoreDisplay` est la chaîne `"n/a"` — jamais un zéro qui n'a pas été mesuré, ni un pourcentage |
 | `scope` | quelle population a été inspectée : `full`, ou `partial` avec les deux états comparés et le nombre de fichiers changés |
 | `environment` | tout ce qui se cache derrière `Ran on`, sous forme de données |
 | `totals` | les décomptes par statut, plus les trois qui définissent le score : `detected`, `undetected`, `untestable` ; et `ignored`, en dehors des trois |
@@ -209,8 +209,11 @@ Chaque entrée de `mutants` porte ce qu'il faut pour contester un verdict :
 * **`killedBy`** nomme les tests qui ont échoué, dans la forme que le runner accepte, pour qu'une
   mise à mort mise en doute puisse être tranchée à la main : mettez la mutation dans le fichier à
   cette position, lancez ces tests, regardez-les échouer.
-* **`disagreement`** et **`overturned`** ne sont renseignés que sur un mutant que `--verify-kills` a
-  retesté et dont le verdict ne s'est pas répété.
+* **`disagreement`** n'est renseigné que sur un mutant que `--verify-kills` a retesté et dont la mise
+  à mort ne s'est pas répétée. Le verdict d'origine est conservé, signalé comme non fiable.
+* **`overturned`** est renseigné sur un mutant qui a dépassé son délai sous charge puis s'est terminé
+  quand on l'a relancé seul, que `--verify-kills` ait été demandé ou non. Le second verdict remplace
+  le délai dépassé, et ce champ le dit.
 
 ## Les fichiers à côté du rapport
 

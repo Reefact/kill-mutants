@@ -65,16 +65,18 @@ And where no honest percentage exists, none is printed:
 ## Verdicts are isolated, whatever it costs
 
 Each mutant gets its own compilation
-([DEC0002](../decisions/0002-one-compilation-per-mutant-en.md)) and its own fresh test process in a
-private copy of the test output
+([DEC0002](../decisions/0002-one-compilation-per-mutant-en.md)) and its own fresh test process
 ([DEC0008](../decisions/0008-never-reuse-a-test-host-between-mutants-en.md)). Reusing a warm host
 across mutants is the most tempting optimisation available and the one the tool refuses: it is the
 source of the longest-standing correctness complaint against tools that do it, where process-global
 state leaks between mutants and inflates scores.
 
-The cost is a directory copy and a process launch per mutant. What it buys is the guarantee that no
-two mutants can ever observe each other — and that KillMutants never writes into your build output
-at all.
+The cost is a process launch per mutant, and a private copy of the test output per worker. What it
+buys is the guarantee that no in-memory state can pass from one mutant to another — and that
+KillMutants never writes into your build output at all. The guarantee is about the process: a worker
+keeps its copy of the output for every mutant it tests and only overwrites the assembly under test
+between two of them, so a file a test writes beside its executable can outlive the mutant that
+wrote it.
 
 ## The baseline is verified before anything is mutated
 
