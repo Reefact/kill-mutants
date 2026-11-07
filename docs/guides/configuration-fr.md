@@ -1,6 +1,6 @@
 # Configuration
 
-🌍 **Langues :**  
+🌍 **Langues :**  
 🇬🇧 [English](./configuration-en.md) | 🇫🇷 Français (ce fichier)
 
 Chaque réglage peut être donné sur la ligne de commande, et chaque réglage qui exprime une
@@ -32,7 +32,7 @@ flowchart LR
   que le projet fait habituellement.
 
 Le fichier est lu depuis le répertoire vers lequel l'exécution a été pointée. Les commentaires et
-les virgules finales sont acceptés : il est écrit à la main, il est donc lu comme une personne
+les virgules finales sont acceptés : il est écrit à la main, il est donc lu comme une personne
 l'écrit.
 
 ## `killmutants.json`
@@ -68,35 +68,35 @@ l'écrit.
 | Clé | Option | Défaut | Ce qu'elle fait |
 | --- | --- | --- | --- |
 | `configuration` | `-c`, `--configuration <cfg>` | `Release` | la configuration de build à analyser et à exécuter |
-| `targetFramework` | `--target-framework <tfm>` | — | le framework unique sur lequel les projets de test s'exécutent ; nécessaire quand un projet de test en cible plusieurs |
-| `exclude` | `-e`, `--exclude <pattern>` | — | laisser un projet ou un fichier tranquille ; répétable, confronté au chemin relatif au répertoire, `*` correspond aussi à `/` |
+| `targetFramework` | `--target-framework <tfm>` | — | le framework unique sur lequel les projets de test s'exécutent ; nécessaire quand un projet de test en cible plusieurs |
+| `exclude` | `-e`, `--exclude <pattern>` | — | laisser un projet ou un fichier tranquille ; répétable, confronté au chemin relatif au répertoire, `*` correspond aussi à `/` |
 | `mutators` | `-m`, `--mutators <list>` | chaque famille par défaut | n'exécuter que ces familles |
-| `with` | `--with <list>` | — | ajouter ces familles aux autres ; c'est ainsi que `NumericLiteral` s'active |
+| `with` | `--with <list>` | — | ajouter ces familles aux autres ; c'est ainsi que `NumericLiteral` s'active |
 | `without` | `--without <list>` | — | laisser ces familles de côté, appliqué après les deux précédentes |
-| `ignoreCalls` | `--ignore-calls <pattern>` | — | faire taire les mutants de l'instruction et des arguments d'un appel, par le nom pleinement qualifié de la méthode liée ; répétable |
+| `ignoreCalls` | `--ignore-calls <pattern>` | — | faire taire les mutants de l'instruction et des arguments d'un appel, par le nom pleinement qualifié de la méthode liée ; répétable |
 | `parallel` | `-p`, `--parallel <n>` | la moitié des processeurs | combien de mutants tester à la fois |
 | `coverage` | `--no-coverage` pour désactiver | `true` | n'exécuter que les tests qui atteignent chaque mutant |
-| `stopAfter` | `--stop-after <time>` | — | une échéance pour l'exécution, écrite `85m`, `90s`, `1h30m` ; l'exécution rapporte alors ce qu'elle a jugé |
+| `stopAfter` | `--stop-after <time>` | — | une échéance pour l'exécution, écrite `85m`, `90s`, `1h30m` ; l'exécution rapporte alors ce qu'elle a jugé |
 | `slow` | `--slow <time>` | `30s` | nommer, une seule fois, un mutant qui s'exécute encore au-delà de cette durée |
 | `verifyKills` | `--verify-kills <n>` | `0` | tester une seconde fois, isolément, ce nombre de mises à mort |
-| `ignoreUntracked` | `--ignore-untracked <pattern>` | — | avec `--resume` : les fichiers non suivis qui ne rendent pas l'arbre sale ; répétable |
-| `breakAt` | `--break-at <percent>` | — | sortir avec le code `1` quand le score tombe sous cette valeur ; refusé avec `--since` |
-| `reportJson` | `--report-json <path>` | — | écrire aussi le rapport en JSON ; le journal des verdicts et le plan atterrissent à côté |
-| `progress` | `--progress <mode>` | `log` | ce que la sortie d'erreur standard affiche : `log`, `live` ou `none` |
+| `ignoreUntracked` | `--ignore-untracked <pattern>` | — | avec `--resume` : les fichiers non suivis qui ne rendent pas l'arbre sale ; répétable |
+| `breakAt` | `--break-at <percent>` | — | sortir avec le code `1` quand le score tombe sous cette valeur ; refusé avec `--since` |
+| `reportJson` | `--report-json <path>` | — | écrire aussi le rapport en JSON ; le journal des verdicts et le plan atterrissent à côté |
+| `progress` | `--progress <mode>` | `log` | ce que la sortie d'erreur standard affiche : `log`, `live` ou `none` |
 
 ## Ligne de commande seulement
 
 | Option | Ce qu'elle fait |
 | --- | --- |
-| `[directory]` | où chercher les projets ; le répertoire courant par défaut |
+| `[directory]` | où chercher les projets ; le répertoire courant par défaut |
 | `--since <revision>` | ne juger que ce qui a changé depuis une révision git — une branche, un tag, un commit — et répondre par un verdict plutôt que par un score ([Juger une pull request](./pull-requests-fr.md)) |
-| `--resume <id>` | appartenir à la série nommée `<id>`, en héritant des verdicts qu'une exécution antérieure de celle-ci a atteints ; nécessite `--report-json` ([Intégration continue](./continuous-integration-fr.md#terminer-un-grand-projet-en-plusieurs-exécutions)) |
+| `--resume <id>` | appartenir à la série nommée `<id>`, en héritant des verdicts qu'une exécution antérieure de celle-ci a atteints ; nécessite `--report-json` ([Intégration continue](./continuous-integration-fr.md#terminer-un-grand-projet-en-plusieurs-exécutions)) |
 | `-h`, `--help` | le même tableau, depuis l'outil lui-même |
 
 ## Dans les projets eux-mêmes
 
 Deux choses se déclarent dans un `.csproj` ou dans le code plutôt que dans `killmutants.json`, parce
-qu'elles décrivent le projet plutôt que l'exécution :
+qu'elles décrivent le projet plutôt que l'exécution :
 
 | Déclaration | Dit |
 | --- | --- |
@@ -105,11 +105,11 @@ qu'elles décrivent le projet plutôt que l'exécution :
 
 ## Durées et listes
 
-Une durée s'écrit comme un nombre et une unité, combinés librement : `90s`, `85m`, `1h30m`.
+Une durée s'écrit comme un nombre et une unité, combinés librement : `90s`, `85m`, `1h30m`.
 
 Une liste sur la ligne de commande est séparée par des virgules — `--without StringLiteral,BooleanLiteral`
 — et une option répétable peut aussi être donnée plusieurs fois. Les noms de famille sont ceux que
-le rapport affiche sous `By mutator` ; un nom mal orthographié est refusé.
+le rapport affiche sous `By mutator` ; un nom mal orthographié est refusé.
 
 ## Pour aller plus loin
 
