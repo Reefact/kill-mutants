@@ -4,7 +4,7 @@
 | :-- | :-- |
 | **Build** | [![ci](https://github.com/Reefact/kill-mutants/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Reefact/kill-mutants/actions/workflows/ci.yml) |
 | **Quality** | [![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=reefact_kill-mutants&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=reefact_kill-mutants) [![Coverage](https://sonarcloud.io/api/project_badges/measure?project=reefact_kill-mutants&metric=coverage)](https://sonarcloud.io/summary/new_code?id=reefact_kill-mutants) |
-| **Security** | [![codeql](https://github.com/Reefact/kill-mutants/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/Reefact/kill-mutants/actions/workflows/codeql.yml) |
+| **Security** | [![codeql](https://github.com/Reefact/kill-mutants/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/Reefact/kill-mutants/actions/workflows/codeql.yml) [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Reefact/kill-mutants/badge)](https://scorecard.dev/viewer/?uri=github.com/Reefact/kill-mutants) |
 | **Package** | ![.NET 10](https://img.shields.io/badge/.NET-10-512BD4) |
 | **Project** | [![License: PolyForm Internal Use 1.0.0](https://img.shields.io/badge/License-PolyForm%20Internal%20Use%201.0.0-blue)](LICENSE) [![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-fe5196?logo=conventionalcommits&logoColor=white)](https://www.conventionalcommits.org) |
 
