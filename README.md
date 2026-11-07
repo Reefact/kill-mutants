@@ -1,5 +1,7 @@
 # KillMutants
 
+[![codeql](https://github.com/Reefact/kill-mutants/actions/workflows/codeql.yml/badge.svg)](https://github.com/Reefact/kill-mutants/actions/workflows/codeql.yml)
+
 > A modern, opinionated mutation testing tool for .NET, built for xUnit 4.
 
 KillMutants changes your code in small, deliberate ways — turning `>=` into `>`, `&&` into `||` —

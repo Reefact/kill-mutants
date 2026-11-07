@@ -1,0 +1,74 @@
+name: codeql
+
+# Static security analysis of the C# the tool is built from, reported under Security → Code scanning.
+#
+# Not part of the `ci` gate, and that is deliberate. A finding is a question for a reader, not a
+# verdict: CodeQL's queries change with its versions, so a gate on them would turn red on a Monday
+# for code nobody touched, and a gate that fails for reasons outside the change teaches people to
+# rerun it. Findings land in the security tab, where they are triaged; the workflow fails only when
+# the analysis itself cannot run.
+#
+# The build is MANUAL rather than autobuild. CodeQL sees what the compiler compiles, so it has to
+# compile what `ci` compiles - the solution, in Release - and not whatever autobuild guesses. The test
+# fixtures under tests/fixtures are deliberately left out: they are not in the solution, and they are
+# inputs the tool runs against, not code it ships.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    # Weekly, so a query added upstream reaches unchanged code too. Monday 04:17 UTC, off the hour.
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+# Nothing at the workflow level; the one job asks for what it needs.
+permissions: {}
+
+env:
+  DOTNET_NOLOGO: 'true'
+  DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 'true'
+
+jobs:
+  analyze:
+    name: Analyze (C#)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # Uploading the results is the only write this workflow makes.
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: csharp
+          build-mode: manual
+
+      # Same restore and build as `ci`, so the analysed compilation is the tested one.
+      - name: Build
+        run: |
+          set -euo pipefail
+          dotnet restore KillMutants.slnx -p:Configuration=Release
+          dotnet build KillMutants.slnx -c Release --no-restore
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: /language:csharp
