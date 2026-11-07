@@ -25,9 +25,9 @@ Les autres dépôts Reefact donnent le nom nu à la bibliothèque et le suffixe 
 `FirstClassErrors` / `FirstClassErrors.Cli` (`fce`). Ici le moteur porte déjà un suffixe qui lui est
 propre, `KillMutants.Core`, sur le train `lib`. Le mainteneur indique que KillMutants s'utilise par
 sa ligne de commande, et aucun consommateur du moteur en tant que bibliothèque n'a été identifié. La
-politique de publication de confiance de nuget.org limite ce dépôt aux identifiants correspondant à
-`KillMutants*`. Le domaine est `killmutants.io` ; le trait d'union n'existe que dans le nom GitHub
-`kill-mutants`. Un identifiant de paquet nuget.org ne peut pas contenir d'espace.
+politique de publication de confiance de nuget.org que prévoit `RELEASING.md`, et qui n'est pas
+encore configurée, limitera ce dépôt aux identifiants correspondant à `KillMutants*`. Le domaine
+est `killmutants.io` ; le trait d'union n'existe que dans le nom GitHub `kill-mutants`. Un identifiant de paquet nuget.org ne peut pas contenir d'espace.
 
 Le pilote `dotnet` exécute `dotnet <foo>` en cherchant une commande `dotnet-<foo>`, pour un outil
 épinglé dans le manifeste d'un dépôt comme pour un outil dans le PATH. `RELEASING.md` a mesuré les
