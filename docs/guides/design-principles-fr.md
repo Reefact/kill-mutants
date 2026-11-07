@@ -76,15 +76,18 @@ Et là où aucun pourcentage honnête n'existe, aucun n'est affiché :
 
 Chaque mutant a sa propre compilation
 ([DEC0002](../decisions/0002-one-compilation-per-mutant-fr.md)) et son propre processus de test
-neuf dans une copie privée de la sortie de test
+neuf
 ([DEC0008](../decisions/0008-never-reuse-a-test-host-between-mutants-fr.md)). Réutiliser un hôte
 chaud d'un mutant à l'autre est l'optimisation la plus tentante qui existe, et celle que l'outil
 refuse : c'est la source de la plus ancienne plainte de justesse contre les outils qui le font, où
 l'état global au processus fuit entre les mutants et gonfle les scores.
 
-Le coût est une copie de répertoire et un lancement de processus par mutant. Ce que cela achète,
-c'est la garantie que deux mutants ne peuvent jamais s'observer l'un l'autre — et que KillMutants
-n'écrit jamais dans votre sortie de build.
+Le coût est un lancement de processus par mutant, et une copie privée de la sortie de test par
+worker. Ce que cela achète, c'est la garantie qu'aucun état en mémoire ne peut passer d'un mutant à
+un autre — et que KillMutants n'écrit jamais dans votre sortie de build. La garantie porte sur le
+processus : un worker garde sa copie de la sortie pour chaque mutant qu'il teste et ne réécrit que
+l'assembly testé entre deux mutants, si bien qu'un fichier écrit par un test à côté de son exécutable
+peut survivre au mutant qui l'a écrit.
 
 ## La référence est vérifiée avant que quoi que ce soit ne soit muté
 

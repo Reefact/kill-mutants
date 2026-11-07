@@ -159,7 +159,7 @@ stable identity and its exact position rather than summarising.
 
 | Field | Meaning |
 | --- | --- |
-| `score`, `scoreDisplay` | the score as a ratio and as printed; **`null`** on a partial or stopped run, and when nothing could be tested — never a zero that was not measured |
+| `score`, `scoreDisplay` | the score as a ratio and as printed. Both are **`null`** on a partial or stopped run. When a full run could test nothing, `score` is `null` and `scoreDisplay` is the string `"n/a"` — never a zero that was not measured, and never a percentage |
 | `scope` | which population was inspected: `full`, or `partial` with the two states compared and how many files changed |
 | `environment` | everything behind `Ran on`, as data |
 | `totals` | the counts by status, plus the three that define the score: `detected`, `undetected`, `untestable`; and `ignored`, outside all three |
@@ -201,8 +201,11 @@ Each entry of `mutants` carries what a verdict needs to be argued with:
 * **`killedBy`** names the tests that failed, in the form the runner accepts, so a doubted kill can
   be settled by hand: put the mutation in the file at that position, run those tests, watch them
   fail.
-* **`disagreement`** and **`overturned`** are set only on a mutant `--verify-kills` re-tested whose
-  verdict did not repeat.
+* **`disagreement`** is set only on a mutant `--verify-kills` re-tested whose kill did not repeat.
+  The original verdict is kept, flagged as not to be trusted.
+* **`overturned`** is set on a mutant that timed out under load and finished when re-run alone,
+  whether or not `--verify-kills` was asked for. The second verdict replaces the timeout, and this
+  field says so.
 
 ## The files beside the report
 

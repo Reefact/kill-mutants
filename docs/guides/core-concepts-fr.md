@@ -116,8 +116,8 @@ flowchart LR
    quels mutants il atteint. À partir de cette carte, un mutant que rien n'atteint reçoit son
    verdict sans qu'un test soit lancé, et chaque autre mutant ne lance que les tests capables de le
    tuer.
-6. **Tester les mutants.** Chaque mutant est émis, injecté dans une copie privée de la sortie des
-   tests, et les tests qui l'atteignent sont lancés dans un processus neuf. Un délai dépassé n'est
+6. **Tester les mutants.** Chaque mutant est émis, injecté dans la copie privée de la sortie des
+   tests de son worker, et les tests qui l'atteignent sont lancés dans un processus neuf. Un délai dépassé n'est
    cru qu'une fois que le mutant a dépassé le délai une seconde fois, seul. Enfin, si on le demande,
    un échantillon des mutants tués est testé de nouveau, seul, et tout verdict qui ne se répète pas
    est signalé.
@@ -136,12 +136,18 @@ l'exécution des tests qui suit coûte cent fois plus. Ce choix achète la simpl
 d'interrupteur injecté, pas de canal d'activation, rien de l'outil dans votre assembly — et il
 achète la garantie suivante.
 
-**Chaque mutant est testé dans un processus neuf, dans un répertoire privé.** L'hôte de test n'est
-jamais réutilisé entre deux mutants, et les workers qui tournent en parallèle ont chacun leur
-propre copie de la sortie des tests. Ainsi aucun champ statique, aucun cache, aucun fichier écrit
-par un mutant ne peut jamais fuir dans le verdict d'un autre — la plus ancienne source de scores
-gonflés dans les outils qui gardent un hôte chaud. Cela signifie aussi que KillMutants n'écrit
+**Chaque mutant est testé dans un processus neuf.** L'hôte de test n'est jamais réutilisé entre deux
+mutants : aucun champ statique, aucun cache, aucun état en mémoire d'un mutant ne peut donc jamais
+fuir dans le verdict d'un autre — la plus ancienne source de scores gonflés dans les outils qui
+gardent un hôte chaud. Chaque worker qui tourne en parallèle teste en outre dans sa propre copie
+privée de la sortie des tests, si bien que les workers ne se gênent pas, et KillMutants n'écrit
 jamais dans votre sortie de build.
+
+Cette isolation couvre le processus et les workers, pas le disque qu'un worker garde : il réutilise
+sa copie pour chaque mutant qu'il teste, et seul l'assembly testé est réécrit entre deux mutants. Un
+test qui écrit un fichier à côté de son exécutable peut le laisser au mutant suivant que ce worker
+prend ; les tests qui dépendent de tels fichiers sont donc ceux à surveiller
+([DEC0008](../decisions/0008-never-reuse-a-test-host-between-mutants-fr.md)).
 
 ## Le budget de délai est écrit noir sur blanc
 

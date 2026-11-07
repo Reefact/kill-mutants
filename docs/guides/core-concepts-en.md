@@ -109,7 +109,7 @@ flowchart LR
 5. **Coverage.** Each test is run once, alone, against an instrumented build, to learn which
    mutants it reaches. From that map, a mutant nothing reaches gets its verdict without a test run,
    and every other mutant runs only the tests that can kill it.
-6. **Test the mutants.** Each mutant is emitted, injected into a private copy of the test output,
+6. **Test the mutants.** Each mutant is emitted, injected into its worker's private copy of the test output,
    and the tests that reach it are run in a fresh process. A timeout is believed only once the
    mutant has timed out a second time, on its own. Finally, if asked, a sample of the kills is
    tested again, alone, and any verdict that does not repeat is reported.
@@ -127,11 +127,17 @@ emits a new assembly. Roslyn makes that cost about six milliseconds; the test ru
 a hundred times more. The trade buys simplicity — there is no injected switch, no activation
 channel, nothing of the tool in your assembly — and it buys the next guarantee.
 
-**Each mutant is tested in a fresh process, in a private directory.** The test host is never reused
-between two mutants, and workers running in parallel each have their own copy of the test output.
-So no static field, no cache, no file written by one mutant can ever leak into another's verdict —
-the longest-standing source of inflated scores in tools that keep a warm host. It also means
-KillMutants never writes into your build output at all.
+**Each mutant is tested in a fresh process.** The test host is never reused between two mutants,
+so no static field, no cache, no in-memory state of one mutant can ever leak into another's
+verdict — the longest-standing source of inflated scores in tools that keep a warm host. Each
+parallel worker also tests in its own private copy of the test output, so workers cannot disturb one
+another, and KillMutants never writes into your build output at all.
+
+That isolation covers the process and the workers. It does not cover the disk a worker keeps: a
+worker reuses its copy for every mutant it tests, and only the assembly under test is overwritten
+between two of them. A test that writes a file beside its executable can leave it for the next
+mutant that worker takes, so tests that depend on such files are the ones to watch
+([DEC0008](../decisions/0008-never-reuse-a-test-host-between-mutants-en.md)).
 
 ## The timeout budget is written down
 

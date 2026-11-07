@@ -103,8 +103,8 @@ everything that test exercised, so deleting an assertion cannot pass as a clean 
 
 - **An honest score.** Code no test reaches counts as *undetected*, not as "not applicable": a
   project cannot raise its score by adding code nothing tests.
-- **Trustworthy verdicts.** Every mutant gets its own compilation and its own fresh test process in
-  a private copy of the test output, so no mutant can ever observe another. `--verify-kills` re-runs
+- **Trustworthy verdicts.** Every mutant gets its own compilation and its own fresh test process,
+  so no static field or cache can carry over from one mutant to the next. `--verify-kills` re-runs
   a sample of the kills alone and reports any that do not repeat.
 - **Verifiable findings.** Every kill names the tests that failed; every mutant carries a stable
   key, so two reports of the same commit can be joined.
