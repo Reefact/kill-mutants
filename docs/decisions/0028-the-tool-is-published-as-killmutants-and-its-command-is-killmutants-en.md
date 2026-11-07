@@ -25,7 +25,8 @@ The other Reefact repositories give the bare name to the library and the `.Cli` 
 `FirstClassErrors` / `FirstClassErrors.Cli` (`fce`). Here the engine already carries a suffix of its
 own, `KillMutants.Core`, on the `lib` train. The maintainer states that KillMutants is used through
 its command line, and no consumer of the engine as a library has been identified. The nuget.org
-trusted-publishing policy limits this repository to the ids matching `KillMutants*`. The domain is
+trusted-publishing policy that `RELEASING.md` plans, and that is not configured yet, will
+restrict this repository to the ids matching `KillMutants*`. The domain is
 `killmutants.io`; the hyphen exists only in the GitHub slug `kill-mutants`. A nuget.org package id
 cannot contain a space.
 
