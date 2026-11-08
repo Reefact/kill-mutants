@@ -125,8 +125,12 @@ poorly.
 
 ## Cutting a release
 
-1. Land the change on `main`. The release refuses any commit that is not an ancestor of
-   `main`, so a tag cannot bypass branch protection.
+1. Land the change on `main`, and wait for the `ci` run its push starts. A pull request runs
+   only the smoke tier of the tests; that run is the full one, on all three platforms. The
+   release refuses any commit that is not an ancestor of `main`, so a tag cannot bypass
+   branch protection, and any commit without a successful full `ci` run of its own, so a tag
+   cannot bypass the tests that run after the merge either. If that run was lost, dispatch
+   `ci` on `main` and tag the commit it ran on.
 2. Move the entry from `## [Unreleased]` to a dated heading — `## [1.2.3] - 2026-09-01`.
    The release refuses a version the changelog does not document.
 3. Tag and push:
