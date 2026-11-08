@@ -15,6 +15,16 @@ name: sonar
 # So the tests run FIRST, with coverage, outside the window; only the solution's own build runs
 # between `begin` and `end`. Sonar maps an OpenCover report to source files by path, so a report
 # produced by an earlier build of the same commit is read exactly as one produced inside the window.
+#
+# TWO COVERAGE SCOPES, NAMED AS SUCH. On main and on a manual dispatch, the tests that produce the
+# coverage are every suite - the figure on the badge and the dashboard is the whole project's. On a
+# pull request they are the same selection ci.yml's smoke tier runs: the unit and property suite and
+# the end-to-end tests marked [Smoke]. Running every suite here took 26 minutes on 2026-11-07, a
+# fourth complete pass on every pull request beside ci.yml's three, for a reading that gates nothing
+# (above). What a pull request still gets in full is the part of the analysis that is cheap: every
+# rule, over the whole solution. What it gets in part is coverage, and the job's name and summary
+# say so, because coverage on new code read as the whole figure would report the lines only the
+# rest of the end-to-end suite reaches as untested. The window ordering is the same in both scopes.
 
 on:
   push:
@@ -40,9 +50,10 @@ env:
 
 jobs:
   analyze:
-    name: SonarQube Cloud analysis
+    name: SonarQube Cloud analysis (${{ github.event_name == 'pull_request' && 'partial coverage' || 'full coverage' }})
     runs-on: ubuntu-latest
-    # The end-to-end suite alone takes about half an hour on a hosted runner (see `ci`).
+    # The end-to-end suite alone takes about half an hour on a hosted runner (see `ci`), which is the
+    # full scope's cost; the partial scope needs a fraction of this.
     timeout-minutes: 60
     # A run that cannot read SONAR_TOKEN skips rather than fail on the empty string the secret
     # becomes: a pull request from a fork never receives this repository's secrets, and a run
@@ -95,13 +106,35 @@ jobs:
       # in a `dotnet` process of its own, and nothing those runs execute is counted. KillMutants.Cli can therefore read as less covered
       # than it is tested: an uncovered line there is a question to check against those tests, not a
       # finding on its own. Measuring the child process as well is a separate change, not made here.
+      #
+      # The partial scope's selection is ci.yml's smoke tier, by the same trait, so the two cannot come
+      # to mean different things by "smoke". Each suite writes its own timestamped report into the
+      # same directory, which the reportsPaths glob in `begin` reads all of.
       - name: Build and test with coverage
+        env:
+          EVENT: ${{ github.event_name }}
         run: |
           set -euo pipefail
           dotnet restore KillMutants.slnx -p:Configuration=Release
           dotnet build KillMutants.slnx -c Release --no-restore
-          dotnet test --solution KillMutants.slnx -c Release --no-build \
+          if [ "$EVENT" != pull_request ]; then
+            dotnet test --solution KillMutants.slnx -c Release --no-build \
+              --coverlet --results-directory artifacts/coverage
+            echo "### Full coverage: every suite" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          dotnet test --project tests/KillMutants.Core.Tests -c Release --no-build \
             --coverlet --results-directory artifacts/coverage
+          dotnet test --project tests/KillMutants.EndToEnd.Tests -c Release --no-build \
+            --filter-trait "Tier=Smoke" \
+            --coverlet --results-directory artifacts/coverage
+          {
+            echo "### Partial coverage: the unit and property suite and the end-to-end smoke tier"
+            echo
+            echo "This pull request's coverage leaves out the end-to-end tests that run only after the"
+            echo "merge, so a line they reach can read as uncovered here. The figure for main is the"
+            echo "whole project's."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # tests/fixtures holds repositories the end-to-end tests run the tool against: inputs, some of
       # them deliberately odd, never code this repository ships. They are outside the solution, so the
