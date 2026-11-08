@@ -63,9 +63,11 @@ public static class JsonReportWriter
         // the diff into a field named like the one over a codebase - the exact seam DEC0010 refuses.
         // A stopped run has none either: the mutants it judged are the ones it reached first, not a
         // sample of anything (DEC0013).
-        score = HasNoScore(report) || report.Score.IsUndefined
-            ? null
-            : (double?)Math.Round(report.Score.Value, 4),
+        //
+        // The printed percentage as a ratio, not the exact ratio rounded on its own: two roundings
+        // could disagree, and this one never reads 1 while a mutant survived - see
+        // MutationScore.Percentage.
+        score = HasNoScore(report) ? null : (double?)(report.Score.Percentage / 100m),
         scoreDisplay = HasNoScore(report) ? null : report.Score.ToString(),
         durationSeconds = Math.Round(report.Duration.TotalSeconds, 2),
 
@@ -236,9 +238,7 @@ public static class JsonReportWriter
 
         // Null on a partial run for the same reason the run's own score is: a per-family ratio over
         // a population defined by the diff is the whole objection in miniature. The counts stay.
-        score = HasNoScore(report) || family.Score.IsUndefined
-            ? null
-            : (double?)Math.Round(family.Score.Value, 4),
+        score = HasNoScore(report) ? null : (double?)(family.Score.Percentage / 100m),
     };
 
     /// <summary>True when the run's population is not one a percentage can describe.</summary>

@@ -34,7 +34,9 @@ killmutants --since origin/main --report-json artifacts/mutation.json
 killmutants --break-at 80 --report-json artifacts/mutation.json
 ```
 
-`--break-at` sort avec le code `1` quand le score de mutation tombe sous le pourcentage. C'est une
+`--break-at` sort avec le code `1` quand le score de mutation tombe sous le pourcentage. Le score
+comparé est celui qui est imprimé, à deux décimales, et il n'indique `100%` que si aucun mutant n'a
+survécu : un survivant sur vingt mille s'imprime `99.99%` et ne passe pas `--break-at 100`. C'est une
 comparaison contre les familles qui ont effectivement été exécutées, alors choisissez un catalogue
 et gardez-le ([Les mutateurs](./mutators-fr.md#choisir-un-catalogue)). Un score *indéfini* — aucun
 mutant n'a pu être testé du tout — fait aussi échouer la barrière : une exécution qui n'a rien

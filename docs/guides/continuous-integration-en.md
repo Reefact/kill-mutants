@@ -32,7 +32,9 @@ killmutants --since origin/main --report-json artifacts/mutation.json
 killmutants --break-at 80 --report-json artifacts/mutation.json
 ```
 
-`--break-at` exits `1` when the mutation score falls below the percentage. It is a comparison
+`--break-at` exits `1` when the mutation score falls below the percentage. The score compared is
+the one printed, to two decimals, and it reads `100%` only when no mutant survived: one survivor
+among twenty thousand prints `99.99%` and does not pass `--break-at 100`. It is a comparison
 against whatever families actually ran, so pick a catalogue and keep it
 ([The mutators](./mutators-en.md#choosing-a-catalogue)). A score that is *undefined* — no mutant
 could be tested at all — fails the gate too: a run that demonstrated nothing cannot be shown to
