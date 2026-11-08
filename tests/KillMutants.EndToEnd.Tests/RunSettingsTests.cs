@@ -202,6 +202,20 @@ public class RunSettingsTests
     }
 
     /// <summary>
+    /// <c>none</c> empties the families given before it on the command line too, and a family after
+    /// it fills the list again - as <c>--ignore-calls none</c> does. It was appended as an empty
+    /// list, so <c>--without StringLiteral --without none</c> still left StringLiteral out.
+    /// </summary>
+    [Fact]
+    public void None_empties_the_families_given_before_it()
+    {
+        Assert.Empty(Asked("--without", "StringLiteral", "--without", "none").WithoutMutators!);
+        Assert.Empty(Asked("--mutators", "Comparison", "--mutators", "none").Mutators!);
+        Assert.Empty(Asked("--with", "NumericLiteral", "--with", "none").WithMutators!);
+        Assert.Equal([StringLiteral], Asked("--without", "none", "--without", "StringLiteral").WithoutMutators);
+    }
+
+    /// <summary>
     /// An empty value is still refused, and the message now says what to write instead - the option
     /// exists to be discoverable from its own error.
     /// </summary>
