@@ -35,6 +35,12 @@
     <PackageVersion Include="xunit.v3.mtp-v2" Version="4.0.2" />
     <!-- Coverage for the SonarQube Cloud analysis; see tests/TestCoverage.props. -->
     <PackageVersion Include="coverlet.MTP" Version="10.1.0" />
+    <!-- Property-based tests: generators and shrinking, called from an ordinary [Fact], so nothing
+         ties it to the xUnit version above. No dependencies of its own. Each run draws a fresh
+         seed on purpose, so every CI run tries cases no earlier one did; that does not make the
+         gate flaky, because a failure is a counterexample rather than a timing, and its message
+         names the seed that replays it (CsCheck_Seed=...). -->
+    <PackageVersion Include="CsCheck" Version="5.0.0" />
   </ItemGroup>
 
 </Project>
