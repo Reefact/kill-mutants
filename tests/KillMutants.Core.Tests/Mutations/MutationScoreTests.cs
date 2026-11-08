@@ -72,6 +72,22 @@ public class MutationScoreTests
         Assert.False(score.Reaches(66.68));
     }
 
+    /// <summary>
+    /// A score exactly halfway between two hundredths rounds up, as it did before the score was
+    /// counted in hundredths: 1 of 32 is 3.125%, and the earlier <c>ToString("0.##")</c> printed
+    /// <c>3.13%</c> for it too - measured on every such tie up to 4 000 mutants, all of which it
+    /// rounded up. The gate follows the printed figure.
+    /// </summary>
+    [Fact]
+    public void A_score_halfway_between_two_hundredths_rounds_up()
+    {
+        MutationScore score = MutationScore.FromCounts(detected: 1, undetected: 31);
+
+        Assert.Equal("3.13%", score.ToString());
+        Assert.True(score.Reaches(3.13));
+        Assert.False(score.Reaches(3.14));
+    }
+
     [Fact]
     public void An_undefined_score_reaches_no_threshold()
     {

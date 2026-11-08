@@ -61,6 +61,31 @@ public class JsonReportWriterTests
         Assert.Equal(1, totals.GetProperty("survived").GetInt32());
     }
 
+    /// <summary>
+    /// One survivor among 20 938 is 99.995%, which rounded on its own wrote <c>1</c> as the score:
+    /// a consumer reading the field was told nothing survived. The run's score and its family's
+    /// are the printed figure as a ratio.
+    /// </summary>
+    [Fact]
+    public void A_near_perfect_score_is_not_reported_as_perfect()
+    {
+        Mutant mutant = MutantsFor("class C { bool M(int a) => a >= 18; }")[0];
+        MutantResult[] results =
+        [
+            .. Enumerable.Repeat(new MutantResult(mutant, MutantStatus.Killed), 20_937),
+            new MutantResult(mutant, MutantStatus.Survived),
+        ];
+
+        using JsonDocument json = Render(results);
+        JsonElement root = json.RootElement;
+
+        Assert.Equal(0.9999, root.GetProperty("score").GetDouble());
+        Assert.Equal("99.99%", root.GetProperty("scoreDisplay").GetString());
+        Assert.Equal(
+            0.9999,
+            Assert.Single(root.GetProperty("byMutator").EnumerateArray()).GetProperty("score").GetDouble());
+    }
+
     [Fact]
     public void An_undefined_score_is_null_rather_than_a_zero_that_was_never_measured()
     {
