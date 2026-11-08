@@ -207,6 +207,33 @@ public sealed class VerdictLogTests : IDisposable
         Assert.Throws<IOException>(() => VerdictLog.Read(path));
     }
 
+    /// <summary>
+    /// A kill between a line's closing brace and its line feed leaves a last line that reads as a
+    /// verdict and is not finished. Reading and appending must agree on it: a verdict the resumed
+    /// run inherits and the append then cuts is one the log no longer holds.
+    /// </summary>
+    [Fact]
+    public void A_last_line_without_its_line_feed_is_torn_even_when_it_reads_as_a_verdict()
+    {
+        IReadOnlyList<Mutant> mutants = MutantsFor("class C { bool M(int a) => a >= 18; }");
+        string path = Path.Combine(_directory, "report.jsonl");
+        string first = JsonReportWriter.Line(new MutantResult(mutants[0], MutantStatus.Killed));
+        string second = JsonReportWriter.Line(new MutantResult(mutants[1], MutantStatus.Survived));
+
+        File.WriteAllText(path, first + "\n" + second);
+
+        Assert.Equal([mutants[0].Key.ToString()], VerdictLog.Read(path).Select(verdict => verdict.Key));
+
+        using (VerdictLog log = VerdictLog.Append(path))
+        {
+            log.Report(new MutantResult(mutants[1], MutantStatus.Killed));
+        }
+
+        Assert.Equal(
+            [(mutants[0].Key.ToString(), MutantStatus.Killed), (mutants[1].Key.ToString(), MutantStatus.Killed)],
+            VerdictLog.Read(path).Select(verdict => (verdict.Key, verdict.Status)));
+    }
+
     [Fact]
     public void Reading_refuses_a_line_that_is_not_a_verdict_and_names_it()
     {
