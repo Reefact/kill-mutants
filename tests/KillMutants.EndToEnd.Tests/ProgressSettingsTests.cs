@@ -6,6 +6,7 @@ namespace KillMutants.EndToEnd.Tests;
 /// DEC0023: the console progress is chosen by <c>--progress</c>, <c>log</c> unless asked, and nothing
 /// about the terminal is detected; <c>--slow</c> sets when a mutant in progress is named (#65).
 /// </summary>
+[Smoke]
 public class ProgressSettingsTests
 {
     private static CommandLineOptions Asked(params string[] arguments) =>

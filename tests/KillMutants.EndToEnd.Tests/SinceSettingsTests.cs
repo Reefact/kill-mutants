@@ -7,6 +7,7 @@ namespace KillMutants.EndToEnd.Tests;
 /// where the message sends the reader, and that there is a way out that is not editing a versioned
 /// file.
 /// </summary>
+[Smoke]
 public class SinceSettingsTests
 {
     private static CommandLineOptions Asked(params string[] arguments) =>

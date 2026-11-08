@@ -382,6 +382,7 @@ public class ResumeCommandLineTests
         }
     }
 
+    [Smoke]
     [Fact]
     public async Task A_series_cannot_start_outside_a_git_working_copy()
     {
@@ -397,6 +398,7 @@ public class ResumeCommandLineTests
     }
 
     /// <summary>A working copy with no commit yet names no state a series could live on.</summary>
+    [Smoke]
     [Fact]
     public async Task A_series_cannot_start_in_a_working_copy_with_no_commit()
     {

@@ -7,6 +7,7 @@ namespace KillMutants.EndToEnd.Tests;
 /// <summary>
 /// Two values that got past every gate and disarmed the thing they were supposed to configure.
 /// </summary>
+[Smoke]
 public class RefusedSettingsTests
 {
     /// <summary>

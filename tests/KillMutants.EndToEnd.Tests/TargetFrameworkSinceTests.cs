@@ -20,6 +20,7 @@ public class TargetFrameworkSinceTests
 {
     private static readonly MutatorName[] Families = [MutatorName.Create("Comparison")];
 
+    [Smoke]
     [Fact]
     public async Task A_reference_removed_under_a_framework_condition_is_still_seen_to_be_lost()
     {

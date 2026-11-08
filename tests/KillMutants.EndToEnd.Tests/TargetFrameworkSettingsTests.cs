@@ -6,6 +6,7 @@ namespace KillMutants.EndToEnd.Tests;
 /// <c>--target-framework</c> and its <c>targetFramework</c> key, which follow the one rule every
 /// habit follows: the command line wins, otherwise the file, otherwise nothing. See DEC0021.
 /// </summary>
+[Smoke]
 public class TargetFrameworkSettingsTests
 {
     private static CommandLineOptions Asked(params string[] arguments) =>

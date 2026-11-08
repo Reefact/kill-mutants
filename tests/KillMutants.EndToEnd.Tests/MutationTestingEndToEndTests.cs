@@ -17,6 +17,7 @@ namespace KillMutants.EndToEnd.Tests;
 [Collection(nameof(SerialEndToEnd))]
 public class MutationTestingEndToEndTests
 {
+    [Smoke]
     [Fact]
     public async Task A_test_suite_that_checks_the_boundary_kills_the_mutant()
     {
@@ -70,6 +71,7 @@ public class MutationTestingEndToEndTests
         Assert.All(report.Results, result => Assert.Equal(MutantStatus.Killed, result.Status));
     }
 
+    [Smoke]
     [Fact]
     public async Task A_test_suite_that_skips_the_boundary_lets_the_mutant_survive()
     {
@@ -369,6 +371,7 @@ public class MutationTestingEndToEndTests
     /// watched them catch a mutant that genuinely never finishes - so Timeout was a status produced
     /// by code we had not seen work.
     /// </summary>
+    [Smoke]
     [Fact]
     public async Task A_mutation_that_never_terminates_is_recorded_as_timed_out()
     {

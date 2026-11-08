@@ -10,6 +10,7 @@ namespace KillMutants.EndToEnd.Tests;
 /// report, beside this run's partial log, would be published as this run's verdict (DEC0014). A run
 /// that names no series also replaces the plan an earlier run left (DEC0016).
 /// </summary>
+[Smoke]
 public sealed class ReportFilesTests : IDisposable
 {
     private readonly string _directory = Directory.CreateTempSubdirectory("killmutants-test-").FullName;

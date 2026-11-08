@@ -7,6 +7,7 @@ namespace KillMutants.EndToEnd.Tests;
 /// Regression tests (#51). A test that writes next to its own source - Verify's <c>.received</c>
 /// files - left files in the measured working copy, and nothing said they came from the run.
 /// </summary>
+[Smoke]
 public sealed class WorkingTreeWatchTests : IDisposable
 {
     private readonly string _root = Directory.CreateTempSubdirectory("killmutants-watch-").FullName;

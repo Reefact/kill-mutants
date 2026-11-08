@@ -564,6 +564,7 @@ public class SinceRunTests
     /// widening afterwards can reach it. A pull request could switch mutation testing off for a
     /// component by editing the file that configures the gate. The run declines instead.
     /// </remarks>
+    [Smoke]
     [Fact]
     public async Task A_change_to_the_run_configuration_is_refused()
     {
@@ -877,6 +878,7 @@ public class SinceRunTests
     /// knows that. A full run keeps refusing where it always did, which the companion test pins.
     /// </para>
     /// </remarks>
+    [Smoke]
     [Fact]
     public async Task A_change_that_empties_the_targets_reports_the_coverage_it_took_away()
     {
@@ -907,6 +909,7 @@ public class SinceRunTests
     /// is an ordinary partial run over a deletion, and refusing it told the user their repository
     /// was misconfigured when their change was simply large.
     /// </remarks>
+    [Smoke]
     [Fact]
     public async Task Deleting_the_last_production_project_is_not_a_misconfiguration()
     {
@@ -931,6 +934,7 @@ public class SinceRunTests
     /// a change to compare against there is no second answer available: suites that reach nothing
     /// can only be a misconfiguration, and saying so is more useful than an empty report.
     /// </remarks>
+    [Smoke]
     [Fact]
     public async Task A_full_run_whose_suites_reach_nothing_is_still_refused()
     {
@@ -2065,6 +2069,7 @@ public class SinceRunTests
     /// <summary>
     /// A change that touches nothing a build reads produces an empty run, and an empty run passes.
     /// </summary>
+    [Smoke]
     [Fact]
     public async Task A_change_to_documentation_alone_selects_nothing()
     {
@@ -2402,6 +2407,7 @@ public class SinceRunTests
     /// scope qualifies trivially — HEAD discovery, pointed elsewhere, never saw it. An unrelated
     /// change next door then widened whatever that sibling reached in scope.
     /// </remarks>
+    [Smoke]
     [Fact]
     public async Task A_changed_project_outside_the_scope_of_the_run_widens_nothing_inside_it()
     {

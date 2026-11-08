@@ -17,6 +17,7 @@ namespace KillMutants.EndToEnd.Tests;
 [Collection(nameof(SerialEndToEnd))]
 public class TargetFrameworkTests
 {
+    [Smoke]
     [Fact]
     public async Task A_test_project_on_several_frameworks_is_refused_with_the_option_that_lifts_it()
     {
@@ -43,6 +44,7 @@ public class TargetFrameworkTests
         Assert.Equal(MutantStatus.Killed, mutant.Status);
     }
 
+    [Smoke]
     [Fact]
     public async Task A_framework_no_test_project_offers_stops_the_run_and_names_the_project()
     {
@@ -56,6 +58,7 @@ public class TargetFrameworkTests
         Assert.Contains("net8.0, net10.0", refused.Message, StringComparison.Ordinal);
     }
 
+    [Smoke]
     [Fact]
     public async Task A_test_project_on_another_single_framework_stops_the_run_rather_than_vanishing()
     {
@@ -92,6 +95,7 @@ public class TargetFrameworkTests
         Assert.Equal(MutantStatus.Killed, mutant.Status);
     }
 
+    [Smoke]
     [Fact]
     public async Task A_framework_other_than_the_only_entry_stops_the_run()
     {
