@@ -440,12 +440,30 @@ jobs:
   # A red main, said where it is seen. The full tier finds after the merge what the smoke tier could
   # not see before it, and a failed run on main otherwise announces itself as a badge and an email to
   # whoever merged - both easy to miss, and the cost of missing one grows with every merge built on
-  # top of it. One issue, opened by the first red run, commented on by every further one and closed
-  # by the first green one, is a state anyone can watch rather than an event someone has to catch.
+  # top of it. One issue, open exactly while main's head is red, is a state anyone can watch rather
+  # than an event someone has to catch.
   #
   # Pushes only: a pull request's failure is already in front of its author. The job holds the only
   # write scope in this workflow and runs no code from the repository - no checkout, only `gh` over
   # values GitHub itself supplies - so the scope never meets anything a change could put there.
+  #
+  # TWO RACES, AND WHY EACH IS CLOSED HERE RATHER THAN NARROWED. Runs of successive commits overlap
+  # by design (see `concurrency` above), so this job meets two of them.
+  #
+  #   * Two red runs reading "no issue" at once would both create one: listing rather than searching
+  #     removes the index lag, not the race. So every copy of this job queues on one group and never
+  #     cancels another; the read and the write it decides happen with no other writer between.
+  #     A group holds one running and one pending job, so a third arrival cancels the pending one.
+  #     That is safe only because no copy acts on its own result alone: each one reconciles the
+  #     issue with the verdict of main's head as it stands, so whichever copy runs last leaves the
+  #     state right, and a cancelled copy loses at most a comment its failed run already shows.
+  #   * An older commit can finish after a newer one. A green verdict therefore closes the issue
+  #     only when it is the head's, and a red one is reported - so it stays traceable, in the issue
+  #     where red main is watched - and then reconciled in the same way: if the head has already
+  #     passed, the issue is closed again at once, rather than left open over a green main.
+  #
+  # The head's verdict is its `CI` job's conclusion, not its run's: the run's conclusion also counts
+  # this job, and a failed comment is not a failed test.
   alert:
     name: Report a red main
     runs-on: ubuntu-latest
@@ -454,8 +472,12 @@ jobs:
     if: always() && github.event_name == 'push' && (needs.gate.result == 'success' || needs.gate.result == 'failure')
     permissions:
       issues: write
+      actions: read
+    concurrency:
+      group: ci-report-red-main
+      cancel-in-progress: false
     steps:
-      - name: Open, update or close the issue
+      - name: Reconcile the issue with main's head
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -466,26 +488,66 @@ jobs:
           set -euo pipefail
           title="main failed its full validation"
 
-          # The listing API rather than search: search is indexed with a delay, so a second red run
-          # soon after the first would not find its issue and would open another.
-          open="$(gh issue list --state open --limit 100 --json number,title \
-            --jq ".[] | select(.title == \"$title\") | .number" | head -n1)"
+          # The listing API rather than search: search is indexed with a delay.
+          open_issue() {
+            gh issue list --state open --limit 100 --json number,title \
+              --jq ".[] | select(.title == \"$title\") | .number" | head -n1
+          }
 
-          # Runs of successive commits overlap - they are never cancelled, see `concurrency` - so they
-          # can finish out of order. A red commit is a fact whenever it is reported; a green one only
-          # says main is green if it is still main's head, or an older commit's late pass would close
-          # the issue a newer one's failure had just opened.
-          head="$(gh api "repos/$GH_REPO/commits/main" --jq .sha)"
+          # success, failure, or pending: no completed full run of that commit has a verdict yet.
+          verdict_of() {
+            local runs id conclusion
+            runs="$(gh api -X GET "repos/$GH_REPO/actions/workflows/ci.yml/runs" \
+              -f head_sha="$1" -f event=push -f status=completed -F per_page=20 \
+              --jq '.workflow_runs[].id')"
+            for id in $runs; do
+              conclusion="$(gh api "repos/$GH_REPO/actions/runs/$id/jobs" \
+                --jq '.jobs[] | select(.name == "CI") | .conclusion')"
+              case "$conclusion" in
+                success|failure) echo "$conclusion"; return ;;
+              esac
+            done
+            echo pending
+          }
 
+          # 1. This run's own result. A failure is always reported: it is a fact about that commit.
           if [ "$RESULT" = failure ]; then
             body="The full validation of $SHA failed: $RUN"
+            open="$(open_issue)"
             if [ -n "$open" ]; then
               gh issue comment "$open" --body "$body"
             else
               gh issue create --title "$title" --body "$body
 
-          Every suite runs on Linux, Windows and macOS after each merge (see .github/workflows/ci.yml). This issue closes itself on the next green run of main."
+          Every suite runs on Linux, Windows and macOS after each merge (see .github/workflows/ci.yml). This issue stays open while main's head is red and closes itself once it passes."
             fi
-          elif [ -n "$open" ] && [ "$SHA" = "$head" ]; then
-            gh issue close "$open" --comment "The full validation of $SHA passed: $RUN"
           fi
+
+          # 2. The state: open exactly while main's head is red. This run is still in progress, so
+          # its own verdict is read from its gate rather than from the API.
+          head="$(gh api "repos/$GH_REPO/commits/main" --jq .sha)"
+          if [ "$head" = "$SHA" ]; then
+            verdict="$RESULT"
+          else
+            verdict="$(verdict_of "$head")"
+          fi
+          echo "This run: $SHA ($RESULT). main's head: $head ($verdict)."
+
+          open="$(open_issue)"
+          case "$verdict" in
+            success)
+              if [ -n "$open" ]; then
+                gh issue close "$open" --comment "main's head $head passed its full validation."
+              fi
+              ;;
+            failure)
+              if [ -z "$open" ]; then
+                gh issue create --title "$title" --body "The full validation of main's head $head failed.
+
+          Every suite runs on Linux, Windows and macOS after each merge (see .github/workflows/ci.yml). This issue stays open while main's head is red and closes itself once it passes."
+              fi
+              ;;
+            pending)
+              echo "main's head has no verdict yet; its own run will reconcile the issue."
+              ;;
+          esac

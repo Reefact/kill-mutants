@@ -130,10 +130,13 @@ jobs:
       # this commit passed every test on every platform, and a release is the one place where that
       # has to be known rather than assumed - a published version is immutable.
       #
-      # The proof is a successful ci.yml run of this exact commit that was not a pull request run: a
-      # push to main or a manual dispatch, the two that always run the full tier. A pull request run
-      # is left out even when labelled full-validation, because the commit it tested is the pull
-      # request's own, and a rebase-merge puts a different one on main.
+      # The proof is a ci.yml run of this exact commit that was not a pull request run - a push to
+      # main or a manual dispatch, the two that always run the full tier - and whose `CI` job
+      # succeeded. A pull request run is left out even when labelled full-validation, because the
+      # commit it tested is the pull request's own, and a rebase-merge puts a different one on main.
+      # The `CI` job rather than the run's own conclusion, because the run also counts the job that
+      # reports a red main: a failed issue comment, or that job cancelled in its queue, would
+      # otherwise refuse a commit whose every test passed.
       #
       # Enforced on every run that publishes. On a dry run it warns instead, because a rehearsal is
       # routinely dispatched from a branch whose commit has had no full run, and refusing would stop
@@ -145,13 +148,17 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
-          passed="$(gh api -X GET "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
-            -f head_sha="$GITHUB_SHA" -f status=success -F per_page=100 \
-            --jq '[.workflow_runs[] | select(.event == "push" or .event == "workflow_dispatch")] | length')"
-          if [ "$passed" -gt 0 ]; then
-            echo "ok: ci.yml ran its full tier on $GITHUB_SHA and passed"
-            exit 0
-          fi
+          runs="$(gh api -X GET "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+            -f head_sha="$GITHUB_SHA" -f status=completed -F per_page=100 \
+            --jq '.workflow_runs[] | select(.event == "push" or .event == "workflow_dispatch") | .id')"
+          for id in $runs; do
+            gate="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$id/jobs" \
+              --jq '.jobs[] | select(.name == "CI") | .conclusion')"
+            if [ "$gate" = success ]; then
+              echo "ok: ci.yml run $id ran its full tier on $GITHUB_SHA and passed"
+              exit 0
+            fi
+          done
           message="No successful full run of ci.yml exists for $GITHUB_SHA. Wait for the run its push to main started, or dispatch ci.yml on main, and tag once it is green."
           if [ "$EVENT_NAME" = workflow_dispatch ] && [ "$DRY_RUN" = true ]; then
             echo "::warning::$message A dry run carries on; a real release would stop here."
