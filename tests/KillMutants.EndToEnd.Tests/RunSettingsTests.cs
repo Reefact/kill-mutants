@@ -235,4 +235,19 @@ public class RunSettingsTests
         Assert.Throws<ArgumentException>(() => RunSettings.From(Asked("--with", "Numeric"), file: null));
         Assert.Throws<ArgumentException>(() => RunSettings.From(Asked(), new ConfigurationFile(With: ["Numeric"])));
     }
+
+    /// <summary>
+    /// The gate compares the printed score with the threshold as given, so a message naming the
+    /// threshold names every digit of it: cut to two decimals, a refused <c>--break-at 66.671</c>
+    /// read "66.67% is below the 66.67% threshold".
+    /// </summary>
+    [Theory]
+    [InlineData("80", "80")]
+    [InlineData("66.67", "66.67")]
+    [InlineData("66.671", "66.671")]
+    [InlineData("0.00001", "0.00001")]
+    public void A_threshold_is_written_in_messages_with_every_digit_it_was_given(string given, string written)
+    {
+        Assert.Equal(written, RunSettings.From(Asked("--break-at", given), file: null).ThresholdText);
+    }
 }
