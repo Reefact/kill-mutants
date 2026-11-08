@@ -421,6 +421,15 @@ internal sealed record RunSettings(
     }
 
     /// <summary>The threshold as it is written in messages.</summary>
+    /// <remarks>
+    /// Every digit it was given, not two decimals: the gate compares the printed score with the
+    /// threshold itself, so <c>--break-at 66.671</c> refuses a score printed <c>66.67%</c>, and a
+    /// message cut to two decimals would then say "66.67% is below the 66.67% threshold". Written
+    /// through <see cref="decimal"/>, which is the value <c>MutationScore.Reaches</c> compares and
+    /// keeps what was typed - <c>66.671</c>, <c>0.00001</c> - without a double's exponent or noise.
+    /// </remarks>
     public string ThresholdText =>
-        Threshold?.ToString("0.##", CultureInfo.InvariantCulture) ?? string.Empty;
+        Threshold is { } threshold
+            ? ((decimal)threshold).ToString(CultureInfo.InvariantCulture)
+            : string.Empty;
 }

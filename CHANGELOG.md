@@ -21,7 +21,9 @@ release rather than shipping undocumented.
   wrote `1` as the report's `score`, and passed `--break-at 100`, since the gate allowed the same
   half-hundredth so as to agree with the console. A score just short of either end now prints
   `99.99%` or `0.01%`, the report's `score` is that figure as a ratio, and the gate compares the
-  threshold with the printed figure itself, so the two still agree. Found by a property-based test.
+  threshold with the printed figure itself, so the two still agree; the message of a gate that
+  fails names the threshold with every digit it was given, so `--break-at 66.671` no longer reads
+  "66.67% is below the 66.67% threshold". Found by a property-based test.
 - A verdict log whose last line lost only its line feed - a run killed between the closing brace
   and the line break - reads that line as torn, which is how appending to the log already treated
   it. A `--resume` run used to inherit that verdict and then cut it from the log, so the log no
