@@ -95,12 +95,20 @@ public sealed class VerdictLog : IProgress<MutantResult>, IDisposable
     /// is something else entirely, and refusing is safer than guessing which lines to believe.
     /// </para>
     /// <para>
-    /// Torn means physically unfinished: the last line is skipped only when the file does not end
-    /// in a line feed, because that is the one thing a kill mid-write leaves and a complete line
-    /// cannot be. A complete last line that is not a verdict is refused now, at the first read,
-    /// rather than tolerated once: <see cref="Append"/> would keep it, since it ends in a line feed,
-    /// the next verdict would land after it, and the run after that would find it in the middle of
-    /// the file and refuse the whole log - two resumes in, with nothing to say which line did it.
+    /// Torn means physically unfinished: the last line is skipped when, and only when, the file does
+    /// not end in a line feed, because that is the one thing a kill mid-write leaves and a complete line
+    /// cannot be. It is skipped then even when what it holds reads as a verdict - a kill between
+    /// the closing brace and the line feed leaves exactly that - because <see cref="Append"/> cuts
+    /// the same line before it writes, and a verdict read here and cut there is one this run
+    /// inherits and the log no longer holds: the next resume would judge it again, and every count
+    /// of where a run's lines begin would be off by one. Found by a property-based test, which cuts
+    /// the log at every kind of place a kill can land.
+    /// </para>
+    /// <para>
+    /// A complete last line that is not a verdict is refused now, at the first read, rather than
+    /// tolerated once: <see cref="Append"/> would keep it, since it ends in a line feed, the next
+    /// verdict would land after it, and the run after that would find it in the middle of the file
+    /// and refuse the whole log - two resumes in, with nothing to say which line did it.
     /// </para>
     /// </remarks>
     /// <returns>The verdicts, in the order they landed; empty when there is no file.</returns>
@@ -135,6 +143,11 @@ public sealed class VerdictLog : IProgress<MutantResult>, IDisposable
         {
             string line = lines[index].TrimEnd('\r');
 
+            if (index == torn)
+            {
+                break;
+            }
+
             if (string.IsNullOrWhiteSpace(line))
             {
                 continue;
@@ -146,11 +159,6 @@ public sealed class VerdictLog : IProgress<MutantResult>, IDisposable
             }
             catch (Exception exception) when (exception is System.Text.Json.JsonException or FormatException)
             {
-                if (index == torn)
-                {
-                    break;
-                }
-
                 throw new IOException(
                     $"The verdict log '{path}' holds a line that is not a verdict (line " +
                     $"{(index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture)}): " +

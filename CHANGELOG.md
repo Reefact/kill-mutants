@@ -16,6 +16,12 @@ release rather than shipping undocumented.
 
 ### Changed
 
+- A verdict log whose last line lost only its line feed - a run killed between the closing brace
+  and the line break - reads that line as torn, which is how appending to the log already treated
+  it. A `--resume` run used to inherit that verdict and then cut it from the log, so the log no
+  longer held a verdict the run had inherited: the next resume judged the mutant again, and the
+  plan's count of where each run's lines begin was off by one. Found by a property-based test that
+  cuts the log at every kind of place a kill can land. See DEC0014, DEC0015.
 - A strong-named project is measured. The compilation rebuilt from its command line could not
   sign with the key file it names, so every emit failed with CS7027, "Assembly signing not
   supported", and the project was set aside at the baseline before a mutant was tested; it is now
