@@ -24,8 +24,10 @@ flowchart LR
 * **Une liste sur la ligne de commande remplace celle du fichier**, elle ne s'y ajoute pas.
   `--without none`, `--break-at none`, `--stop-after none` et `--ignore-calls none` effacent ce que
   le fichier définit.
-* **Une option donnée deux fois sur la ligne de commande garde la dernière.** Une option de liste
-  s'additionne, et `none` vide ce qui la précède : `--without Linq --without none` n'écarte rien.
+* **Une option donnée deux fois sur la ligne de commande :** pour une option à valeur unique, la
+  dernière l'emporte. Une option de liste s'accumule, et `none` vide ce qu'elle a accumulé
+  jusque-là : `--without Linq --without Comparison` écarte les deux,
+  `--without Linq --without none` n'écarte rien.
 * **Les chemins du fichier sont relatifs au fichier.**
 * **Une clé mal orthographiée arrête l'exécution** plutôt que d'être ignorée. S'exécuter avec des
   réglages que personne n'a demandés est le même échec qu'un nom de famille mal orthographié, et
