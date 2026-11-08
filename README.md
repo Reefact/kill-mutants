@@ -182,14 +182,18 @@ A pull request is checked in two tiers, and the required `CI` check says which o
 
 | Tier | When | What it runs, on Linux, Windows and macOS |
 | ---- | ---- | ------------------------------------------ |
-| smoke | every pull request | the Release build with warnings as errors, every unit and property test, and the end-to-end tests marked `[Smoke]` |
-| full | every push to `main`, a manual run, and a pull request labelled `full-validation` | every suite, end-to-end included |
+| smoke | a pull request, by default | the Release build with warnings as errors, every unit and property test, and the end-to-end tests marked `[Smoke]` |
+| full | every push to `main`, a manual run, a pull request labelled `full-validation`, and a pull request touching a path the smoke tier cannot vouch for | every suite, end-to-end included |
 
-The end-to-end suite runs whole after every merge, and a failure there opens an issue titled *main
-failed its full validation* until `main` is green again. A change that is risky before it is
-reviewed — the execution loop, process handling, anything platform-specific — takes the
-`full-validation` label, which runs the full tier on the pull request itself. A release is refused
-unless the tagged commit passed the full tier (see [`RELEASING.md`](RELEASING.md)).
+Those paths are listed in `ci.yml`, with the reason for each: the end-to-end tests and their
+fixtures, the execution loop, test launch, coverage probe and process handling, what every project
+is compiled with, and the workflow itself. For a risky change outside them, the author or any
+reviewer adds the `full-validation` label, and the maintainer checks the tier `CI` reports before
+merging.
+
+The end-to-end suite runs whole after every merge, and an issue titled *main failed its full
+validation* stays open while `main`'s head is red. A release is refused unless the tagged commit
+passed the full tier (see [`RELEASING.md`](RELEASING.md)).
 
 ## 📜 Licence
 
