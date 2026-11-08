@@ -43,6 +43,14 @@ canonical**; the French changes with it, in the same pass. The root `README.md` 
 nothing establishes that the French *says* the same thing as the English. A twin rewritten to mean
 something else passes every check, and only a reader catches it.
 
+## A behaviour arrives with the test that holds it
+
+A `feat:` or a `fix:` that changes what the tool does arrives, in the same pull request, with the
+automated test that fails without it — in `tests/KillMutants.Core.Tests`,
+`tests/KillMutants.EndToEnd.Tests` or a fixture under `tests/fixtures`. `ci.yml` refuses a red
+test, not a missing one, and Sonar's coverage reading does not gate: a change that arrives untested
+is caught by a reviewer or not at all.
+
 ## Commits and history
 
 - A conventional prefix (`fix`, `feat`, `docs`, `ci`, `chore`, `test`, `perf`), then **a sentence,
