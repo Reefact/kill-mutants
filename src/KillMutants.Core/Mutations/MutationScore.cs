@@ -52,20 +52,59 @@ public readonly record struct MutationScore
     public double Value => IsUndefined ? double.NaN : (double)_detected / _judged;
 
     /// <summary>
+    /// The score as a percentage to two decimals - the number printed, written in the report and
+    /// compared with a threshold - or null when nothing was judged.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Rounded to the nearest hundredth except at the two ends, which are kept for the scores that
+    /// are exactly there: <c>100</c> only when every mutant was detected, <c>0</c> only when none
+    /// was. Plain rounding printed one survivor among twenty thousand as <c>100%</c>, and the gate,
+    /// which allowed the same half-hundredth so as to agree with what it printed, let it through
+    /// <c>--break-at 100</c>: a suite told it had caught everything, by the one number a reader
+    /// looks at, with a mutant still alive. A score just short of an end reads <c>99.99%</c> or
+    /// <c>0.01%</c> instead, which is the nearest thing two decimals can say that is not false.
+    /// </para>
+    /// <para>
+    /// Counted in whole hundredths, with integer arithmetic, rather than rounded as a double: a
+    /// threshold is compared with this, and <c>66.67</c> computed is not always the
+    /// <c>66.67</c> a person wrote, so a double could refuse a score that printed exactly the
+    /// threshold.
+    /// </para>
+    /// </remarks>
+    public decimal? Percentage => IsUndefined ? null : Hundredths / 100m;
+
+    private long Hundredths
+    {
+        get
+        {
+            // To the nearest hundredth of a percent, a half rounded up.
+            long hundredths = (20_000L * _detected + _judged) / (2L * _judged);
+
+            return _detected == _judged ? 10_000
+                : _detected == 0 ? 0
+                : Math.Clamp(hundredths, 1, 9_999);
+        }
+    }
+
+    /// <summary>
+    /// True when the score, as printed, is at least <paramref name="thresholdPercent"/>; never when
+    /// nothing was judged.
+    /// </summary>
+    /// <remarks>
+    /// The printed score and not the exact ratio, so that the gate and the line above it agree: a
+    /// run that reads <c>66.67%</c> passes <c>--break-at 66.67</c>, and one that reads
+    /// <c>99.99%</c> does not pass <c>--break-at 100</c>. An undefined score reaches nothing - a run
+    /// that tested nothing has demonstrated nothing (DEC0009).
+    /// </remarks>
+    public bool Reaches(double thresholdPercent) =>
+        Percentage is { } percentage && percentage >= (decimal)thresholdPercent;
+
+    /// <summary>
     /// Renders the score as a percentage: <c>100%</c>, <c>66.67%</c>, or <c>n/a</c> when undefined.
     /// </summary>
-    public override string ToString()
-    {
-        if (IsUndefined)
-        {
-            return "n/a";
-        }
-
-        double percentage = Value * 100d;
-        string rendered = Math.Abs(percentage - Math.Round(percentage)) < 0.005d
-            ? Math.Round(percentage).ToString("0", CultureInfo.InvariantCulture)
-            : percentage.ToString("0.##", CultureInfo.InvariantCulture);
-
-        return rendered + "%";
-    }
+    public override string ToString() =>
+        Percentage is { } percentage
+            ? percentage.ToString("0.##", CultureInfo.InvariantCulture) + "%"
+            : "n/a";
 }

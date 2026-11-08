@@ -314,9 +314,9 @@ internal static class Program
             return ExitCode.GateNotPassed;
         }
 
-        double achieved = report.Score.Value * 100d;
-
-        if (achieved + 0.005 < threshold)
+        // Compared as printed, so the gate never disagrees with the line the console showed above
+        // it - see MutationScore.Reaches.
+        if (!report.Score.Reaches(threshold))
         {
             Console.Error.WriteLine(
                 $"Mutation score {report.Score} is below the {wanted}% threshold.");
