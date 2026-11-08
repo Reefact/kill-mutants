@@ -158,26 +158,65 @@ jobs:
           # The whole history, so the merge base with the target branch is actually present.
           fetch-depth: 0
 
-      # The labels are read from the event, so this is the set the pull request carried when this run
-      # started. A label added later starts a run of its own (`labeled`, above), which is why this
-      # does not need to ask the API.
+      # WHO DECIDES THAT A CHANGE IS RISKY. First this step, from the paths, because a rule that rests
+      # on someone remembering a label is not enforced. A pull request that touches any path below
+      # runs the full tier whatever its labels, on every push, so the required `CI` of its current
+      # head is a full one. Each path is one whose defects the smoke tier cannot vouch for:
+      #
+      #   * tests/KillMutants.EndToEnd.Tests and tests/fixtures - a changed end-to-end test the smoke
+      #     tier does not select would otherwise merge without ever having run, and the fixtures are
+      #     the inputs every sweep builds;
+      #   * the execution loop, test launch, coverage probe and process handling (Core's Execution,
+      #     Testing and Coverage, and KillMutants.Platform) - the mechanisms whose platform-specific
+      #     failures only the full suite reaches;
+      #   * what every project is compiled with - the Directory.Build files, central package versions
+      #     (a Dependabot bump of xunit, MSBuild or Roslyn is exactly such a change), global.json and
+      #     the test platform's configuration - and this workflow itself, the full tier's definition.
+      #
+      # Then the people: for a change outside these paths that still reaches what the smoke tier
+      # does not, its author or any reviewer adds `full-validation`, and the maintainer, who merges,
+      # checks that the tier the gate reports is the one the change deserved. The labels are read
+      # from the event, so this is the set the pull request carried when this run started; a label
+      # added later starts a run of its own (`labeled`, above).
+      #
+      # The path list is a floor, not a ceiling: getting it wrong the safe way costs one forty-minute
+      # run, the other way merges a sweep that never ran.
       - name: Decide how far to test
         id: tier
         env:
           EVENT: ${{ github.event_name }}
           FULL_REQUESTED: ${{ contains(github.event.pull_request.labels.*.name, 'full-validation') }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          if [ "$EVENT" != pull_request ]; then
-            echo "Not a pull request; the full tier runs."
+
+          full() {
+            echo "$1; the full tier runs."
             echo "tier=full" >> "$GITHUB_OUTPUT"
-          elif [ "$FULL_REQUESTED" = true ]; then
-            echo "The pull request is labelled full-validation; the full tier runs."
-            echo "tier=full" >> "$GITHUB_OUTPUT"
-          else
-            echo "A pull request; the smoke tier runs. Label it full-validation for the full one."
-            echo "tier=smoke" >> "$GITHUB_OUTPUT"
-          fi
+            exit 0
+          }
+
+          [ "$EVENT" = pull_request ] || full "Not a pull request"
+          [ "$FULL_REQUESTED" != true ] || full "The pull request is labelled full-validation"
+
+          # The same three-dot, no-renames diff as the step below, for the same reasons. Read into a
+          # variable first, so that a diff that fails stops the step: read through a process
+          # substitution its failure would go unseen, and an empty list reads as "nothing risky".
+          changed="$(git diff --no-renames --name-only "$BASE...$HEAD")"
+          while IFS= read -r file; do
+            case "$file" in
+              tests/KillMutants.EndToEnd.Tests/*|tests/fixtures/*|\
+              src/KillMutants.Core/Execution/*|src/KillMutants.Core/Testing/*|\
+              src/KillMutants.Core/Coverage/*|src/KillMutants.Platform/*|\
+              Directory.Build.props|Directory.Build.targets|Directory.Packages.props|global.json|\
+              tests/TestCoverage.props|tests/testconfig.json|.github/workflows/ci.yml)
+                full "'$file' is a path the smoke tier cannot vouch for" ;;
+            esac
+          done <<< "$changed"
+
+          echo "A pull request; the smoke tier runs. Label it full-validation for the full one."
+          echo "tier=smoke" >> "$GITHUB_OUTPUT"
 
       - name: Decide
         id: decide
@@ -457,10 +496,12 @@ jobs:
   #     That is safe only because no copy acts on its own result alone: each one reconciles the
   #     issue with the verdict of main's head as it stands, so whichever copy runs last leaves the
   #     state right, and a cancelled copy loses at most a comment its failed run already shows.
-  #   * An older commit can finish after a newer one. A green verdict therefore closes the issue
-  #     only when it is the head's, and a red one is reported - so it stays traceable, in the issue
-  #     where red main is watched - and then reconciled in the same way: if the head has already
-  #     passed, the issue is closed again at once, rather than left open over a green main.
+  #   * An older commit can finish after a newer one, green or red. A green verdict closes the
+  #     issue only when it is the head's. A red one is a fact about its own commit, not about main:
+  #     it goes in the issue while main's head is red or still running, and when the head has
+  #     already passed it opens nothing - an issue titled "main failed" over a green main would
+  #     say what is not true. It stays traceable all the same, as an annotation on its own run,
+  #     which is already red on its commit.
   #
   # The head's verdict is its `CI` job's conclusion, not its run's: the run's conclusion also counts
   # this job, and a failed comment is not a failed test.
@@ -510,21 +551,8 @@ jobs:
             echo pending
           }
 
-          # 1. This run's own result. A failure is always reported: it is a fact about that commit.
-          if [ "$RESULT" = failure ]; then
-            body="The full validation of $SHA failed: $RUN"
-            open="$(open_issue)"
-            if [ -n "$open" ]; then
-              gh issue comment "$open" --body "$body"
-            else
-              gh issue create --title "$title" --body "$body
-
-          Every suite runs on Linux, Windows and macOS after each merge (see .github/workflows/ci.yml). This issue stays open while main's head is red and closes itself once it passes."
-            fi
-          fi
-
-          # 2. The state: open exactly while main's head is red. This run is still in progress, so
-          # its own verdict is read from its gate rather than from the API.
+          # main's head and its verdict. This run is still in progress, so when it is the head its
+          # verdict is read from its gate rather than from the API.
           head="$(gh api "repos/$GH_REPO/commits/main" --jq .sha)"
           if [ "$head" = "$SHA" ]; then
             verdict="$RESULT"
@@ -533,6 +561,22 @@ jobs:
           fi
           echo "This run: $SHA ($RESULT). main's head: $head ($verdict)."
 
+          # 1. This run's own failure, said where it is true.
+          if [ "$RESULT" = failure ]; then
+            body="The full validation of $SHA failed: $RUN"
+            open="$(open_issue)"
+            if [ -n "$open" ]; then
+              gh issue comment "$open" --body "$body"
+            elif [ "$verdict" = success ]; then
+              echo "::warning::The full validation of $SHA failed, but main's head $head has already passed. No issue is opened: main is not red."
+            else
+              gh issue create --title "$title" --body "$body
+
+          Every suite runs on Linux, Windows and macOS after each merge (see .github/workflows/ci.yml). This issue stays open while main's head is red and closes itself once it passes."
+            fi
+          fi
+
+          # 2. The state: open exactly while main's head is red.
           open="$(open_issue)"
           case "$verdict" in
             success)
