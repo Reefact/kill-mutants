@@ -165,8 +165,10 @@ flavour included), modern .NET, C#, SDK-style projects.
 
 ## 🤝 Contributing
 
-Issues and pull requests are welcome. The commit conventions are in [`CLAUDE.md`](CLAUDE.md), and
-[`SECURITY.md`](SECURITY.md) says how to report a vulnerability.
+Issues and pull requests are welcome. A change to what the tool does arrives with the automated test
+that fails without it; that rule and the other conventions for proposing a change — commits,
+history, documentation — are in [`CLAUDE.md`](CLAUDE.md). [`SECURITY.md`](SECURITY.md) says how to
+report a vulnerability.
 
 ```bash
 dotnet build KillMutants.slnx -c Release
