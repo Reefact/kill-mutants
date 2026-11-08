@@ -16,6 +16,11 @@ release rather than shipping undocumented.
 
 ### Changed
 
+- `none` given to `--mutators`, `--with` or `--without` on the command line empties the families
+  given before it, as `--ignore-calls none` already did: `--without Linq --without none` left
+  `Linq` out, because `none` was added to the list as nothing rather than clearing it. A family
+  after `none` fills the list again. Found by a property-based test that reads random command
+  lines beside a model of the rules.
 - The score reads `100%` only when no mutant survived, and `0%` only when none was detected. It
   was rounded to two decimals as it stood, so one survivor among twenty thousand printed `100%`,
   wrote `1` as the report's `score`, and passed `--break-at 100`, since the gate allowed the same

@@ -178,19 +178,19 @@ internal sealed record CommandLineOptions(
 
                 case "-m" or "--mutators":
                     index++;
-                    mutators = [.. mutators ?? [], .. Families(argument, index < args.Count ? args[index] : null)];
+                    mutators = Added(mutators, argument, index < args.Count ? args[index] : null);
 
                     break;
 
                 case "--with":
                     index++;
-                    withMutators = [.. withMutators ?? [], .. Families(argument, index < args.Count ? args[index] : null)];
+                    withMutators = Added(withMutators, argument, index < args.Count ? args[index] : null);
 
                     break;
 
                 case "--without":
                     index++;
-                    withoutMutators = [.. withoutMutators ?? [], .. Families(argument, index < args.Count ? args[index] : null)];
+                    withoutMutators = Added(withoutMutators, argument, index < args.Count ? args[index] : null);
 
                     break;
 
@@ -442,12 +442,26 @@ internal sealed record CommandLineOptions(
     /// </remarks>
     public const string EmptyList = "none";
 
+    /// <summary>
+    /// A family list given again: the families added to the ones before, or none at all for
+    /// <see cref="EmptyList"/>.
+    /// </summary>
+    /// <remarks>
+    /// <c>none</c> empties what came before it, as it does for <c>--ignore-calls</c> and as a later
+    /// value overrides an earlier one for <c>--break-at</c> and <c>--stop-after</c>. It used to be
+    /// appended as an empty list instead, so <c>--without Linq --without none</c> still left
+    /// <c>Linq</c> out: the one spelling that says "no exclusions" kept one, the other options read
+    /// the same words the other way, and the guide says <c>none</c> clears. Found by the property
+    /// test that reads random command lines beside a model of these rules.
+    /// </remarks>
+    private static IReadOnlyList<MutatorName> Added(
+        IReadOnlyList<MutatorName>? before, string option, string? value) =>
+        string.Equals(value, EmptyList, StringComparison.OrdinalIgnoreCase)
+            ? []
+            : [.. before ?? [], .. Families(option, value)];
+
     private static MutatorName[] Families(string option, string? value)
     {
-        if (string.Equals(value, EmptyList, StringComparison.OrdinalIgnoreCase))
-        {
-            return [];
-        }
 
         string[] names = value is null
             ? []

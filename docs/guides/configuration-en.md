@@ -22,6 +22,8 @@ flowchart LR
   command line wins.
 * **A list on the command line replaces the file's**, it does not add to it. `--without none`,
   `--break-at none`, `--stop-after none` and `--ignore-calls none` clear what the file sets.
+* **An option given twice on the command line keeps the last one.** A list option adds up, and
+  `none` empties what came before it: `--without Linq --without none` leaves nothing out.
 * **Paths in the file are relative to the file.**
 * **A misspelt key stops the run** rather than being ignored. Running with settings nobody asked
   for is the same failure as a misspelt family name, and it is refused the same way.
