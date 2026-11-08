@@ -5,9 +5,29 @@ name: ci
 # a single test, and release.yml - which does run them - only fires on a tag. A suite was therefore
 # verified by whoever happened to run it locally, and by nobody else.
 #
-# Everything runs, slow tests included. A suite's end-to-end tests are usually where its real defects
-# are found, and a CI that skipped them would be the same half-measure in a smaller size.
-
+# TWO TIERS, AND NEITHER IS A HALF-MEASURE. Every test runs, slow ones included; what changes is when.
+#
+#   * smoke - a pull request, by default. The whole solution is built in Release with warnings as
+#     errors, the whole of KillMutants.Core.Tests runs, and so does the part of the end-to-end suite
+#     marked [Smoke] (tests/KillMutants.EndToEnd.Tests/SmokeAttribute.cs says what earns the mark).
+#     On all three platforms, because the smoke tests launch the real command line, build real
+#     projects and start a test application per mutant, and each of those is only known to work on
+#     the platform it ran on.
+#   * full  - every push to main, a manual dispatch, and a pull request labelled `full-validation`.
+#     The whole of every suite, on all three platforms: exactly what this workflow ran on every pull
+#     request before the tiers existed.
+#
+# Why not full everywhere: measured on the hosted runners on 2026-11-07, the end-to-end suite took
+# 19 min on Linux and 41 min on Windows, against 12-19 s to build and 21-46 s for the unit tests. It
+# was a forty-minute wait on every one-line change, and almost all of it was sweeps that the change
+# could not have reached. The price of the tiers is real and is not hidden: a regression only the
+# full tier sees is found on main, after the merge. Three things bound it - the label, for a change
+# that is risky before it is reviewed; `Report a red main` below, which opens an issue rather than
+# leaving a red badge to be noticed; and release.yml, which refuses to publish a commit whose full
+# run did not pass.
+#
+# Which tier ran is in each job's name and in the gate's summary, so a green `CI` never has to be
+# taken on trust for more than it checked.
 on:
   push:
     branches:
@@ -15,12 +35,24 @@ on:
   pull_request:
     branches:
       - main
+    # The three default types, plus `labeled`: adding `full-validation` to a pull request has to start
+    # a run that honours it, or the label would only take effect on the next push. Any other label
+    # starts a run too, which costs one smoke run and nothing else; `unlabeled` is left out, because
+    # removing the label leaves standing a verdict that checked more, not less.
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
   workflow_dispatch:
 
-# Cancel superseded runs on the same branch / PR.
+# A pull request cancels its own superseded runs; nothing that was superseded needs an answer. A push
+# to main never does, and is grouped by commit so that it cannot: a group holds one running and one
+# pending run, and a third push would cancel the second. Every commit on main gets its full verdict -
+# which is what release.yml requires of the commit it publishes, and what says which merge broke main.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Read-only: this workflow publishes nothing and needs no write scope.
 permissions:
@@ -109,18 +141,43 @@ jobs:
   # wrong the safe way costs fifteen minutes; getting it wrong the other way merges code nothing
   # compiled. Only pull requests are ever held back - a push to `main` always builds, because that is
   # the branch everything else is measured against.
+  #
+  # It also decides the tier - see the header. The default is the one that cannot be forgotten into
+  # a weaker check: only a pull request is ever held to smoke, and anything else runs full.
   changes:
     name: Decide what needs building
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       code: ${{ steps.decide.outputs.code }}
+      tier: ${{ steps.tier.outputs.tier }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           # The whole history, so the merge base with the target branch is actually present.
           fetch-depth: 0
+
+      # The labels are read from the event, so this is the set the pull request carried when this run
+      # started. A label added later starts a run of its own (`labeled`, above), which is why this
+      # does not need to ask the API.
+      - name: Decide how far to test
+        id: tier
+        env:
+          EVENT: ${{ github.event_name }}
+          FULL_REQUESTED: ${{ contains(github.event.pull_request.labels.*.name, 'full-validation') }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != pull_request ]; then
+            echo "Not a pull request; the full tier runs."
+            echo "tier=full" >> "$GITHUB_OUTPUT"
+          elif [ "$FULL_REQUESTED" = true ]; then
+            echo "The pull request is labelled full-validation; the full tier runs."
+            echo "tier=full" >> "$GITHUB_OUTPUT"
+          else
+            echo "A pull request; the smoke tier runs. Label it full-validation for the full one."
+            echo "tier=smoke" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Decide
         id: decide
@@ -177,7 +234,7 @@ jobs:
   # fail-fast is off deliberately. When a platform-specific defect exists, the useful question is
   # which platforms have it, and cancelling the other two answers that with a shrug.
   test:
-    name: Build and test (${{ matrix.os }})
+    name: Build and test (${{ matrix.os }}, ${{ needs.changes.outputs.tier }})
     runs-on: ${{ matrix.os }}
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -191,7 +248,11 @@ jobs:
     # A suite whose end-to-end tests each run a whole mutation sweep takes minutes, and more on a
     # two-core runner than on a developer's machine. Windows pays for process creation on top, and
     # every one of these tests launches several. Generous, but bounded.
-    timeout-minutes: 60
+    #
+    # The smoke tier's bound is a ceiling, not its budget - the budget is the few minutes the header
+    # gives, and this only stops a run that has left it by an order of magnitude from holding a
+    # runner for an hour.
+    timeout-minutes: ${{ needs.changes.outputs.tier == 'full' && 60 || 15 }}
     # Windows runners default `run:` to PowerShell, where the solution-discovery script below is not
     # a script at all. bash is present on every GitHub runner, so one shell for the job keeps the
     # three platforms running the same steps rather than three transcriptions of them.
@@ -247,11 +308,46 @@ jobs:
       # "Specifying a solution for 'dotnet test' should be via '--solution'" and exits 1 before
       # running anything - which is what release.yml did until this branch, in the one workflow no
       # ordinary run exercises before a tag.
-      - name: Test
-        if: steps.solution.outputs.present == 'true'
+      #
+      # The full tier keeps the solution as its unit, rather than naming the two projects as the
+      # smoke tier does: a test project added to the solution is then in the full tier the day it
+      # exists, with nobody having to remember this file.
+      #
+      # The command is character for character the one release.yml runs before it packs, and is kept
+      # that way: the two drifting apart is how release.yml once failed on every tag while this went
+      # green.
+      - name: Test, every suite
+        if: steps.solution.outputs.present == 'true' && needs.changes.outputs.tier == 'full'
         env:
           SOLUTION: ${{ steps.solution.outputs.path }}
         run: dotnet test --solution "$SOLUTION" -c Release --no-build
+
+      # The unit and property tests, all of them, in both tiers. They are the cheapest regression
+      # signal this repository has, and nothing in them is a candidate for leaving out.
+      - name: Test, the unit and property suite
+        if: steps.solution.outputs.present == 'true' && needs.changes.outputs.tier == 'smoke'
+        run: dotnet test --project tests/KillMutants.Core.Tests -c Release --no-build
+
+      # The end-to-end tests marked [Smoke], and only those. A filter that matched nothing - the
+      # trait renamed in the code but not here - would otherwise be a fast, green step that ran no
+      # end-to-end test at all; the testing platform already refuses a run of zero tests, and the
+      # floor below refuses one that has quietly lost most of its selection too. The tier held 183
+      # tests when the floor was set; it sits below that so a deliberate change to the selection
+      # does not have to edit this file, and above any selection that has lost its in-process half.
+      #
+      # Measured when the tier was chosen, on a four-core container: these 183 tests in 1 min 19 s,
+      # against 30 min 51 s for the 308 of the whole suite on the same machine. The hosted Linux
+      # runner was about 1.6 times faster than that container on the full suite, and Windows about
+      # twice as slow as Linux, so the budget this step is held to is one to three minutes.
+      #
+      # --show-slowest-tests leaves the measurement in every log, which is where the next person to
+      # choose the smoke set, or to wonder why the gate got slower, will look first.
+      - name: Test, the end-to-end smoke tier
+        if: steps.solution.outputs.present == 'true' && needs.changes.outputs.tier == 'smoke'
+        run: >-
+          dotnet test --project tests/KillMutants.EndToEnd.Tests -c Release --no-build
+          --filter-trait "Tier=Smoke" --minimum-expected-tests 150
+          --show-slowest-tests 10
 
   # One check name that never changes, for branch protection to require.
   #
@@ -275,6 +371,29 @@ jobs:
       - test
     if: always()
     steps:
+      # Before the verdict, so a red gate says what it was checking as plainly as a green one. A smoke
+      # pass that read as a full one is the exact dishonesty the tiers must not introduce.
+      - name: Say which tier this gate stands for
+        env:
+          TIER: ${{ needs.changes.outputs.tier }}
+          CODE: ${{ needs.changes.outputs.code }}
+        run: |
+          set -euo pipefail
+          {
+            if [ "$CODE" = false ]; then
+              echo "### Documentation only: nothing was built or tested"
+            elif [ "$TIER" = full ]; then
+              echo "### Full tier: every suite, on Linux, Windows and macOS"
+            elif [ "$TIER" != smoke ]; then
+              echo "### No tier was decided, so nothing below can be read as tested"
+            else
+              echo "### Smoke tier: the build, every unit and property test, and the end-to-end tests marked [Smoke]"
+              echo
+              echo "The rest of the end-to-end suite runs after the merge, on all three platforms."
+              echo "To run it before, add the \`full-validation\` label to this pull request."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Every job this gate stands for
         env:
           LINT: ${{ needs.workflows.result }}
@@ -282,12 +401,13 @@ jobs:
           DECIDE: ${{ needs.changes.result }}
           TEST: ${{ needs.test.result }}
           CODE: ${{ needs.changes.outputs.code }}
+          TIER: ${{ needs.changes.outputs.tier }}
         run: |
           set -euo pipefail
 
           echo "Lint the workflows:    $LINT"
           echo "Check translations:    $TRANSLATIONS"
-          echo "Decide what to build:  $DECIDE (code=$CODE)"
+          echo "Decide what to build:  $DECIDE (code=$CODE, tier=$TIER)"
           echo "Build and test:        $TEST"
 
           refuse() {
@@ -316,3 +436,56 @@ jobs:
           fi
 
           refuse "Build and test did not succeed (result: $TEST)."
+
+  # A red main, said where it is seen. The full tier finds after the merge what the smoke tier could
+  # not see before it, and a failed run on main otherwise announces itself as a badge and an email to
+  # whoever merged - both easy to miss, and the cost of missing one grows with every merge built on
+  # top of it. One issue, opened by the first red run, commented on by every further one and closed
+  # by the first green one, is a state anyone can watch rather than an event someone has to catch.
+  #
+  # Pushes only: a pull request's failure is already in front of its author. The job holds the only
+  # write scope in this workflow and runs no code from the repository - no checkout, only `gh` over
+  # values GitHub itself supplies - so the scope never meets anything a change could put there.
+  alert:
+    name: Report a red main
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: gate
+    if: always() && github.event_name == 'push' && (needs.gate.result == 'success' || needs.gate.result == 'failure')
+    permissions:
+      issues: write
+    steps:
+      - name: Open, update or close the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RESULT: ${{ needs.gate.result }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          title="main failed its full validation"
+
+          # The listing API rather than search: search is indexed with a delay, so a second red run
+          # soon after the first would not find its issue and would open another.
+          open="$(gh issue list --state open --limit 100 --json number,title \
+            --jq ".[] | select(.title == \"$title\") | .number" | head -n1)"
+
+          # Runs of successive commits overlap - they are never cancelled, see `concurrency` - so they
+          # can finish out of order. A red commit is a fact whenever it is reported; a green one only
+          # says main is green if it is still main's head, or an older commit's late pass would close
+          # the issue a newer one's failure had just opened.
+          head="$(gh api "repos/$GH_REPO/commits/main" --jq .sha)"
+
+          if [ "$RESULT" = failure ]; then
+            body="The full validation of $SHA failed: $RUN"
+            if [ -n "$open" ]; then
+              gh issue comment "$open" --body "$body"
+            else
+              gh issue create --title "$title" --body "$body
+
+          Every suite runs on Linux, Windows and macOS after each merge (see .github/workflows/ci.yml). This issue closes itself on the next green run of main."
+            fi
+          elif [ -n "$open" ] && [ "$SHA" = "$head" ]; then
+            gh issue close "$open" --comment "The full validation of $SHA passed: $RUN"
+          fi

@@ -178,6 +178,19 @@ dotnet test  --solution KillMutants.slnx -c Release
 The repository targets the .NET 10 SDK (pinned in `global.json`). `.github/workflows/ci.yml` holds
 the authoritative build and test invocation.
 
+A pull request is checked in two tiers, and the required `CI` check says which one it ran:
+
+| Tier | When | What it runs, on Linux, Windows and macOS |
+| ---- | ---- | ------------------------------------------ |
+| smoke | every pull request | the Release build with warnings as errors, every unit and property test, and the end-to-end tests marked `[Smoke]` |
+| full | every push to `main`, a manual run, and a pull request labelled `full-validation` | every suite, end-to-end included |
+
+The end-to-end suite runs whole after every merge, and a failure there opens an issue titled *main
+failed its full validation* until `main` is green again. A change that is risky before it is
+reviewed — the execution loop, process handling, anything platform-specific — takes the
+`full-validation` label, which runs the full tier on the pull request itself. A release is refused
+unless the tagged commit passed the full tier (see [`RELEASING.md`](RELEASING.md)).
+
 ## 📜 Licence
 
 [PolyForm Internal Use License 1.0.0](LICENSE) — source-available, not open source: free to read,
