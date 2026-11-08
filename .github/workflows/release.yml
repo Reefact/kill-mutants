@@ -66,10 +66,15 @@ jobs:
   build:
     name: Verify, build & pack
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The Test step below runs every suite, and the end-to-end suite alone took 19 minutes on a hosted
+    # Linux runner on 2026-11-07. Twenty minutes for the whole job was a timeout waiting for its tag.
+    timeout-minutes: 60
     # Read-only, deliberately. Everything this job runs is untrusted in the relevant sense.
+    # actions: read lets the full-validation check below list ci.yml's runs; it reads, and it is the
+    # whole of what that check needs.
     permissions:
       contents: read
+      actions: read
     outputs:
       version: ${{ steps.version.outputs.version }}
       train: ${{ steps.version.outputs.train }}
@@ -118,6 +123,42 @@ jobs:
             echo "::error::The tagged commit $GITHUB_SHA is not an ancestor of main, so it never passed the checks that protect it. Refusing to publish. Tag a commit that is on main."
             exit 1
           fi
+
+      # Ancestry proves the commit went through the pull-request gate, and since ci.yml split into two
+      # tiers that gate is the smoke one: it builds everything and runs every unit test, but most of
+      # the end-to-end suite runs only after the merge. So ancestry is no longer enough to say that
+      # this commit passed every test on every platform, and a release is the one place where that
+      # has to be known rather than assumed - a published version is immutable.
+      #
+      # The proof is a successful ci.yml run of this exact commit that was not a pull request run: a
+      # push to main or a manual dispatch, the two that always run the full tier. A pull request run
+      # is left out even when labelled full-validation, because the commit it tested is the pull
+      # request's own, and a rebase-merge puts a different one on main.
+      #
+      # Enforced on every run that publishes. On a dry run it warns instead, because a rehearsal is
+      # routinely dispatched from a branch whose commit has had no full run, and refusing would stop
+      # it from rehearsing everything after this point.
+      - name: Refuse to publish a commit whose full validation did not pass
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          passed="$(gh api -X GET "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+            -f head_sha="$GITHUB_SHA" -f status=success -F per_page=100 \
+            --jq '[.workflow_runs[] | select(.event == "push" or .event == "workflow_dispatch")] | length')"
+          if [ "$passed" -gt 0 ]; then
+            echo "ok: ci.yml ran its full tier on $GITHUB_SHA and passed"
+            exit 0
+          fi
+          message="No successful full run of ci.yml exists for $GITHUB_SHA. Wait for the run its push to main started, or dispatch ci.yml on main, and tag once it is green."
+          if [ "$EVENT_NAME" = workflow_dispatch ] && [ "$DRY_RUN" = true ]; then
+            echo "::warning::$message A dry run carries on; a real release would stop here."
+            exit 0
+          fi
+          echo "::error::$message Refusing to publish."
+          exit 1
 
       - name: Resolve version
         id: version
@@ -290,8 +331,9 @@ jobs:
       # single test runs. Fixing only the first would have left this step failing on every tag while
       # CI went green on a command that differed from it.
       #
-      # So the command is now character for character the one ci.yml runs on every pull request,
-      # which is the only thing that keeps the two from drifting apart again.
+      # So the command is now character for character the one ci.yml runs in its full tier - on every
+      # push to main, and on a pull request labelled full-validation - which is the only thing that
+      # keeps the two from drifting apart again.
       - name: Test
         env:
           SOLUTION: ${{ steps.solution.outputs.path }}
