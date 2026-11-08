@@ -8,6 +8,7 @@ namespace KillMutants.EndToEnd.Tests;
 /// clock is driven by hand, so a minute costs nothing and the assertions do not depend on how fast
 /// the machine running them is.
 /// </summary>
+[Smoke]
 public class ConsoleProgressReporterTests : IDisposable
 {
     private readonly ManualClock _clock = new();

@@ -7,6 +7,7 @@ namespace KillMutants.EndToEnd.Tests;
 /// misread is worse than none: it stops a run almost at once, or lets it run until the CI that was
 /// meant to be beaten kills it.
 /// </summary>
+[Smoke]
 public class StopAfterSettingsTests
 {
     private static CommandLineOptions Asked(params string[] arguments) =>

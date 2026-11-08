@@ -6,6 +6,7 @@ namespace KillMutants.EndToEnd.Tests;
 /// A series lives in the plan and the log beside the report, and measures the whole codebase at one
 /// commit (DEC0015); the settings refuse what would contradict either before anything is built.
 /// </summary>
+[Smoke]
 public class ResumeSettingsTests
 {
     private static CommandLineOptions Asked(params string[] arguments) =>

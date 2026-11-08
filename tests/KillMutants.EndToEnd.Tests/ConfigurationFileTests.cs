@@ -6,6 +6,7 @@ namespace KillMutants.EndToEnd.Tests;
 /// The file is written by hand and read by a tool, so it is forgiving about how people write and
 /// unforgiving about what they mean.
 /// </summary>
+[Smoke]
 public class ConfigurationFileTests : IDisposable
 {
     private readonly string _directory = Directory.CreateTempSubdirectory("killmutants-test-").FullName;

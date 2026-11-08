@@ -7,6 +7,7 @@ namespace KillMutants.EndToEnd.Tests;
 /// One rule, in one direction: the command line wins, otherwise the file, otherwise the default. So
 /// the file states a project's habits and the command line states the exception.
 /// </summary>
+[Smoke]
 public class RunSettingsTests
 {
     private static readonly MutatorName Comparison = MutatorName.Create("Comparison");

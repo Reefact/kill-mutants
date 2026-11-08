@@ -186,6 +186,7 @@ public class CommandLineTests
     /// A misspelt key must stop the run rather than be ignored, and say so without burying the
     /// message under the full usage text.
     /// </summary>
+    [Smoke]
     [Fact]
     public async Task A_file_that_cannot_be_understood_stops_the_run()
     {
@@ -208,6 +209,7 @@ public class CommandLineTests
     /// A typo must not silently narrow a run: a score for a catalogue the user did not ask for is
     /// worse than no score.
     /// </summary>
+    [Smoke]
     [Fact]
     public async Task A_misspelt_family_is_refused_with_the_list_of_real_ones()
     {
@@ -244,6 +246,7 @@ public class CommandLineTests
     /// Excluding every project is a mistake worth its own message: "no project found" would send
     /// the user looking at the directory they gave rather than at the pattern they wrote.
     /// </summary>
+    [Smoke]
     [Fact]
     public async Task Excluding_everything_says_so_rather_than_reporting_an_empty_directory()
     {
@@ -273,6 +276,7 @@ public class CommandLineTests
         Assert.Contains("is not a directory", brokenMessage, StringComparison.Ordinal);
     }
 
+    [Smoke]
     [Theory]
     [InlineData("--nonsense")]
     [InlineData("--break-at")]
@@ -287,6 +291,7 @@ public class CommandLineTests
         Assert.Equal(BadUsage, exitCode);
     }
 
+    [Smoke]
     [Fact]
     public async Task Help_is_a_success_and_documents_the_exit_codes()
     {
@@ -328,6 +333,7 @@ public class CommandLineTests
     /// stopped and the shell is told 0, as for any run that only reports. Exit 2 would read as a
     /// broken tool to a nightly job that only met the deadline it was given (DEC0013).
     /// </summary>
+    [Smoke]
     [Fact]
     public async Task A_run_that_meets_its_deadline_reports_what_it_judged_and_fails_no_gate_it_was_not_given()
     {
@@ -353,6 +359,7 @@ public class CommandLineTests
     }
 
     /// <summary>A gate is a claim about every mutant, and a stopped run cannot make it.</summary>
+    [Smoke]
     [Fact]
     public async Task A_run_that_meets_its_deadline_does_not_pass_the_gate_it_was_given()
     {

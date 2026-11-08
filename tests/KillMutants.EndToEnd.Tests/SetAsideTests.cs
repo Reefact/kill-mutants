@@ -106,6 +106,7 @@ public class SetAsideTests
     /// no report to name it in: the refusal carries the reason MSBuild gave, rather than replacing it
     /// with "no test project", which would send the user looking for one that is there.
     /// </summary>
+    [Smoke]
     [Fact]
     public async Task A_refusal_at_discovery_carries_what_was_set_aside_on_the_way()
     {
@@ -130,6 +131,7 @@ public class SetAsideTests
     /// unrelated project it had set aside. It now names the unrestored projects, by path, and the
     /// command - before what was set aside, which still follows (review of #71).
     /// </summary>
+    [Smoke]
     [Fact]
     public async Task A_refusal_for_no_test_project_names_those_that_were_never_restored()
     {
@@ -157,6 +159,7 @@ public class SetAsideTests
     }
 
     /// <summary>Once restored, the restore is not what is wrong, and the refusal does not say it is.</summary>
+    [Smoke]
     [Fact]
     public async Task A_refusal_for_no_test_project_does_not_blame_a_restore_that_happened()
     {

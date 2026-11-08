@@ -7,6 +7,7 @@ namespace KillMutants.EndToEnd.Tests;
 /// <c>ignoreCalls</c> key, the command line replacing the file's list, and a pattern nobody can have
 /// meant is refused from either before anything runs.
 /// </summary>
+[Smoke]
 public class IgnoreCallsSettingsTests
 {
     private static CommandLineOptions Asked(params string[] arguments) =>
