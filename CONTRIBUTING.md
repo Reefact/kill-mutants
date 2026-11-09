@@ -24,6 +24,9 @@ current.
 - **Building, testing, and the two tiers of CI** a pull request goes through are in the
   [Contributing section of the README](README.md#-contributing). `.github/workflows/ci.yml` holds
   the authoritative build and test invocation.
+- **How people treat each other** in issues, pull requests and reviews is in the
+  [Code of Conduct](CODE_OF_CONDUCT.md), the Contributor Covenant 2.1, which also says where to
+  report a breach of it.
 - **A vulnerability** is reported privately, never in a public issue: see
   [`SECURITY.md`](SECURITY.md).
 - **Decision records**: which decisions earn one is in `CLAUDE.md`, and

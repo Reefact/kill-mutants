@@ -128,5 +128,3 @@ défendre plutôt que deux qui diffèrent sans raison tenant aux projets eux-mê
 ### Actions de suivi
 
 * Rendre obligatoire le contrôle `Contributor agreement` dans le ruleset `main-protection`.
-* Trancher la question du code de conduite, que #102 demande aussi et que cette décision ne règle
-  pas.
