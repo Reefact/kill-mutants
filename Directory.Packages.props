@@ -26,7 +26,7 @@
          Directory.Build.targets for each project that declares a <ReleaseTrain>, and pinned here
          because central package management refuses a PackageReference with no PackageVersion
          (NU1010) - the fallback pin in Directory.Build.targets applies only without it. -->
-    <PackageVersion Include="Microsoft.Sbom.Targets" Version="4.1.5" />
+    <PackageVersion Include="Microsoft.Sbom.Targets" Version="4.1.13" />
   </ItemGroup>
 
   <ItemGroup>

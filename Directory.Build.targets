@@ -67,7 +67,7 @@
     version moves, rather than the build breaking on a conflict nobody predicted.
   -->
   <ItemGroup Condition="'$(ReleaseTrain)' != '' and '$(ManagePackageVersionsCentrally)' != 'true'">
-    <PackageReference Update="Microsoft.Sbom.Targets" Version="4.1.5" />
+    <PackageReference Update="Microsoft.Sbom.Targets" Version="4.1.13" />
   </ItemGroup>
 
   <!--
