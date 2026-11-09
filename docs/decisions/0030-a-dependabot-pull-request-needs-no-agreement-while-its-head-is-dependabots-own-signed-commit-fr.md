@@ -32,20 +32,33 @@ comme l'étaient les têtes de #111 et #112 le 2026-11-09, avec pour committer l
 GitHub, `web-flow`. GitHub vérifie une signature par rapport au committer d'un commit, non à son
 auteur : un commit dont l'auteur est l'adresse de Dependabot, signé par quelqu'un d'autre avec sa
 propre clé, apparaît lui aussi comme vérifié, avec Dependabot pour auteur et cette personne pour
-committer. `[` et `]` ne peuvent pas figurer dans un nom
-d'utilisateur GitHub, si bien que personne d'autre ne peut enregistrer `dependabot[bot]`.
+committer. `[` et `]` ne peuvent pas figurer dans un nom d'utilisateur GitHub, si bien que personne
+d'autre ne peut enregistrer `dependabot[bot]`.
+
+Une pull request de Dependabot reste celle de Dependabot, quoi que sa branche porte ensuite : son
+auteur sur GitHub est `dependabot[bot]` et sa description est celle que Dependabot a écrite. Une case
+cochée dans cette description est cochée dans la pull request du robot, et le contrôle ne peut
+l'attribuer qu'à `dependabot[bot]`. Commenter `@dependabot recreate` sur la pull request fait
+reconstruire sa branche par Dependabot, ce qui retire ce qui y avait été ajouté.
 
 just-dummies, sous le même propriétaire du projet et le même accord, a réglé ce point dans son
-ADR-0090, accepté le 2026-08-31, par la règle que ce record propose ; le mainteneur a choisi
+ADR-0090, accepté le 2026-08-31, par l'exemption que ce record propose ; le mainteneur a choisi
 d'aligner KillMutants sur just-dummies. Ce record a pesé le fait de cocher la case à la main sur
 chaque pull request de Dependabot, d'exempter tout auteur robot, d'exempter Dependabot sur son seul
-auteur, et de rendre le contrôle consultatif pour les robots.
+auteur, et de rendre le contrôle consultatif pour les robots. À toute autre tête, l'ADR-0090 demande
+la case comme pour n'importe quelle autre pull request.
+
+En relisant, le 2026-11-09, les premières versions de ce record et du contrôle, le mainteneur a
+demandé qu'une pull request de Dependabot à toute autre tête soit refusée plutôt que jugée sur cette
+case, puisque la cocher n'enregistre aucune acceptation de la personne qui a ajouté le commit, ou
+bien que l'acceptation soit rendue attribuable à cette personne.
 
 ## Décision
 
 Dans ce contexte, nous décidons qu'une pull request ouverte par Dependabot n'a besoin d'aucune
 acceptation du Contributor Agreement tant que sa tête est le propre commit de Dependabot signé par
-GitHub, et en a besoin comme n'importe quelle autre pull request à toute autre tête.
+GitHub, et est refusée à toute autre tête, les commits qui y ont été ajoutés entrant par une pull
+request que leur auteur ouvre.
 
 ## Justification
 
@@ -61,10 +74,17 @@ des commits à une branche de Dependabot, et ce qu'il ajoute est une Contributio
 l'accord ; un auteur se falsifie librement, une signature vérifiée faite avec une autre clé que celle
 de GitHub aussi, mais la signature de GitHub, elle, ne se falsifie pas. Lier l'exemption à une
 tête qui est encore le propre commit signé de Dependabot la retire dès que la branche porte autre
-chose, et la pull request est alors jugée comme n'importe quelle autre.
+chose.
 
-La règle est celle de just-dummies, sous le même propriétaire et le même accord, et les deux projets
-demandent la même chose au même automate.
+Ce dont la pull request a alors besoin, c'est de l'acceptation de la personne qui a ajouté le commit,
+et sa propre description ne peut pas la contenir : une case cochée là l'est dans la pull request du
+robot et ne peut se lire que comme celle du robot, ce qui est le consentement donné à la place d'un
+autre pour lequel la première alternative ci-dessous est rejetée. Une pull request que son auteur
+ouvre est l'endroit où cette acceptation est la sienne à donner ; les commits vont donc là, et la
+pull request de Dependabot est refusée jusqu'à ce qu'elle soit revenue au seul travail de Dependabot.
+
+L'exemption est celle de just-dummies, sous le même propriétaire et le même accord. À toute autre
+tête, ce record s'écarte de l'ADR-0090, pour la raison ci-dessus.
 
 ## Alternatives envisagées
 
@@ -98,6 +118,21 @@ demandent la même chose au même automate.
   recueille rien : un contrôle qui signale « non accepté » et laisse quand même fusionner a l'air
   d'une protection sans en être une.
 
+### Alternative 5 — À toute autre tête, accepter la case cochée dans la pull request de Dependabot
+
+* **Description :** juger une pull request de Dependabot qui porte le commit de quelqu'un d'autre
+  comme n'importe quelle autre, sur la case de sa description, comme le fait l'ADR-0090.
+* **Pourquoi rejetée :** la description est celle du robot, si bien que la case n'engage personne et
+  est cochée, en pratique, à la place du robot ; elle n'enregistre aucune acceptation de la personne
+  qui a ajouté le commit.
+
+### Alternative 6 — À toute autre tête, recueillir l'acceptation de l'auteur du commit
+
+* **Description :** garder la pull request de Dependabot, et exiger une acceptation faite par la
+  personne qui a ajouté le commit, qui lui soit attribuable.
+* **Pourquoi rejetée :** elle ajoute une seconde façon d'accepter l'accord, liée à qui a poussé quoi,
+  pour un cas qu'une pull request à part traite déjà avec la seule façon qui existe.
+
 ## Conséquences
 
 ### Positives
@@ -109,14 +144,14 @@ demandent la même chose au même automate.
 ### Négatives
 
 * Une lecture d'API de plus à chaque événement d'une pull request de Dependabot.
-* Une pull request de Dependabot à laquelle quelqu'un a ajouté des commits demande la case, même
-  quand l'ajout est trivial.
+* Une pull request de Dependabot à laquelle quelqu'un a ajouté des commits est refusée, même quand
+  l'ajout est trivial ou vient du propriétaire du projet lui-même : la modification va dans une pull
+  request à part.
 
 ### Risques
 
-* Si GitHub cessait de signer les commits de Dependabot, chaque pull request de Dependabot
-  redemanderait la case : du bruit, et jamais dans le sens qui laisse passer une contribution sans
-  consentement.
+* Si GitHub cessait de signer les commits de Dependabot, chaque pull request de Dependabot serait
+  refusée : du bruit, et jamais dans le sens qui laisse passer une contribution sans consentement.
 
 ### Actions de suivi
 
