@@ -130,5 +130,5 @@ request.
 | [DEC0026](0026-a-project-names-the-calls-it-silences-and-the-report-counts-what-it-chose-not-to-hear-en.md) | A project names the calls it silences, and the report counts what it chose not to hear | Accepted |
 | [DEC0027](0027-linq-runs-by-default-and-without-leaves-it-out-en.md) | `Linq` runs by default, and `--without` leaves it out | Accepted |
 | [DEC0028](0028-the-tool-is-published-as-killmutants-and-its-command-is-killmutants-en.md) | The tool is published as `KillMutants`, and its command is `killmutants` | Accepted |
-| [DEC0029](0029-an-outside-contribution-is-accepted-only-with-the-contributor-agreement-en.md) | An outside contribution is accepted only with the Contributor Agreement, which assigns its economic rights to the Project Owner | Proposed |
-| [DEC0030](0030-a-dependabot-pull-request-needs-no-agreement-while-its-head-is-dependabots-own-signed-commit-en.md) | A Dependabot pull request needs no Contributor Agreement while its head is Dependabot's own signed commit | Proposed |
+| [DEC0029](0029-an-outside-contribution-is-accepted-only-with-the-contributor-agreement-en.md) | An outside contribution is accepted only with the Contributor Agreement, which assigns its economic rights to the Project Owner | Accepted |
+| [DEC0030](0030-a-dependabot-pull-request-needs-no-agreement-while-its-head-is-dependabots-own-signed-commit-en.md) | A Dependabot pull request needs no Contributor Agreement while its head is Dependabot's own signed commit | Accepted |

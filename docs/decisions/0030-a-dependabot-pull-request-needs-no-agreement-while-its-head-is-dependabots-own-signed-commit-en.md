@@ -5,6 +5,7 @@
 | Date | Status | Note | Related minutes |
 |---|---|---|---|
 | 2026-11-09 | Proposed | First draft | |
+| 2026-11-09 | Accepted | At the maintainer's request | |
 
 ## Context
 
