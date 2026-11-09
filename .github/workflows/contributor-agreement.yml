@@ -1,0 +1,158 @@
+name: contributor-agreement
+
+# Refuses a pull request whose author has not accepted the Contributor Agreement for it (DEC0029).
+# The project is owned by one person and exploited by REEFACT under a licence that lets it relicense
+# and sublicense; code merged without the agreement stays its author's, and that licence could not
+# reach it. So the acceptance is collected where the code arrives, once per pull request, as a ticked
+# box in the description the template carries - and read here, because a box nobody reads is not a
+# condition of anything.
+#
+# `pull_request_target`, NOT `pull_request`, and that is the part of this file that is easy to break.
+# It runs this workflow as `main` holds it, with a token that can write, for a pull request from a
+# fork. That is safe only because nothing from the pull request is ever checked out or executed: the
+# job reads the description and, for Dependabot, the head commit's metadata, both through the API. A
+# `actions/checkout` of the head, or a `run:` step that interpolates the title or the body, would hand
+# that token to whoever opened the pull request. Write access is used for one thing: removing the
+# section from a pull request the Project Owner opened directly, which needs no agreement.
+#
+# The consequence of running from `main`: a change to this file is not exercised by the pull request
+# that makes it. It takes effect on the pull requests opened or edited after it merges.
+#
+# This is a job of its own, not a job in the `ci` gate: `ci.yml` runs on `pull_request`, where a
+# fork's token is read-only and cannot remove the section, and an agreement is a condition on who
+# contributed, not on whether the code builds. Whether it blocks a merge is the `main-protection`
+# ruleset's call, which lists the check `Contributor agreement` as required or does not.
+
+on:
+  pull_request_target:
+    types: [opened, edited, reopened, synchronize]
+
+concurrency:
+  group: contributor-agreement-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  contributor-agreement:
+    name: Contributor agreement
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate contributor agreement
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const ownerLogin = 'reefact';
+            const clause = 'I have read the [Contributor Agreement](https://github.com/Reefact/kill-mutants/blob/main/CONTRIBUTOR_AGREEMENT.md) and, if I am not the Project Owner (@Reefact), I accept it for this contribution.';
+            const startMarker = '<!-- contributor-agreement:start -->';
+            const endMarker = '<!-- contributor-agreement:end -->';
+
+            let body = pr.body ?? '';
+            const login = pr.user.login.toLowerCase();
+            const headRef = pr.head.ref.toLowerCase();
+            const isProjectOwner = login === ownerLogin;
+
+            // A `claude/*` branch is opened under the Project Owner's account, but what it carries
+            // was written by an agent, so the account alone does not settle who contributed. Such a
+            // pull request keeps the box and ticks it, as a control the Project Owner keeps over that
+            // workflow, not as an agreement anyone enters into.
+            const isClaudeBranch = headRef.startsWith('claude/');
+            const isDirectOwnerPr = isProjectOwner && !isClaudeBranch;
+
+            if (isDirectOwnerPr) {
+              const start = body.indexOf(startMarker);
+              const end = body.indexOf(endMarker);
+
+              if (start >= 0 && end >= start) {
+                const before = body.slice(0, start).trimEnd();
+                const after = body.slice(end + endMarker.length).trimStart();
+                body = after.length > 0 ? `${before}\n\n${after}` : `${before}\n`;
+
+                await github.rest.pulls.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: pr.number,
+                  body,
+                });
+
+                core.notice('Contributor Agreement section removed from a direct Project Owner pull request.');
+              } else {
+                core.info('Direct Project Owner pull request: no Contributor Agreement acceptance required.');
+              }
+
+              return;
+            }
+
+            // Dependabot is not a person and holds nothing to assign (DEC0030). Waiving the
+            // acknowledgement is the direction in which a mistake costs something, so it takes the
+            // strong proof rather than the convenient one. Two things must hold, and someone with
+            // push access can claim neither:
+            //   - Dependabot OPENED the pull request. `[` and `]` are illegal in GitHub user names,
+            //     so `dependabot[bot]` cannot be registered by anyone else.
+            //   - The head is still Dependabot's own GitHub-signed commit. Anyone with push access
+            //     can append to a Dependabot branch, and what they append is a Contribution like any
+            //     other. An author NAME is a `git config` value and forges freely; GitHub's signature
+            //     does not, which is why the signature is the half that carries the weight.
+            // Fail closed: a head that cannot be read answers "not exempt", which only asks for the box.
+            if (login === 'dependabot[bot]') {
+              let tip = '';
+
+              try {
+                const head = await github.rest.repos.getCommit({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: pr.head.sha,
+                });
+
+                tip = `${head.data.author?.login ?? ''}|${head.data.commit.verification?.verified === true}`;
+              } catch (error) {
+                core.info(`Head commit unreadable (${error.message}); the acknowledgement stays required.`);
+              }
+
+              if (tip === 'dependabot[bot]|true') {
+                core.info('Dependabot pull request at its own signed head: no acknowledgement required.');
+
+                return;
+              }
+
+              // Not exempt, so it is judged like any other pull request, below: whoever appended to
+              // the branch ticks the box. Failing here outright would refuse the box as well, and
+              // leave a pull request nobody can make pass.
+              core.info(
+                "This Dependabot pull request no longer carries Dependabot's own signed commit at its head, " +
+                "so it carries someone else's contribution: the acknowledgement is required."
+              );
+            }
+
+            const checkedLines = [
+              `* [x] ${clause}`,
+              `* [X] ${clause}`,
+              `- [x] ${clause}`,
+              `- [X] ${clause}`,
+            ];
+
+            const lines = body.split(/\r?\n/).map(line => line.trim());
+            const isChecked = lines.some(line => checkedLines.includes(line));
+
+            if (!isChecked) {
+              const source = isProjectOwner && isClaudeBranch
+                ? 'Claude Code pull request'
+                : `pull request from @${pr.user.login}`;
+
+              core.setFailed(
+                `Contributor Agreement acknowledgement is required for this ${source}. ` +
+                'Read the agreement and tick the corresponding box in the pull request description.'
+              );
+
+              return;
+            }
+
+            if (isProjectOwner && isClaudeBranch) {
+              core.info('Claude Code pull request: the acknowledgement is present.');
+            } else {
+              core.info(`Contributor Agreement accepted for this contribution by @${pr.user.login}.`);
+            }
