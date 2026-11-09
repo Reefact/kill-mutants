@@ -168,7 +168,8 @@ flavour included), modern .NET, C#, SDK-style projects.
 Issues and pull requests are welcome. A change to what the tool does arrives with the automated test
 that fails without it; that rule and the other conventions for proposing a change — commits,
 history, documentation — are in [`CLAUDE.md`](CLAUDE.md). [`SECURITY.md`](SECURITY.md) says how to
-report a vulnerability.
+report a vulnerability. A pull request from anyone but the project's owner is accepted only with the
+[Contributor Agreement](CONTRIBUTOR_AGREEMENT.md); [`CONTRIBUTING.md`](CONTRIBUTING.md) says why.
 
 ```bash
 dotnet build KillMutants.slnx -c Release
