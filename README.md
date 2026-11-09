@@ -170,6 +170,7 @@ that fails without it; that rule and the other conventions for proposing a chang
 history, documentation — are in [`CLAUDE.md`](CLAUDE.md). [`SECURITY.md`](SECURITY.md) says how to
 report a vulnerability. A pull request from anyone but the project's owner is accepted only with the
 [Contributor Agreement](CONTRIBUTOR_AGREEMENT.md); [`CONTRIBUTING.md`](CONTRIBUTING.md) says why.
+Participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ```bash
 dotnet build KillMutants.slnx -c Release

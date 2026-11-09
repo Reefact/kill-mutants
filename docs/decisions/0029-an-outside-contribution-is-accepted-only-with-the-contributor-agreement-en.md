@@ -125,4 +125,3 @@ no reason in the projects themselves.
 ### Follow-up actions
 
 * Make the `Contributor agreement` check required in the `main-protection` ruleset.
-* Settle the code of conduct, which #102 also asks for and this decision does not.
