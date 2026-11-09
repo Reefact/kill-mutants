@@ -47,7 +47,9 @@ jobs:
           script: |
             const pr = context.payload.pull_request;
             const ownerLogin = 'reefact';
-            const clause = 'I have read the [Contributor Agreement](https://github.com/Reefact/kill-mutants/blob/main/CONTRIBUTOR_AGREEMENT.md) and, if I am not the Project Owner (@Reefact), I accept it for this contribution.';
+            const agreementUrl = 'https://github.com/Reefact/kill-mutants/blob/main/CONTRIBUTOR_AGREEMENT.md';
+            // The template's clause as it reads once rendered: the link and the mention are text.
+            const acknowledgement = 'I have read the Contributor Agreement and, if I am not the Project Owner (@Reefact), I accept it for this contribution.';
             const startMarker = '<!-- contributor-agreement:start -->';
             const endMarker = '<!-- contributor-agreement:end -->';
 
@@ -140,52 +142,49 @@ jobs:
               );
             }
 
-            const checkedLines = [
-              `* [x] ${clause}`,
-              `* [X] ${clause}`,
-              `- [x] ${clause}`,
-              `- [X] ${clause}`,
-            ];
+            // Only a box GitHub renders as ticked counts, so the description is read as GitHub renders
+            // it rather than parsed here. Parsing Markdown by hand loses: the clause inside an HTML
+            // comment, a fence closed early by a line GitHub does not take for a closing fence, an
+            // indented block or a raw `<pre>` shows the reader no box at all, and every such case a
+            // parser misses is a way to pass the check without the acknowledgement anyone can see.
+            // GitHub's renderer emits a `task-list-item-checkbox` input only for a real task list
+            // item, and its sanitizer strips any `<input>` written as raw HTML. Fail closed: a
+            // description that cannot be read as rendered counts as not ticked.
+            let html = '';
 
-            // Only a box GitHub renders as a ticked checkbox counts. The clause written inside an HTML
-            // comment, a fenced code block or an indented code block is shown as no box at all, or
-            // as text, and the description would then claim an acceptance its reader never sees. A
-            // comment left open hides the rest of the description, so it hides the rest here too.
-            let visible = body.replace(/<!--[\s\S]*?-->/g, '');
-            const unclosed = visible.indexOf('<!--');
+            try {
+              const rendered = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+                mediaType: { format: 'html' },
+              });
 
-            if (unclosed >= 0) {
-              visible = visible.slice(0, unclosed);
+              html = rendered.data.body_html ?? '';
+            } catch (error) {
+              core.info(`Rendered description unreadable (${error.message}); the acknowledgement counts as not given.`);
             }
 
-            const lines = [];
-            let fence = null;
+            const text = fragment => fragment
+              .replace(/<[^>]*>/g, '')
+              .replace(/&nbsp;/g, ' ')
+              .replace(/&quot;/g, '"')
+              .replace(/&#39;/g, "'")
+              .replace(/&lt;/g, '<')
+              .replace(/&gt;/g, '>')
+              .replace(/&amp;/g, '&')
+              .replace(/\s+/g, ' ')
+              .trim();
 
-            for (const line of visible.split(/\r?\n/)) {
-              const marker = line.match(/^ {0,3}(`{3,}|~{3,})/);
+            const isChecked = [...html.matchAll(/<li class="task-list-item">([\s\S]*?)<\/li>/g)].some(([, item]) => {
+              const box = item.match(/^\s*<input\b[^>]*>/);
 
-              if (fence !== null) {
-                if (marker && marker[1][0] === fence[0] && marker[1].length >= fence.length) {
-                  fence = null;
-                }
-
-                continue;
-              }
-
-              if (marker) {
-                fence = marker[1];
-
-                continue;
-              }
-
-              if (/^( {4}|\t)/.test(line)) {
-                continue;
-              }
-
-              lines.push(line.trim());
-            }
-
-            const isChecked = lines.some(line => checkedLines.includes(line));
+              return box !== null
+                && /\bclass="task-list-item-checkbox"/.test(box[0])
+                && /\bchecked\b/.test(box[0])
+                && item.includes(`href="${agreementUrl}"`)
+                && text(item.slice(box[0].length)) === acknowledgement;
+            });
 
             if (!isChecked) {
               const source = isProjectOwner && isClaudeBranch
