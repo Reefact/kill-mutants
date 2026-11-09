@@ -16,7 +16,10 @@ name: contributor-agreement
 # section from a pull request the Project Owner opened directly, which needs no agreement.
 #
 # The consequence of running from `main`: a change to this file is not exercised by the pull request
-# that makes it. It takes effect on the pull requests opened or edited after it merges.
+# that makes it. It takes effect on the pull requests opened or edited after it merges. What the pull
+# request does exercise is `tools/ci/contributor-agreement.test.mjs`, which extracts the script below
+# from this file and runs it against mocked API answers, in the `ci` gate: a change to the logic
+# arrives with the case that holds it.
 #
 # This is a job of its own, not a job in the `ci` gate: `ci.yml` runs on `pull_request`, where a
 # fork's token is read-only and cannot remove the section, and an agreement is a condition on who
@@ -133,13 +136,19 @@ jobs:
                 return;
               }
 
-              // Not exempt, so it is judged like any other pull request, below: whoever appended to
-              // the branch ticks the box. Failing here outright would refuse the box as well, and
-              // leave a pull request nobody can make pass.
-              core.info(
-                "This Dependabot pull request no longer carries Dependabot's own signed commit at its head, " +
-                "so it carries someone else's contribution: the acknowledgement is required."
+              // Not exempt, and not judged by the box either. The description is Dependabot's, so a
+              // box ticked in it would record an acceptance by `dependabot[bot]`, which cannot accept
+              // anything, and would say nothing about the person whose commit the branch now carries
+              // (DEC0030). That commit comes in through a pull request of its own, opened by its
+              // author, where the box is theirs to tick.
+              core.setFailed(
+                "This Dependabot pull request no longer carries Dependabot's own GitHub-signed commit at its head, " +
+                "so it carries someone else's contribution, and a Dependabot pull request cannot record that " +
+                "person's acceptance of the Contributor Agreement. Drop the added commits (commenting " +
+                "`@dependabot recreate` rebuilds the branch), and submit the change in a pull request of its own."
               );
+
+              return;
             }
 
             // Only a box GitHub renders as ticked counts, so the description is read as GitHub renders

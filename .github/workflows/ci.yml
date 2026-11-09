@@ -96,6 +96,15 @@ jobs:
           }
           "$(go env GOPATH)/bin/actionlint"
 
+      # `contributor-agreement.yml` runs on `pull_request_target`, so the pull request that changes
+      # its logic never runs the changed version, and the lint above reads its syntax, not what it
+      # decides. This runs that logic, extracted from the file, against mocked API answers. It sits
+      # in this job because, like the lint, it is about a workflow and not about the code, so it
+      # must run on every pull request, documentation-only ones included. Node ships on the runner;
+      # the test uses nothing outside its standard library.
+      - name: Test the contributor-agreement check
+        run: node --test tools/ci/contributor-agreement.test.mjs
+
   # Refuses a documentation change that leaves an English page and its French twin out of step.
   #
   # It has no `needs` and no `if`, deliberately, and that is the only thing about this job that is
