@@ -28,7 +28,11 @@ requests.
 Quiconque a un accès en écriture peut ajouter des commits à une branche de Dependabot ; ouvrir une
 pull request ne fige pas ce qu'elle porte ensuite. Le nom d'auteur d'un commit est un réglage local
 de `git config`. Le commit de tête d'une pull request que Dependabot ouvre est signé par GitHub,
-comme l'était la tête de #112 le 2026-11-09. `[` et `]` ne peuvent pas figurer dans un nom
+comme l'étaient les têtes de #111 et #112 le 2026-11-09, avec pour committer l'identité propre de
+GitHub, `web-flow`. GitHub vérifie une signature par rapport au committer d'un commit, non à son
+auteur : un commit dont l'auteur est l'adresse de Dependabot, signé par quelqu'un d'autre avec sa
+propre clé, apparaît lui aussi comme vérifié, avec Dependabot pour auteur et cette personne pour
+committer. `[` et `]` ne peuvent pas figurer dans un nom
 d'utilisateur GitHub, si bien que personne d'autre ne peut enregistrer `dependabot[bot]`.
 
 just-dummies, sous le même propriétaire du projet et le même accord, a réglé ce point dans son
@@ -54,7 +58,8 @@ parce qu'un humain la coche à la place du robot.
 Lever l'acceptation est le sens dans lequel une erreur coûte quelque chose, aussi la levée repose sur
 ce que la branche porte plutôt que sur qui l'a ouverte. Quiconque a un accès en écriture peut ajouter
 des commits à une branche de Dependabot, et ce qu'il ajoute est une Contribution au sens même de
-l'accord ; un nom d'auteur se falsifie librement, la signature de GitHub non. Lier l'exemption à une
+l'accord ; un auteur se falsifie librement, une signature vérifiée faite avec une autre clé que celle
+de GitHub aussi, mais la signature de GitHub, elle, ne se falsifie pas. Lier l'exemption à une
 tête qui est encore le propre commit signé de Dependabot la retire dès que la branche porte autre
 chose, et la pull request est alors jugée comme n'importe quelle autre.
 

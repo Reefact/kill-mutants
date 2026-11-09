@@ -95,8 +95,14 @@ jobs:
             //     so `dependabot[bot]` cannot be registered by anyone else.
             //   - The head is still Dependabot's own GitHub-signed commit. Anyone with push access
             //     can append to a Dependabot branch, and what they append is a Contribution like any
-            //     other. An author NAME is a `git config` value and forges freely; GitHub's signature
+            //     other. An author is a `git config` value and forges freely; GitHub's signature
             //     does not, which is why the signature is the half that carries the weight.
+            // "GitHub-signed" means GitHub's OWN signature, not any valid one. GitHub verifies a
+            // signature against the commit's committer, never its author, so a contributor who
+            // writes Dependabot's address as the author and signs with their own key gets an author
+            // that resolves to `dependabot[bot]` AND a verified signature. What they cannot get is
+            // `web-flow` as the committer: that is the identity GitHub signs Dependabot's commits
+            // with, and only GitHub holds its key.
             // Fail closed: a head that cannot be read answers "not exempt", which only asks for the box.
             if (login === 'dependabot[bot]') {
               let tip = '';
@@ -108,12 +114,18 @@ jobs:
                   ref: pr.head.sha,
                 });
 
-                tip = `${head.data.author?.login ?? ''}|${head.data.commit.verification?.verified === true}`;
+                const verification = head.data.commit.verification ?? {};
+
+                tip = [
+                  head.data.author?.login ?? '',
+                  head.data.committer?.login ?? '',
+                  verification.verified === true && verification.reason === 'valid',
+                ].join('|');
               } catch (error) {
                 core.info(`Head commit unreadable (${error.message}); the acknowledgement stays required.`);
               }
 
-              if (tip === 'dependabot[bot]|true') {
+              if (tip === 'dependabot[bot]|web-flow|true') {
                 core.info('Dependabot pull request at its own signed head: no acknowledgement required.');
 
                 return;
@@ -135,7 +147,44 @@ jobs:
               `- [X] ${clause}`,
             ];
 
-            const lines = body.split(/\r?\n/).map(line => line.trim());
+            // Only a box GitHub renders as a ticked checkbox counts. The clause written inside an HTML
+            // comment, a fenced code block or an indented code block is shown as no box at all, or
+            // as text, and the description would then claim an acceptance its reader never sees. A
+            // comment left open hides the rest of the description, so it hides the rest here too.
+            let visible = body.replace(/<!--[\s\S]*?-->/g, '');
+            const unclosed = visible.indexOf('<!--');
+
+            if (unclosed >= 0) {
+              visible = visible.slice(0, unclosed);
+            }
+
+            const lines = [];
+            let fence = null;
+
+            for (const line of visible.split(/\r?\n/)) {
+              const marker = line.match(/^ {0,3}(`{3,}|~{3,})/);
+
+              if (fence !== null) {
+                if (marker && marker[1][0] === fence[0] && marker[1].length >= fence.length) {
+                  fence = null;
+                }
+
+                continue;
+              }
+
+              if (marker) {
+                fence = marker[1];
+
+                continue;
+              }
+
+              if (/^( {4}|\t)/.test(line)) {
+                continue;
+              }
+
+              lines.push(line.trim());
+            }
+
             const isChecked = lines.some(line => checkedLines.includes(line));
 
             if (!isChecked) {

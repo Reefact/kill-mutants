@@ -25,8 +25,11 @@ the check would fail on every one of its pull requests.
 
 Anyone with push access can append commits to a Dependabot branch; opening a pull request does not
 fix what that pull request later carries. A commit's author name is a local `git config` setting. The
-head commit of a pull request Dependabot opens is signed by GitHub, as the head of #112 was on
-2026-11-09. `[` and `]` cannot appear in a GitHub user name, so no one else can register
+head commit of a pull request Dependabot opens is signed by GitHub, as the heads of #111 and #112
+were on 2026-11-09, with GitHub's own `web-flow` identity as its committer. GitHub verifies a
+signature against a commit's committer, not its author: a commit whose author is Dependabot's
+address, signed by someone else with their own key, also reads as verified, with Dependabot as its
+author and that person as its committer. `[` and `]` cannot appear in a GitHub user name, so no one else can register
 `dependabot[bot]`.
 
 just-dummies, under the same Project Owner and the same agreement, settled this in its ADR-0090,
@@ -50,8 +53,9 @@ nobody is in a position to give, and obtains one only because a human ticks it o
 
 Waiving the acknowledgement is the direction in which a mistake costs something, so it rests on what
 the branch carries rather than on who opened it. Anyone with push access can append to a Dependabot
-branch, and what they append is a Contribution in the agreement's own terms; an author name forges
-freely, GitHub's signature does not. Tying the exemption to a head that is still Dependabot's own
+branch, and what they append is a Contribution in the agreement's own terms; an author forges
+freely, and so does a verified signature from any key but GitHub's own, while GitHub's signature
+does not. Tying the exemption to a head that is still Dependabot's own
 signed commit withdraws it the moment the branch carries anything else, and the pull request is then
 judged like any other.
 
