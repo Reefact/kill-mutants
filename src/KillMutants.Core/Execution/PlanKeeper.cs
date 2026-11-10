@@ -291,8 +291,13 @@ internal sealed class PlanKeeper
                 continue;
             }
 
+            // The duration comes along, so the series' summary times the mutants an earlier run
+            // judged as well; it decides nothing here (DEC0031).
             ledger.Inherit(new MutantResult(
-                mutant, verdict.Status, verdict.Detail, verdict.KilledBy, Overturned: verdict.Overturned));
+                mutant, verdict.Status, verdict.Detail, verdict.KilledBy, Overturned: verdict.Overturned)
+            {
+                Duration = verdict.Duration,
+            });
 
             inherited[key] = mutant;
         }

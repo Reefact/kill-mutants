@@ -58,6 +58,7 @@ By mutator
 
 Mutation score: 46.15%
 Elapsed: 11.1 s
+Per mutant: median 0.6 s, slowest 1.4 s (Shipping.cs:12, Comparison)
 Ran on: .NET 10.0.14 on Ubuntu 24.04.5 LTS, 2 of 4 processors, xUnit 4.0.0, timeout budget 31.2 s (0.4 s baseline alone × 3 + 30 s), no kills re-verified
 ```
 
@@ -106,12 +107,21 @@ Lines prefixed with `!`, placed immediately before the score so they cannot be m
 that did not repeat under `--verify-kills`, and the like. They are also in the JSON report, so a CI
 job can act on them.
 
-### The last three lines
+### The last lines
 
 **Mutation score** — detected over detected plus undetected, with the ignored count beside it when
 there is one. A partial or stopped run prints a sentence here instead, saying why there is no score.
 
 **Elapsed** — wall-clock time of the whole run.
+
+**Per mutant** — how long judging one mutant took: the median, and the slowest, named by file, line
+and family. A median because the spread is the point: a kill stops at the first failing test, a
+survivor runs every test of its selection, an uncovered mutant costs almost nothing. A confirmed
+timeout's duration is its confirmation's alone. There is no total: workers judge side by side, so
+the durations overlap and their sum is longer than the run. A verdict inherited from a log written
+before durations were recorded has none; the line then says how many verdicts it is over, or that
+none was recorded
+([DEC0031](../decisions/0031-a-verdict-log-line-carries-the-judgements-duration-which-the-report-does-not-en.md)).
 
 **Ran on** — runtime, operating system, workers used out of processors available, xUnit version,
 the timeout budget as the formula it is, and how many kills were re-verified. Two reports without
@@ -213,8 +223,12 @@ A run that asked for `--report-json artifacts/mutation.json` also writes two fil
 exist for the run that never gets to write its report: a job cancelled by a newer push, a runner
 that was lost.
 
-**`artifacts/mutation.jsonl` — the verdict log.** One line per verdict, in exactly the shape of the
-report's `mutants` entries, appended the moment the verdict is final. A report an earlier run left
+**`artifacts/mutation.jsonl` — the verdict log.** One line per verdict, appended the moment the
+verdict is final: the report's `mutants` entry for the mutant, plus `durationMs`, how long judging it
+took in milliseconds, which the report never carries since two runs on the same code must write it
+the same way. A line without `durationMs` — a silenced mutant, or a line written before durations
+were recorded — is exactly the entry, and a reader has to accept it
+([DEC0031](../decisions/0031-a-verdict-log-line-carries-the-judgements-duration-which-the-report-does-not-en.md)). A report an earlier run left
 at that path is cleared when the run starts, so a log with no report beside it is always a run that
 did not finish ([DEC0014](../decisions/0014-each-verdict-is-appended-to-a-log-beside-the-report-en.md)).
 

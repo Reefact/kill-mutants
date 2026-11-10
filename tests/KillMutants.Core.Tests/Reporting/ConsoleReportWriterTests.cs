@@ -157,6 +157,88 @@ public class ConsoleReportWriterTests
         Assert.Contains("Elapsed: 12.3 s", writer.ToString(), StringComparison.Ordinal);
     }
 
+    /// <summary>A run that measured its time, with each verdict given the duration listed.</summary>
+    private static string RenderTimed(params (MutantStatus Status, double? Seconds)[] verdicts)
+    {
+        IReadOnlyList<Mutant> mutants = MutantsFor("class C { bool M(int a) => a >= 18 && a <= 99; }");
+        Assert.True(mutants.Count >= verdicts.Length, "the source makes too few mutants for this test");
+
+        MutantResult[] results = [.. verdicts.Select((verdict, index) =>
+            new MutantResult(mutants[index], verdict.Status)
+            {
+                Duration = verdict.Seconds is { } seconds ? TimeSpan.FromSeconds(seconds) : null,
+            })];
+
+        var writer = new StringWriter();
+        ConsoleReportWriter.Write(writer, new MutationTestReport(results, TimeSpan.FromMinutes(1)));
+
+        return writer.ToString().ReplaceLineEndings("\n");
+    }
+
+    private static string PerMutantLine(string output) =>
+        Assert.Single(output.Split('\n'), line => line.StartsWith("Per mutant:", StringComparison.Ordinal));
+
+    /// <summary>
+    /// The summary gives the median and names the slowest mutant, and no total: workers judge side by
+    /// side, so durations overlap and their sum says nothing about the run (DEC0031, #75).
+    /// </summary>
+    [Fact]
+    public void The_median_and_the_slowest_mutant_are_shown_and_never_a_total()
+    {
+        IReadOnlyList<Mutant> mutants = MutantsFor("class C { bool M(int a) => a >= 18 && a <= 99; }");
+
+        string output = RenderTimed(
+            (MutantStatus.Killed, 1.0), (MutantStatus.Survived, 41.0), (MutantStatus.Killed, 2.1));
+
+        Assert.Equal($"Per mutant: median 2.1 s, slowest 41.0 s (Ages.cs:1, {mutants[1].Mutator})", PerMutantLine(output));
+        Assert.DoesNotContain("total", PerMutantLine(output), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void An_even_number_of_durations_has_the_mean_of_the_middle_two_as_its_median()
+    {
+        string output = RenderTimed((MutantStatus.Killed, 1.0), (MutantStatus.Killed, 3.0));
+
+        Assert.StartsWith("Per mutant: median 2.0 s, slowest 3.0 s", PerMutantLine(output), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A verdict inherited from a line written before durations were recorded has none; the line
+    /// says how many verdicts it is over rather than passing a part off as the whole. A silenced
+    /// mutant was never judged and counts in neither.
+    /// </summary>
+    [Fact]
+    public void Verdicts_without_a_duration_are_counted_out_and_said_to_be()
+    {
+        string output = RenderTimed(
+            (MutantStatus.Killed, 1.0), (MutantStatus.Survived, null), (MutantStatus.Killed, 3.0),
+            (MutantStatus.Ignored, null));
+
+        Assert.EndsWith(", over 2 of 3 verdicts", PerMutantLine(output), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_run_whose_verdicts_carry_no_duration_says_so()
+    {
+        string output = RenderTimed((MutantStatus.Killed, null), (MutantStatus.Survived, null));
+
+        Assert.Equal("Per mutant: no duration recorded", PerMutantLine(output));
+    }
+
+    /// <summary>
+    /// Like <c>Elapsed</c>, the line belongs to a run that measured its time; a report built without
+    /// one has nothing to say about durations.
+    /// </summary>
+    [Fact]
+    public void A_report_that_measured_no_time_says_nothing_about_durations()
+    {
+        Mutant mutant = MutantsFor("class C { bool M(int a) => a >= 18; }")[0];
+
+        string output = Render(new MutantResult(mutant, MutantStatus.Killed) { Duration = TimeSpan.FromSeconds(2) });
+
+        Assert.DoesNotContain("Per mutant:", output, StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// An incomplete comparison replaces the verdict rather than being printed beside it.
     /// </summary>

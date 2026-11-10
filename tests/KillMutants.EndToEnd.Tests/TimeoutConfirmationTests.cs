@@ -62,6 +62,12 @@ public class TimeoutConfirmationTests
             report.Results, result => result.Status == MutantStatus.Timeout);
 
         Assert.Equal("value - 1", timedOut.Mutant.MutatedText);
+
+        // Its duration is its confirmation's, which ran the whole budget alone - at least the five
+        // second margin - and the first pass, spent under load, is not added to it (DEC0031, #75).
+        Assert.NotNull(timedOut.Duration);
+        Assert.True(timedOut.Duration >= TimeSpan.FromSeconds(5), $"{timedOut.Duration} is shorter than the budget's margin");
+        Assert.True(timedOut.Duration < report.Duration / 2 + TimeSpan.FromSeconds(1), "the first pass was added to the confirmation");
     }
 
     /// <summary>Reports a timeout for the first mutant it is asked to run, then behaves normally.</summary>

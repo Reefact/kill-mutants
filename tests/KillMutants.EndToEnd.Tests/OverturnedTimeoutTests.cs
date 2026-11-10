@@ -47,6 +47,9 @@ public class OverturnedTimeoutTests
         Assert.Null(corrected.Disagreement);
         Assert.Contains("re-run on its own", corrected.Overturned!, StringComparison.Ordinal);
 
+        // The verdict is the re-run's, and so is its duration (DEC0031, #75).
+        Assert.NotNull(corrected.Duration);
+
         // And it is said where a reader will see it, with the key needed to settle it by hand.
         RunWarning warning = Assert.Single(
             report.Warnings, w => w.Text.Contains("timed out while the workers", StringComparison.Ordinal));

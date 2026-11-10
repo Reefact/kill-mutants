@@ -70,6 +70,27 @@ public sealed record MutantResult(
     /// </remarks>
     public IReadOnlyList<TestName> KilledBy { get; init; } = KilledBy ?? [];
 
+    /// <summary>
+    /// How long the judgement that produced this verdict took, or null when nothing here measured
+    /// one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The span a worker spent on the mutant - building it, putting it in place, running its tests,
+    /// reading what they said - and never the time it waited for a worker. A timeout's verdict is the
+    /// one its confirmation reached, alone, so its duration is that run's and the first pass is not
+    /// added to it; a kill re-tested by <c>--verify-kills</c> keeps the duration of the judgement
+    /// that reached it, since the re-test changes no verdict (DEC0031, #75).
+    /// </para>
+    /// <para>
+    /// Null for a mutant the project silenced, which nothing judged, and for a verdict inherited
+    /// from a log line written before durations were recorded. Written to the verdict log and
+    /// nowhere in the JSON report, which two runs on the same code would otherwise never write the
+    /// same way.
+    /// </para>
+    /// </remarks>
+    public TimeSpan? Duration { get; init; }
+
     /// <summary>What this result says about the test suite - see <see cref="MutantOutcome"/>.</summary>
     /// <exception cref="ArgumentOutOfRangeException">The status is not one this tool produces.</exception>
     public MutantOutcome Outcome => Status switch

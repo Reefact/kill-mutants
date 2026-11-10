@@ -45,6 +45,33 @@ public class LoggedVerdictTests
     }
 
     [Fact]
+    public void A_timed_verdict_reads_back_with_its_duration()
+    {
+        var written = new MutantResult(FirstMutant(), MutantStatus.Survived) { Duration = TimeSpan.FromMilliseconds(2100) };
+
+        Assert.Equal(TimeSpan.FromMilliseconds(2100), LoggedVerdict.Parse(JsonReportWriter.Line(written)).Duration);
+    }
+
+    /// <summary>
+    /// A line written before durations were recorded, or one whose duration is not a count of
+    /// milliseconds, is still a verdict: a duration decides nothing, so it is never why a line is
+    /// refused (DEC0031, #75).
+    /// </summary>
+    [Theory]
+    [InlineData("""{"key":"abc","status":"Survived"}""")]
+    [InlineData("""{"key":"abc","status":"Survived","durationMs":null}""")]
+    [InlineData("""{"key":"abc","status":"Survived","durationMs":"2100"}""")]
+    [InlineData("""{"key":"abc","status":"Survived","durationMs":-5}""")]
+    [InlineData("""{"key":"abc","status":"Survived","durationMs":1.5}""")]
+    public void A_line_without_a_readable_duration_is_still_a_verdict(string line)
+    {
+        LoggedVerdict read = LoggedVerdict.Parse(line);
+
+        Assert.Equal(MutantStatus.Survived, read.Status);
+        Assert.Null(read.Duration);
+    }
+
+    [Fact]
     public void A_compile_error_keeps_its_detail()
     {
         var written = new MutantResult(FirstMutant(), MutantStatus.CompileError, "CS0029: cannot convert");

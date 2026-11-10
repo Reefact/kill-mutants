@@ -1,5 +1,6 @@
 using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using KillMutants.Mutations;
 
 namespace KillMutants.Reporting;
@@ -37,19 +38,35 @@ public static class JsonReportWriter
     }
 
     /// <summary>
-    /// One mutant's verdict as a single line of JSON, in the shape every entry of the report's
-    /// <c>mutants</c> has.
+    /// One mutant's verdict as a single line of JSON: the entry the report's <c>mutants</c> gives it,
+    /// and the judgement's duration when one was measured.
     /// </summary>
     /// <remarks>
-    /// The same shape on purpose, and from the same code: a consumer that reads the verdict log a run
-    /// left behind it, and later the report that run wrote, should not have to learn two ways of
-    /// naming one mutant. See <see cref="VerdictLog"/>.
+    /// <para>
+    /// The entry is the same on purpose, and from the same code: a consumer that reads the verdict
+    /// log a run left behind it, and later the report that run wrote, should not have to learn two
+    /// ways of naming one mutant. See <see cref="VerdictLog"/>.
+    /// </para>
+    /// <para>
+    /// <c>durationMs</c> is the one thing the line adds, and only the line. It changes at every run,
+    /// and the report is what two runs on the same code agree on, so it stays out of the report;
+    /// a verdict with no duration measured - silenced, or inherited from an older line - gets no
+    /// field at all, and its line is exactly its report entry (DEC0031).
+    /// </para>
     /// </remarks>
     public static string Line(MutantResult result)
     {
         ArgumentNullException.ThrowIfNull(result);
 
-        return JsonSerializer.Serialize(Describe(result), LineOptions);
+        if (result.Duration is not { } duration)
+        {
+            return JsonSerializer.Serialize(Describe(result), LineOptions);
+        }
+
+        JsonObject line = JsonSerializer.SerializeToNode(Describe(result), LineOptions)!.AsObject();
+        line["durationMs"] = (long)Math.Round(duration.TotalMilliseconds, MidpointRounding.AwayFromZero);
+
+        return line.ToJsonString(LineOptions);
     }
 
     private static object Describe(MutationTestReport report) => new

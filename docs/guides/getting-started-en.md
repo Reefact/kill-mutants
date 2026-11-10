@@ -168,6 +168,7 @@ By mutator
 
 Mutation score: 46.15%
 Elapsed: 11.1 s
+Per mutant: median 0.6 s, slowest 1.4 s (Shipping.cs:12, Comparison)
 Ran on: .NET 10.0.14 on Ubuntu 24.04.5 LTS, 2 of 4 processors, xUnit 4.0.0, timeout budget 31.2 s (0.4 s baseline alone × 3 + 30 s), no kills re-verified
 ```
 
