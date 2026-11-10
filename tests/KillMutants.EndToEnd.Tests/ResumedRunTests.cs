@@ -247,6 +247,11 @@ public class ResumedRunTests
         Assert.NotEmpty(lastCrashed.KilledBy);
         Assert.All(again.Results, result => Assert.Equal(MutantStatus.Killed, result.Status));
 
+        // The log now holds two keys twice, 31 lines for 29 mutants; the report holds each mutant
+        // once (#84).
+        Assert.Equal(29, again.Results.Count);
+        Assert.Equal(29, DistinctKeys(again));
+
         // A third run reads the later line for each of the two keys, and so inherits everything.
         var counting = new CountingRunner(new XUnitTestRunner());
         MutationTestReport third;
@@ -260,7 +265,19 @@ public class ResumedRunTests
         Assert.Equal(0, counting.Runs);
         Assert.Equal(29, third.Series!.Inherited);
         Assert.Equal(3, third.Series.Runs.Count);
+
+        // Read from the log alone, each mutant is reported once, with the status of its latest
+        // judgement: the timeout the second run turned into a kill, the crash it named a test for.
+        Assert.Equal(29, third.Results.Count);
+        Assert.Equal(29, DistinctKeys(third));
+        MutantResult inheritedTimedOut = Assert.Single(third.Results, result => result.Mutant.Key.ToString() == timedOut);
+        MutantResult inheritedCrashed = Assert.Single(third.Results, result => result.Mutant.Key.ToString() == crashed);
+        Assert.Equal(MutantStatus.Killed, inheritedTimedOut.Status);
+        Assert.NotEmpty(inheritedCrashed.KilledBy!);
     }
+
+    private static int DistinctKeys(MutationTestReport report) =>
+        report.Results.Select(result => result.Mutant.Key.ToString()).Distinct(StringComparer.Ordinal).Count();
 
     /// <summary>
     /// A disagreement <c>--verify-kills</c> finds is written to the plan as it is found, since the log
