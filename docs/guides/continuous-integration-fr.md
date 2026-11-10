@@ -182,7 +182,9 @@ est une exécution interrompue, et sort comme telle.
 
 Deux verdicts ne sont jamais hérités, parce qu'un arrêt peut les fabriquer : un **délai dépassé
 (timeout)**, qui n'est définitif que sous le budget qui l'a confirmé, et une **mise à mort qu'aucun
-test ne revendique**, qui est exactement l'allure d'un hôte de test tué par l'arrêt.
+test ne revendique**, qui est exactement l'allure d'un hôte de test tué par l'arrêt. Chacun est jugé
+à nouveau, et son nouveau verdict arrive dans le journal sous la même clé, après l'ancien : la
+dernière ligne d'une clé est celle qui compte, pour la série comme pour quiconque lit le journal.
 
 Ce qui voyage entre les jobs, c'est le plan et le journal — un artefact, ou un cache indexé par le
 commit — et le checkout doit rester sur le commit de la série jusqu'à ce que la série soit
