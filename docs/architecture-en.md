@@ -348,7 +348,9 @@ inherits the log's final verdicts
 into the ledger before any mutant is tested — timeouts excepted, since each is final only under the
 budget that confirmed it, and kills no test is named for, since a crash is the one verdict a stop can
 manufacture — and tests only the rest, so a project with nothing left pays neither sandbox, baseline
-nor coverage, and a project larger than one budget is finished over several runs. The run that
+nor coverage, and a project larger than one budget is finished over several runs. A verdict judged
+again is appended under the key it already had, so the log can hold a key more than once, and the
+last line for a key is the one inherited. The run that
 reaches the last verdict reports the series complete, with a score, because its population is the
 whole codebase at one commit and not the front of a run (DEC0015). The identity is compared twice,
 and the two halves end differently: the half the command line knows before the run — read from git

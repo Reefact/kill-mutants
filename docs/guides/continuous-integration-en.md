@@ -175,7 +175,9 @@ score included; until then each run is a stopped run, and exits as one.
 
 Two verdicts are never inherited, because a stop can manufacture them: a **timeout**, which is only
 final under the budget that confirmed it, and a **kill no test is named for**, which is what a test
-host killed by the stop looks like.
+host killed by the stop looks like. Each is judged again, and its new verdict lands in the log under
+the same key, after the old one: the last line for a key is the one that counts, for the series and
+for anyone reading the log.
 
 What travels between jobs is the plan and the log — an artifact, or a cache keyed on the commit —
 and the checkout has to stay on the series' commit until the series is done. A series of that name

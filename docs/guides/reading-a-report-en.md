@@ -213,10 +213,18 @@ A run that asked for `--report-json artifacts/mutation.json` also writes two fil
 exist for the run that never gets to write its report: a job cancelled by a newer push, a runner
 that was lost.
 
-**`artifacts/mutation.jsonl` — the verdict log.** One line per mutant, in exactly the shape of the
+**`artifacts/mutation.jsonl` — the verdict log.** One line per verdict, in exactly the shape of the
 report's `mutants` entries, appended the moment the verdict is final. A report an earlier run left
 at that path is cleared when the run starts, so a log with no report beside it is always a run that
 did not finish ([DEC0014](../decisions/0014-each-verdict-is-appended-to-a-log-beside-the-report-en.md)).
+
+Within one run, that is one line per mutant. Over a [series of runs](./continuous-integration-en.md#finishing-a-large-project-over-several-runs),
+a timeout and a kill no test is named for are judged again by the next run, and the new verdict is
+appended under the same `key`: a mutant can then appear on several lines. **The last line for a
+`key` is that mutant's verdict**; the earlier ones are verdicts it replaced. The report counts each
+mutant once, from its last line, and a reader of the log has to do the same — counting lines counts
+the repeats
+([DEC0015](../decisions/0015-a-resumed-run-inherits-the-verdicts-its-series-reached-on-the-same-code-en.md)).
 
 **`artifacts/mutation.plan.json` — the plan.** What code and settings the run measured, and every
 mutant it selected, so that *plan minus log* is what remains after a killed run, readable without

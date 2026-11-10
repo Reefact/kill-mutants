@@ -382,6 +382,8 @@ testé — hors dépassements de délai, chacun n'étant définitif que sous le 
 hors mutants tués pour lesquels aucun test n'est nommé, un plantage étant le seul verdict qu'un arrêt
 peut fabriquer — et ne teste que le reste : un projet auquel il ne reste rien ne paie ni bac à sable,
 ni baseline, ni couverture, et un projet plus grand qu'un budget est terminé en plusieurs exécutions.
+Un verdict jugé à nouveau est ajouté sous la clé qu'il avait déjà, si bien que le journal peut
+contenir une clé plus d'une fois, et la dernière ligne d'une clé est celle dont on hérite.
 L'exécution qui atteint le dernier verdict rapporte la série complète, avec un score, parce que sa
 population est tout le code à un commit et non le début d'une exécution (DEC0015). L'identité est
 comparée deux fois, et les deux moitiés ne finissent pas de la même façon : celle que la ligne de

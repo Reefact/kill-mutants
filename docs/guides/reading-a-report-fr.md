@@ -221,11 +221,20 @@ Une exécution qui a demandé `--report-json artifacts/mutation.json` écrit aus
 côté. Tous deux existent pour l'exécution qui n'arrive jamais à écrire son rapport : un job annulé
 par un push plus récent, un runner perdu.
 
-**`artifacts/mutation.jsonl` — le journal des verdicts.** Une ligne par mutant, exactement dans la
+**`artifacts/mutation.jsonl` — le journal des verdicts.** Une ligne par verdict, exactement dans la
 forme des entrées `mutants` du rapport, ajoutée à l'instant où le verdict est définitif. Un rapport
 qu'une exécution antérieure a laissé à ce chemin est effacé au démarrage de l'exécution, donc un
 journal sans rapport à côté est toujours une exécution qui n'a pas terminé
 ([DEC0014](../decisions/0014-each-verdict-is-appended-to-a-log-beside-the-report-fr.md)).
+
+Au sein d'une exécution, cela fait une ligne par mutant. Sur une [série d'exécutions](./continuous-integration-fr.md#terminer-un-grand-projet-en-plusieurs-exécutions),
+un dépassement de délai et une mise à mort qu'aucun test ne revendique sont jugés à nouveau par
+l'exécution suivante, et le nouveau verdict est ajouté sous la même `key` : un mutant peut alors
+apparaître sur plusieurs lignes. **La dernière ligne d'une `key` est le verdict de ce mutant** ; les
+précédentes sont des verdicts qu'il a remplacés. Le rapport compte chaque mutant une fois, à partir
+de sa dernière ligne, et un lecteur du journal doit faire de même — compter les lignes compte les
+répétitions
+([DEC0015](../decisions/0015-a-resumed-run-inherits-the-verdicts-its-series-reached-on-the-same-code-fr.md)).
 
 **`artifacts/mutation.plan.json` — le plan.** Quel code et quels réglages l'exécution a mesurés, et
 chaque mutant qu'elle a sélectionné, de sorte que *plan moins journal* est ce qui reste après une
