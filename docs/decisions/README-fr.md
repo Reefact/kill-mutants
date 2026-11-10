@@ -141,3 +141,4 @@ celle qui empêche un agent de merger une pull request.
 | [DEC0028](0028-the-tool-is-published-as-killmutants-and-its-command-is-killmutants-fr.md) | L'outil est publié sous `KillMutants`, et sa commande est `killmutants` | Accepté |
 | [DEC0029](0029-an-outside-contribution-is-accepted-only-with-the-contributor-agreement-fr.md) | Une contribution extérieure n'est acceptée qu'avec le Contributor Agreement, qui en cède les droits patrimoniaux au propriétaire du projet | Accepté |
 | [DEC0030](0030-a-dependabot-pull-request-needs-no-agreement-while-its-head-is-dependabots-own-signed-commit-fr.md) | Une pull request de Dependabot n'a pas besoin du Contributor Agreement tant que sa tête est le propre commit signé de Dependabot | Accepté |
+| [DEC0031](0031-a-verdict-log-line-carries-the-judgements-duration-which-the-report-does-not-fr.md) | Une ligne du journal des verdicts porte la durée de son jugement, que le rapport JSON ne porte pas | Proposé |
