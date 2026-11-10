@@ -37,6 +37,62 @@ public class ResumedRunTests
             runner, "Release", timeoutPolicy: null, workerCount: 1, measureCoverage: false,
             verifyKills: verifyKills, verdicts: log, continuation: continuation);
 
+    /// <summary>
+    /// Every verdict a run judges reaches the log with how long judging it took, and the JSON report
+    /// carries none, since two runs on the same code must write it the same way. A duration decides
+    /// nothing: a series resumed from a log whose durations are gone - written before they were
+    /// recorded - inherits exactly the verdicts it would have otherwise (DEC0031, #75).
+    /// </summary>
+    [Fact]
+    public async Task Each_judged_verdict_carries_its_duration_in_the_log_and_none_in_the_report()
+    {
+        using var fixture = FixtureCopy.Create();
+        RunPlanStore store = StoreIn(fixture);
+
+        MutationTestReport first;
+
+        using (VerdictLog log = VerdictLog.Create(store.LogPath))
+        {
+            first = await Session(new XUnitTestRunner(), log, Start("nightly", store))
+                .RunAsync(fixture.Root, TestContext.Current.CancellationToken);
+        }
+
+        Assert.True(first.IsComplete);
+        Assert.All(first.Results, result => Assert.NotNull(result.Duration));
+
+        string[] lines = File.ReadAllLines(store.LogPath);
+
+        Assert.Equal(first.Total, lines.Length);
+        Assert.All(lines, line => Assert.True(JsonNode.Parse(line)!["durationMs"]!.GetValue<long>() >= 0));
+
+        var report = new StringWriter();
+        JsonReportWriter.Write(report, first);
+        Assert.DoesNotContain("durationMs", report.ToString(), StringComparison.Ordinal);
+
+        File.WriteAllLines(store.LogPath, lines.Select(line =>
+        {
+            JsonObject verdict = JsonNode.Parse(line)!.AsObject();
+            verdict.Remove("durationMs");
+            return verdict.ToJsonString();
+        }));
+
+        var counting = new CountingRunner(new XUnitTestRunner());
+        MutationTestReport resumed;
+
+        using (VerdictLog log = VerdictLog.Append(store.LogPath))
+        {
+            resumed = await Session(counting, log, Continue("nightly", store))
+                .RunAsync(fixture.Root, TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal(0, counting.Runs);
+        Assert.Equal(first.Total, resumed.Series!.Inherited);
+        Assert.Equal(
+            first.Results.Select(result => (result.Mutant.Key.ToString(), result.Status)),
+            resumed.Results.Select(result => (result.Mutant.Key.ToString(), result.Status)));
+        Assert.All(resumed.Results, result => Assert.Null(result.Duration));
+    }
+
     [Fact]
     public async Task A_stopped_run_is_continued_by_the_next_and_the_series_then_has_a_score()
     {

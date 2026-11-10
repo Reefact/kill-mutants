@@ -45,6 +45,8 @@ public static class ConsoleReportWriter
             writer.WriteLine($"Elapsed: {Format(report.Duration)}");
         }
 
+        WriteDurations(writer, report);
+
         if (report.Environment is { } environment)
         {
             writer.WriteLine($"Ran on: {environment}");
@@ -622,6 +624,63 @@ public static class ConsoleReportWriter
         return names.Length == 1
             ? names[0]
             : $"{string.Join(", ", names.Take(names.Length - 1))} and {names[^1]}";
+    }
+
+    /// <summary>
+    /// How long judging one mutant took: the median and the slowest, over the verdicts that carry a
+    /// duration.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A median rather than a mean, because the spread is the point: a kill stops at the first test
+    /// that fails, a survivor runs every test of its selection, and an uncovered mutant costs almost
+    /// nothing, so a mean describes none of them. The slowest is named, since it is the one to look
+    /// at - often a confirmed timeout, whose duration is its confirmation's alone (DEC0031, #75).
+    /// </para>
+    /// <para>
+    /// No total, on purpose: workers judge side by side, so the durations overlap and their sum is
+    /// larger than the run took; <c>Elapsed</c> is the run's time. A verdict inherited from a line
+    /// written before durations were recorded has none, so the line says how many it is over when
+    /// that is not all of them, and says so outright when it is none. A silenced mutant was never
+    /// judged and counts in neither.
+    /// </para>
+    /// <para>
+    /// Like <c>Elapsed</c>, written only for a run that measured its time: a report built without
+    /// one has nothing to say about durations, not a finding that none were recorded.
+    /// </para>
+    /// </remarks>
+    private static void WriteDurations(TextWriter writer, MutationTestReport report)
+    {
+        List<MutantResult> judged = [.. report.Results.Where(result => result.Status != MutantStatus.Ignored)];
+
+        if (report.Duration <= TimeSpan.Zero || judged.Count == 0)
+        {
+            return;
+        }
+
+        List<MutantResult> timed = [.. judged.Where(result => result.Duration is not null).OrderBy(result => result.Duration)];
+
+        if (timed.Count == 0)
+        {
+            writer.WriteLine("Per mutant: no duration recorded");
+
+            return;
+        }
+
+        int middle = timed.Count / 2;
+        TimeSpan median = timed.Count % 2 == 1
+            ? timed[middle].Duration!.Value
+            : (timed[middle - 1].Duration!.Value + timed[middle].Duration!.Value) / 2;
+        MutantResult slowest = timed[^1];
+
+        string over = timed.Count < judged.Count
+            ? $", over {Format(timed.Count)} of {Format(judged.Count)} verdicts"
+            : string.Empty;
+
+        writer.WriteLine(
+            $"Per mutant: median {Format(median)}, slowest {Format(slowest.Duration!.Value)} " +
+            $"({Path.GetFileName(slowest.Mutant.Location.FilePath)}:{Format(slowest.Mutant.Location.Line)}, " +
+            $"{slowest.Mutant.Mutator}){over}");
     }
 
     private static string Plural(int count, string noun) => count == 1 ? noun : noun + "s";

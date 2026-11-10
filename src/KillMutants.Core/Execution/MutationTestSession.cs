@@ -618,9 +618,15 @@ internal sealed class MutationTestSession
                 _progress?.Report(new MutationTestProgress(
                     MutationTestPhase.TestingMutants, Volatile.Read(ref tested), mutants.Count, Mutant: started));
 
+                // Timed from here, once a worker has the mutant: the wait in the queue says how many
+                // mutants came first, not what this one cost (#75).
+                long judging = System.Diagnostics.Stopwatch.GetTimestamp();
+
                 MutantResult result = await TestMutantAsync(
                         compilation, sandbox, mutants[index], coverage, budget, cancellationToken)
                     .ConfigureAwait(false);
+
+                result = result with { Duration = System.Diagnostics.Stopwatch.GetElapsedTime(judging) };
 
                 results[index] = result;
 
@@ -693,9 +699,15 @@ internal sealed class MutationTestSession
                 MutationTestPhase.ConfirmingTimeouts, confirmed, timedOut.Length,
                 mutants[index].Id.ToString(), Mutant: started));
 
+            long judging = System.Diagnostics.Stopwatch.GetTimestamp();
+
             MutantResult alone = await TestMutantAsync(
                     compilation, sandbox, mutants[index], coverage, budget, cancellationToken)
                 .ConfigureAwait(false);
+
+            // The verdict is this run's, so the duration is too; the first pass, spent under load,
+            // is not added to it (#75).
+            alone = alone with { Duration = System.Diagnostics.Stopwatch.GetElapsedTime(judging) };
 
             _progress?.Report(new MutationTestProgress(
                 MutationTestPhase.ConfirmingTimeouts, confirmed + 1, timedOut.Length,

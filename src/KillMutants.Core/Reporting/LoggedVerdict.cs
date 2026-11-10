@@ -10,6 +10,10 @@ namespace KillMutants.Reporting;
 /// <param name="Detail">Why, when the status needed explaining.</param>
 /// <param name="KilledBy">The tests that failed against it, empty for a kill no test is named for.</param>
 /// <param name="Overturned">How an earlier verdict was corrected by a re-run alone, or null.</param>
+/// <param name="Duration">
+/// How long the judgement took, or null for a line that carries none - written before durations
+/// were recorded, or about a mutant nothing judged (DEC0031).
+/// </param>
 /// <remarks>
 /// Only what a later run needs to inherit the verdict is read: the rest of the line - position,
 /// text, family - is the plan's and the fresh mutant's. A disagreement is never on a line (DEC0014),
@@ -20,7 +24,8 @@ public sealed record LoggedVerdict(
     MutantStatus Status,
     string? Detail,
     IReadOnlyList<TestName> KilledBy,
-    string? Overturned)
+    string? Overturned,
+    TimeSpan? Duration = null)
 {
     /// <summary>Reads one line of the log.</summary>
     /// <exception cref="JsonException">The line is not JSON.</exception>
@@ -53,8 +58,24 @@ public sealed record LoggedVerdict(
                     .Select(name => TestName.Create(name!))]
                 : [];
 
-        return new LoggedVerdict(keyText, parsed, Text(root, "detail"), killedBy, Text(root, "overturned"));
+        return new LoggedVerdict(
+            keyText, parsed, Text(root, "detail"), killedBy, Text(root, "overturned"), Milliseconds(root, "durationMs"));
     }
+
+    /// <summary>
+    /// A duration in whole milliseconds, or null when the field is absent or is not one.
+    /// </summary>
+    /// <remarks>
+    /// Never a reason to refuse the line: a duration decides nothing - no verdict, no continuation -
+    /// so a line whose duration cannot be read is still a verdict, inherited without one.
+    /// </remarks>
+    private static TimeSpan? Milliseconds(JsonElement root, string name) =>
+        root.TryGetProperty(name, out JsonElement value) &&
+        value.ValueKind == JsonValueKind.Number &&
+        value.TryGetInt64(out long milliseconds) &&
+        milliseconds >= 0
+            ? TimeSpan.FromMilliseconds(milliseconds)
+            : null;
 
     private static string? Text(JsonElement root, string name) =>
         root.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.String

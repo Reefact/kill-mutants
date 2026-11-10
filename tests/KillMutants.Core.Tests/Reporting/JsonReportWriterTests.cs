@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using KillMutants.Mutations;
 using KillMutants.Mutations.Mutators;
 using KillMutants.Reporting;
@@ -201,6 +202,32 @@ public class JsonReportWriterTests
 
         Assert.DoesNotContain('\n', line);
         Assert.True(JsonElement.DeepEquals(json.RootElement.GetProperty("mutants")[0], parsed.RootElement));
+    }
+
+    /// <summary>
+    /// A timed verdict's line is its <c>mutants</c> entry and its duration in whole milliseconds; the
+    /// report, which two runs on the same code have to write the same way, never carries one
+    /// (DEC0031, #75).
+    /// </summary>
+    [Fact]
+    public void A_timed_verdict_line_adds_its_duration_and_the_report_does_not()
+    {
+        Mutant mutant = MutantsFor("class C { bool M(int a) => a >= 18; }")[0];
+        var result = new MutantResult(mutant, MutantStatus.Killed) { Duration = TimeSpan.FromMilliseconds(1234.6) };
+
+        string line = JsonReportWriter.Line(result);
+
+        using JsonDocument report = Render(result);
+        JsonObject parsed = JsonNode.Parse(line)!.AsObject();
+
+        Assert.DoesNotContain('\n', line);
+        Assert.Equal(1235, parsed["durationMs"]!.GetValue<long>());
+        Assert.False(report.RootElement.GetProperty("mutants")[0].TryGetProperty("durationMs", out _));
+
+        parsed.Remove("durationMs");
+
+        using JsonDocument withoutDuration = JsonDocument.Parse(parsed.ToJsonString());
+        Assert.True(JsonElement.DeepEquals(report.RootElement.GetProperty("mutants")[0], withoutDuration.RootElement));
     }
 
     /// <summary>

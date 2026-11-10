@@ -14,6 +14,16 @@ release rather than shipping undocumented.
 
 ## [Unreleased]
 
+### Added
+
+- Each line of the verdict log carries `durationMs`, how long judging that mutant took: building
+  it, putting it in place, running its tests, reading the result, and never the wait for a worker.
+  A confirmed timeout's duration is its confirmation's alone. The JSON report carries none, so two
+  runs on the same code still write it the same way, and a log line without the field is still
+  read, `--resume` included. The console summary gains one line, `Per mutant: median 2.1 s, slowest
+  41.0 s (Guards.cs:804, NegatedDecision)`, with no total, since workers judge side by side and their
+  durations overlap. See DEC0031, #75.
+
 ### Changed
 
 - `none` given to `--mutators`, `--with` or `--without` on the command line empties the families

@@ -15,8 +15,8 @@ namespace KillMutants.Reporting;
 /// them are the ones already on disk. See DEC0014.
 /// </para>
 /// <para>
-/// One line per mutant, in the shape the report gives each entry of <c>mutants</c>, and flushed as
-/// it is written. Flushed to the operating system rather than to the disk: a process that is killed
+/// One line per verdict, in the shape the report gives each entry of <c>mutants</c> plus how long the
+/// judgement took (DEC0031), and flushed as it is written. Flushed to the operating system rather than to the disk: a process that is killed
 /// loses nothing the kernel already holds, and forcing every verdict through to the device would
 /// cost a sync per mutant to guard against a power cut, which is not what this is for.
 /// </para>

@@ -58,6 +58,7 @@ By mutator
 
 Mutation score: 46.15%
 Elapsed: 11.1 s
+Per mutant: median 0.6 s, slowest 1.4 s (Shipping.cs:12, Comparison)
 Ran on: .NET 10.0.14 on Ubuntu 24.04.5 LTS, 2 of 4 processors, xUnit 4.0.0, timeout budget 31.2 s (0.4 s baseline alone × 3 + 30 s), no kills re-verified
 ```
 
@@ -111,13 +112,23 @@ Des lignes préfixées par `!`, placées juste avant le score pour qu'on ne puis
 verdict qui ne s'est pas répété sous `--verify-kills`, et ce genre de choses. Elles sont aussi dans
 le rapport JSON, pour qu'un job de CI puisse agir dessus.
 
-### Les trois dernières lignes
+### Les dernières lignes
 
 **Mutation score** — les détectés sur les détectés plus les non détectés, avec le nombre d'ignorés
 à côté quand il y en a un. Une exécution partielle ou interrompue imprime ici une phrase à la place,
 qui dit pourquoi il n'y a pas de score.
 
 **Elapsed** — le temps écoulé, montre en main, pour toute l'exécution.
+
+**Per mutant** — le temps qu'a pris le jugement d'un mutant : la médiane, et le plus lent, nommé par
+fichier, ligne et famille. Une médiane parce que c'est la dispersion qui compte : une mise à mort
+s'arrête au premier test qui échoue, un survivant exécute tous les tests de sa sélection, un mutant
+non couvert ne coûte presque rien. La durée d'un délai dépassé confirmé est celle de sa seule
+confirmation. Il n'y a pas de total : les workers jugent côte à côte, donc les durées se chevauchent
+et leur somme dépasse la durée de l'exécution. Un verdict hérité d'un journal écrit avant que les
+durées ne soient enregistrées n'en a pas ; la ligne dit alors sur combien de verdicts elle porte,
+ou qu'aucune n'a été enregistrée
+([DEC0031](../decisions/0031-a-verdict-log-line-carries-the-judgements-duration-which-the-report-does-not-fr.md)).
 
 **Ran on** — le runtime, le système d'exploitation, les workers utilisés sur les processeurs
 disponibles, la version de xUnit, le budget de délai sous la forme de la formule qu'il est, et le
@@ -221,8 +232,13 @@ Une exécution qui a demandé `--report-json artifacts/mutation.json` écrit aus
 côté. Tous deux existent pour l'exécution qui n'arrive jamais à écrire son rapport : un job annulé
 par un push plus récent, un runner perdu.
 
-**`artifacts/mutation.jsonl` — le journal des verdicts.** Une ligne par verdict, exactement dans la
-forme des entrées `mutants` du rapport, ajoutée à l'instant où le verdict est définitif. Un rapport
+**`artifacts/mutation.jsonl` — le journal des verdicts.** Une ligne par verdict, ajoutée à l'instant
+où le verdict est définitif : l'entrée `mutants` du rapport pour ce mutant, plus `durationMs`, le
+temps qu'a pris son jugement en millisecondes, que le rapport ne porte jamais puisque deux
+exécutions sur le même code doivent l'écrire à l'identique. Une ligne sans `durationMs` — un mutant
+réduit au silence, ou une ligne écrite avant que les durées ne soient enregistrées — est exactement
+l'entrée, et un lecteur doit l'accepter
+([DEC0031](../decisions/0031-a-verdict-log-line-carries-the-judgements-duration-which-the-report-does-not-fr.md)). Un rapport
 qu'une exécution antérieure a laissé à ce chemin est effacé au démarrage de l'exécution, donc un
 journal sans rapport à côté est toujours une exécution qui n'a pas terminé
 ([DEC0014](../decisions/0014-each-verdict-is-appended-to-a-log-beside-the-report-fr.md)).
