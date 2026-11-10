@@ -231,9 +231,11 @@ Au sein d'une exécution, cela fait une ligne par mutant. Sur une [série d'exé
 un dépassement de délai et une mise à mort qu'aucun test ne revendique sont jugés à nouveau par
 l'exécution suivante, et le nouveau verdict est ajouté sous la même `key` : un mutant peut alors
 apparaître sur plusieurs lignes. **La dernière ligne d'une `key` est le verdict de ce mutant** ; les
-précédentes sont des verdicts qu'il a remplacés. Le rapport compte chaque mutant une fois, à partir
-de sa dernière ligne, et un lecteur du journal doit faire de même — compter les lignes compte les
-répétitions
+précédentes sont des verdicts qu'il a remplacés. Un lecteur du journal doit le lire ainsi — compter
+les lignes compte les répétitions. Le rapport d'une série qui se termine compte chaque mutant une
+fois, à partir de sa dernière ligne. Une exécution qui s'arrête avant d'avoir jugé à nouveau un tel
+mutant ne rapporte que ce dont elle a hérité ou ce qu'elle a jugé elle-même : ce mutant est dans le
+journal, sous son verdict antérieur, et pas dans le rapport de cette exécution
 ([DEC0015](../decisions/0015-a-resumed-run-inherits-the-verdicts-its-series-reached-on-the-same-code-fr.md)).
 
 **`artifacts/mutation.plan.json` — le plan.** Quel code et quels réglages l'exécution a mesurés, et

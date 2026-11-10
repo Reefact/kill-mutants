@@ -221,9 +221,11 @@ did not finish ([DEC0014](../decisions/0014-each-verdict-is-appended-to-a-log-be
 Within one run, that is one line per mutant. Over a [series of runs](./continuous-integration-en.md#finishing-a-large-project-over-several-runs),
 a timeout and a kill no test is named for are judged again by the next run, and the new verdict is
 appended under the same `key`: a mutant can then appear on several lines. **The last line for a
-`key` is that mutant's verdict**; the earlier ones are verdicts it replaced. The report counts each
-mutant once, from its last line, and a reader of the log has to do the same — counting lines counts
-the repeats
+`key` is that mutant's verdict**; the earlier ones are verdicts it replaced. A reader of the log has
+to read it that way — counting lines counts the repeats. The report of a series that completes counts
+each mutant once, from its last line. A run that stops before it has judged such a mutant again
+reports only what it inherited or judged itself: that mutant is in the log, under its earlier
+verdict, and not in that run's report
 ([DEC0015](../decisions/0015-a-resumed-run-inherits-the-verdicts-its-series-reached-on-the-same-code-en.md)).
 
 **`artifacts/mutation.plan.json` — the plan.** What code and settings the run measured, and every
