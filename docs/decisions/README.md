@@ -132,4 +132,4 @@ request.
 | [DEC0028](0028-the-tool-is-published-as-killmutants-and-its-command-is-killmutants-en.md) | The tool is published as `KillMutants`, and its command is `killmutants` | Accepted |
 | [DEC0029](0029-an-outside-contribution-is-accepted-only-with-the-contributor-agreement-en.md) | An outside contribution is accepted only with the Contributor Agreement, which assigns its economic rights to the Project Owner | Accepted |
 | [DEC0030](0030-a-dependabot-pull-request-needs-no-agreement-while-its-head-is-dependabots-own-signed-commit-en.md) | A Dependabot pull request needs no Contributor Agreement while its head is Dependabot's own signed commit | Accepted |
-| [DEC0031](0031-a-verdict-log-line-carries-the-judgements-duration-which-the-report-does-not-en.md) | A verdict log line carries how long its judgement took, which the JSON report does not | Proposed |
+| [DEC0031](0031-a-verdict-log-line-carries-the-judgements-duration-which-the-report-does-not-en.md) | A verdict log line carries how long its judgement took, which the JSON report does not | Accepted |
