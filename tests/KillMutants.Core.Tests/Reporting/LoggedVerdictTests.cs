@@ -63,12 +63,23 @@ public class LoggedVerdictTests
     [InlineData("""{"key":"abc","status":"Survived","durationMs":"2100"}""")]
     [InlineData("""{"key":"abc","status":"Survived","durationMs":-5}""")]
     [InlineData("""{"key":"abc","status":"Survived","durationMs":1.5}""")]
+    [InlineData("""{"key":"abc","status":"Survived","durationMs":9223372036854775807}""")]
+    [InlineData("""{"key":"abc","status":"Survived","durationMs":922337203685478}""")]
     public void A_line_without_a_readable_duration_is_still_a_verdict(string line)
     {
         LoggedVerdict read = LoggedVerdict.Parse(line);
 
         Assert.Equal(MutantStatus.Survived, read.Status);
         Assert.Null(read.Duration);
+    }
+
+    /// <summary>The longest duration a <see cref="TimeSpan"/> holds is still read as one.</summary>
+    [Fact]
+    public void The_longest_duration_a_time_span_holds_is_read()
+    {
+        LoggedVerdict read = LoggedVerdict.Parse("""{"key":"abc","status":"Survived","durationMs":922337203685477}""");
+
+        Assert.Equal(TimeSpan.FromMilliseconds(922337203685477), read.Duration);
     }
 
     [Fact]

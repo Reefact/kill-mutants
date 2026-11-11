@@ -67,15 +67,21 @@ public sealed record LoggedVerdict(
     /// </summary>
     /// <remarks>
     /// Never a reason to refuse the line: a duration decides nothing - no verdict, no continuation -
-    /// so a line whose duration cannot be read is still a verdict, inherited without one.
+    /// so a line whose duration cannot be read is still a verdict, inherited without one. That holds
+    /// at the top of the range too: a count of milliseconds a <see cref="TimeSpan"/> cannot hold
+    /// still fits a <see langword="long"/>, and converting it would throw and refuse the whole log
+    /// (review of #126).
     /// </remarks>
     private static TimeSpan? Milliseconds(JsonElement root, string name) =>
         root.TryGetProperty(name, out JsonElement value) &&
         value.ValueKind == JsonValueKind.Number &&
         value.TryGetInt64(out long milliseconds) &&
-        milliseconds >= 0
+        milliseconds >= 0 &&
+        milliseconds <= LongestMilliseconds
             ? TimeSpan.FromMilliseconds(milliseconds)
             : null;
+
+    private const long LongestMilliseconds = long.MaxValue / TimeSpan.TicksPerMillisecond;
 
     private static string? Text(JsonElement root, string name) =>
         root.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.String
