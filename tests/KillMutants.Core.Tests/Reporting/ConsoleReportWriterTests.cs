@@ -194,6 +194,31 @@ public class ConsoleReportWriterTests
         Assert.DoesNotContain("total", PerMutantLine(output), StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// The longest duration a log line is read with is a valid span on its own, and two of them must
+    /// not overflow on the way to their median (review of #126).
+    /// </summary>
+    [Fact]
+    public void Two_of_the_longest_readable_durations_still_have_a_median()
+    {
+        IReadOnlyList<Mutant> mutants = MutantsFor("class C { bool M(int a) => a >= 18 && a <= 99; }");
+        TimeSpan longest = TimeSpan.FromMilliseconds(922337203685477);
+
+        MutantResult[] results =
+        [
+            new(mutants[0], MutantStatus.Killed) { Duration = longest },
+            new(mutants[1], MutantStatus.Killed) { Duration = longest },
+        ];
+
+        var writer = new StringWriter();
+        ConsoleReportWriter.Write(writer, new MutationTestReport(results, TimeSpan.FromMinutes(1)));
+
+        Assert.StartsWith(
+            $"Per mutant: median {longest.TotalMinutes.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture)} min",
+            PerMutantLine(writer.ToString().ReplaceLineEndings("\n")),
+            StringComparison.Ordinal);
+    }
+
     [Fact]
     public void An_even_number_of_durations_has_the_mean_of_the_middle_two_as_its_median()
     {
