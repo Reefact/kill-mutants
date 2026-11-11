@@ -667,10 +667,13 @@ public static class ConsoleReportWriter
             return;
         }
 
+        // Halfway from the lower to the upper rather than half their sum: a log line is read with any
+        // duration a TimeSpan holds, and two such spans would overflow added together (review of #126).
         int middle = timed.Count / 2;
+        TimeSpan upper = timed[middle].Duration!.Value;
         TimeSpan median = timed.Count % 2 == 1
-            ? timed[middle].Duration!.Value
-            : (timed[middle - 1].Duration!.Value + timed[middle].Duration!.Value) / 2;
+            ? upper
+            : timed[middle - 1].Duration!.Value + (upper - timed[middle - 1].Duration!.Value) / 2;
         MutantResult slowest = timed[^1];
 
         string over = timed.Count < judged.Count
