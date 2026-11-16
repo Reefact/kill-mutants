@@ -485,11 +485,6 @@ internal sealed class ConsoleProgressReporter : IProgress<MutationTestProgress>,
     private static string Seconds(TimeSpan value) => Duration.Format(Whole(value) > TimeSpan.Zero ? Whole(value) : TimeSpan.FromSeconds(1));
 
     /// <summary>
-    /// True for a phase whose subject is the item it is on - a project, a target, a mutant - and
-    /// false for one whose subject names the phase itself: the target a baseline is verified for,
-    /// the revision a partial run compares from.
-    /// </summary>
-    /// <summary>
     /// How long the confirmation of timeouts will take if every mutant times out again, said when
     /// it starts, or null for any other phase.
     /// </summary>
@@ -511,6 +506,11 @@ internal sealed class ConsoleProgressReporter : IProgress<MutationTestProgress>,
             ? $"{Format(progress.Total)} re-run one at a time, budget {Seconds(each)}, about {Seconds(each * progress.Total)} if each times out again"
             : null;
 
+    /// <summary>
+    /// True for a phase whose subject is the item it is on - a project, a target, a mutant - and
+    /// false for one whose subject names the phase itself: the target a baseline is verified for,
+    /// the revision a partial run compares from.
+    /// </summary>
     private static bool NamesAnItem(MutationTestPhase phase) =>
         phase is not (MutationTestPhase.VerifyingBaseline or MutationTestPhase.SelectingChanges);
 
