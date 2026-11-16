@@ -479,11 +479,27 @@ son budget est lent par lui-même. Le coût est une exécution supplémentaire p
 timeouts sont rares — sur une suite où ils ne le sont pas, ce sont déjà les mutants qui dominent le
 run.
 
+**Ce que ce coût représente, et pourquoi on ne le réduit pas davantage.** #83 l'a mesuré sur
+`just-dummies` : 21 boucles infinies parmi 5 645 mutants, confirmées l'une après l'autre en 33
+minutes, soit 43 % du run. Une vraie boucle infinie va toujours jusqu'au bout de son budget : la
+phase coûte donc un budget par timeout qu'elle relance, et aucune des façons de payer moins ne
+garde la garantie. En relancer plusieurs à la fois ramène la contention que la phase existe pour
+supprimer. Un budget plus court rend un faux timeout *plus* probable, la direction contre laquelle
+cette entrée protège. Un budget multiplié par le nombre de mutants relancés ensemble ne fait rien
+gagner, puisque chaque boucle tourne alors d'autant plus longtemps. Deux choses ont été faites à la
+place. Un timeout atteint sans qu'aucun autre mutant tourne à côté de lui — tous avec un seul
+worker, et les derniers d'une passe une fois les autres workers terminés — est déjà la mesure que
+prendrait la confirmation, et il est cru sans seconde exécution. Et la phase dit, dès qu'elle
+commence, ce qu'elle coûtera au plus, pour qu'une longue fin de run ne soit pas prise pour un
+blocage.
+
 **Nos tests.** `TimeoutConfirmationTests.A_timeout_that_does_not_reproduce_alone_is_not_believed`, qui
-injecte un timeout dans le premier mutant exactement comme le ferait la contention et exige que le run
-atteigne malgré tout le vrai verdict de ce mutant ; et
-`A_timeout_that_does_reproduce_is_still_recorded`, pour que la confirmation ne transforme pas
-silencieusement une vraie boucle infinie en survivant.
+injecte un timeout dans le premier mutant exactement comme le ferait la contention, pendant qu'un
+autre worker teste un mutant à côté de lui, et exige que le run atteigne malgré tout le vrai verdict
+de ce mutant ; `A_timeout_that_does_reproduce_is_still_recorded`, pour que la confirmation ne
+transforme pas silencieusement une vraie boucle infinie en survivant ; et
+`A_timeout_reached_alone_is_not_run_again`, pour qu'un seul worker paie un budget par boucle infinie
+et non deux.
 
 ---
 

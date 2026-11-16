@@ -123,8 +123,8 @@ qui dit pourquoi il n'y a pas de score.
 **Per mutant** — le temps qu'a pris le jugement d'un mutant : la médiane, et le plus lent, nommé par
 fichier, ligne et famille. Une médiane parce que c'est la dispersion qui compte : une mise à mort
 s'arrête au premier test qui échoue, un survivant exécute tous les tests de sa sélection, un mutant
-non couvert ne coûte presque rien. La durée d'un délai dépassé confirmé est celle de sa seule
-confirmation. Il n'y a pas de total : les workers jugent côte à côte, donc les durées se chevauchent
+non couvert ne coûte presque rien. La durée d'un délai dépassé est celle de l'exécution où il l'a
+dépassé seul : sa confirmation, ou sa première exécution quand aucun autre mutant ne tournait à côté. Il n'y a pas de total : les workers jugent côte à côte, donc les durées se chevauchent
 et leur somme dépasse la durée de l'exécution. Un verdict hérité d'un journal écrit avant que les
 durées ne soient enregistrées n'en a pas ; la ligne dit alors sur combien de verdicts elle porte,
 ou qu'aucune n'a été enregistrée

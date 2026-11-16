@@ -50,7 +50,7 @@ flowchart LR
 | Status | What happened | Outcome |
 | --- | --- | --- |
 | **Killed** | at least one test failed against the mutant | detected |
-| **Timeout** | the tests ran past their budget — the mutant made a loop infinite, say — and did so again when run alone | detected: the tests noticed, in their way |
+| **Timeout** | the tests ran past their budget — the mutant made a loop infinite, say — with no other mutant running beside them, at once or when run again alone | detected: the tests noticed, in their way |
 | **Survived** | every test that reaches the mutant passed | **undetected**: the tests execute that code without checking it |
 | **No coverage** | no test reaches the mutated line, so none was run | **undetected**: the suite would not have noticed either |
 | **Compile error** | the mutated code did not build, which the mutators try hard to avoid | untestable: the suite was never asked |
@@ -111,7 +111,8 @@ flowchart LR
    and every other mutant runs only the tests that can kill it.
 6. **Test the mutants.** Each mutant is emitted, injected into its worker's private copy of the test output,
    and the tests that reach it are run in a fresh process. A timeout is believed only once the
-   mutant has timed out a second time, on its own. Finally, if asked, a sample of the kills is
+   mutant has timed out on its own: a second time, alone, when other mutants were running beside
+   it the first time. Finally, if asked, a sample of the kills is
    tested again, alone, and any verdict that does not repeat is reported.
 7. **Report.** The findings, the counts, the per-family split and the score go to standard output;
    the same, in full, goes to the JSON report if one was asked for.
