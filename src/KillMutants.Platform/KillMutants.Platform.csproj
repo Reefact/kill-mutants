@@ -22,7 +22,7 @@
     directory would be naming them after someone else's vocabulary.
   -->
   <ItemGroup>
-    <PackageReference Include="Slugger" />
+    <PackageReference Include="Slugger.Core" />
   </ItemGroup>
 
   <ItemGroup>

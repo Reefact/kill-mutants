@@ -13,12 +13,10 @@
   <ItemGroup>
     <!-- Slugger. Names the directories a run works in, from the kill-mutants theme embedded in
          KillMutants.Platform - see Scratch.CreateDirectory for why a name rather than a GUID.
-         A prerelease, and it stays one for a while: Slugger cannot ship stable while its own
-         FirstClassErrors is a prerelease (NU5104). That rule does not reach this tool: a tool
-         package carries Slugger inside it and declares no dependency, so a stable KillMutants
-         packs over a prerelease Slugger without the warning - measured with pack.sh at 1.0.0.
-         It would reach a library published on the lib train, which declares its dependencies. -->
-    <PackageVersion Include="Slugger" Version="1.2.1" />
+         The library is Slugger.Core: from 1.2.0 the id Slugger is the dotnet tool, which a
+         project cannot reference (NU1212). Slugger.Core ships on the lib train, stable since
+         1.0.0, which no longer depends on the prerelease FirstClassErrors that kept it a preview. -->
+    <PackageVersion Include="Slugger.Core" Version="1.0.0" />
   </ItemGroup>
 
   <ItemGroup>
