@@ -118,11 +118,12 @@ public class ConsoleProgressReporterTests : IDisposable
     /// <summary>
     /// #83. Confirming timeouts comes after every other verdict, re-runs each one alone for up to its
     /// whole budget, and took 33 minutes for 21 mutants on one run: announced as "Confirming
-    /// timeouts" alone, that is a log that cannot tell the phase from a hang. So it says at once what
-    /// it will cost at most.
+    /// timeouts" alone, that is a log that cannot tell the phase from a hang. So it says at once how
+    /// long it will take if every mutant times out again - an estimate, since a target with several
+    /// test projects gives each its own budget (review of #130).
     /// </summary>
     [Fact]
-    public void Confirming_timeouts_is_announced_with_what_it_costs_at_most()
+    public void Confirming_timeouts_is_announced_with_how_long_it_will_take()
     {
         using ConsoleProgressReporter progress = Redirected();
         MutantInProgress first = Mutant("M105") with { Budget = TimeSpan.FromSeconds(91) };
@@ -130,16 +131,16 @@ public class ConsoleProgressReporterTests : IDisposable
         progress.Report(new MutationTestProgress(MutationTestPhase.ConfirmingTimeouts, 0, 21, "M105", Mutant: first));
 
         Assert.Equal(
-            ["Confirming timeouts — 21 re-run one at a time, up to 1m31s each, at most 31m51s in all"],
+            ["Confirming timeouts — 21 re-run one at a time, budget 1m31s, about 31m51s if each times out again"],
             Lines());
     }
 
     /// <summary>
-    /// #83, on a terminal: the time left is the budget of every re-run still to come, known before the
-    /// first one ends, rather than an extrapolation that has nothing to go on until then.
+    /// #83, on a terminal: the time left is estimated from the budget of every re-run still to come,
+    /// known before the first one ends, rather than extrapolated from re-runs that have not ended yet.
     /// </summary>
     [Fact]
-    public void The_live_line_bounds_the_time_left_confirming_timeouts()
+    public void The_live_line_estimates_the_time_left_confirming_timeouts_from_the_budgets()
     {
         using ConsoleProgressReporter progress = Reporter(ProgressMode.Live);
         MutantInProgress third = Mutant("M3") with { Budget = TimeSpan.FromSeconds(91) };
@@ -148,8 +149,7 @@ public class ConsoleProgressReporterTests : IDisposable
 
         string drawn = _log.ToString();
 
-        Assert.Contains("at most 28m49s left", drawn, StringComparison.Ordinal);
-        Assert.DoesNotContain("~", drawn, StringComparison.Ordinal);
+        Assert.Contains("~28m49s left", drawn, StringComparison.Ordinal);
     }
 
     /// <summary>

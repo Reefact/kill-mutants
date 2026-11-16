@@ -490,8 +490,9 @@ gagner, puisque chaque boucle tourne alors d'autant plus longtemps. Deux choses 
 place. Un timeout atteint sans qu'aucun autre mutant tourne à côté de lui — tous avec un seul
 worker, et les derniers d'une passe une fois les autres workers terminés — est déjà la mesure que
 prendrait la confirmation, et il est cru sans seconde exécution. Et la phase dit, dès qu'elle
-commence, ce qu'elle coûtera au plus, pour qu'une longue fin de run ne soit pas prise pour un
-blocage.
+commence, combien de temps elle prendra environ si chaque mutant dépasse de nouveau le délai, pour
+qu'une longue fin de run ne soit pas prise pour un blocage. Une estimation, pas un maximum : une
+cible à plusieurs projets de test donne à chacun son propre budget.
 
 **Nos tests.** `TimeoutConfirmationTests.A_timeout_that_does_not_reproduce_alone_is_not_believed`, qui
 injecte un timeout dans le premier mutant exactement comme le ferait la contention, pendant qu'un

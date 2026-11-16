@@ -454,7 +454,9 @@ together gains nothing, since each loop then runs that much longer. Two things w
 A timeout reached with no other mutant running beside it — every one with a single worker, and the
 last ones of a pass once the other workers have finished — is already the measurement the
 confirmation would take, and is believed without a second run. And the phase says when it starts
-what it costs at most, so a long end of run is not mistaken for a hang.
+about how long it will take if each mutant times out again, so a long end of run is not mistaken
+for a hang. An estimate, not a maximum: a target with several test projects gives each its own
+budget.
 
 **Our tests.** `TimeoutConfirmationTests.A_timeout_that_does_not_reproduce_alone_is_not_believed`,
 which injects a timeout into the first mutant exactly as contention would, while another worker is
