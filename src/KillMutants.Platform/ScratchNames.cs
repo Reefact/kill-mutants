@@ -1,6 +1,4 @@
 using Slugger;
-using Slugger.Domain;
-using Slugger.Domain.Generation;
 
 namespace KillMutants;
 
@@ -33,29 +31,22 @@ internal static class ScratchNames
     private const string ResourceName = "KillMutants.Themes.kill-mutants.json";
     private const string ThemeName = "kill-mutants";
 
-    private static readonly Lazy<(ThemeDocument Theme, GenerationOptions Options)> Loaded = new(Load);
+    private static readonly Lazy<SlugGenerator> Generator = new(Load);
 
     /// <summary>One name, from the shared random source: a different one on every call.</summary>
-    public static string Draw()
-    {
-        (ThemeDocument theme, GenerationOptions options) = Loaded.Value;
+    public static string Draw() => Generator.Value.Next();
 
-        return SlugGenerator.Generate(theme, options);
-    }
-
-    private static (ThemeDocument Theme, GenerationOptions Options) Load()
+    private static SlugGenerator Load()
     {
         using Stream stream = typeof(ScratchNames).Assembly.GetManifestResourceStream(ResourceName)
             ?? throw new InvalidOperationException(
                 $"The theme '{ResourceName}' is not embedded in {typeof(ScratchNames).Assembly.GetName().Name}.");
-        using StreamReader reader = new(stream);
 
-        ThemeDocument theme = Themes.LoadFromJson(reader.ReadToEnd(), ThemeName);
+        SluggerTheme theme = SluggerTheme.LoadFromStreamOrThrow(stream, ThemeName);
 
         // The theme's own style - an adjective and a participle before the noun, one word each -
-        // and then the ceiling, which the theme does not know about.
-        GenerationOptions options = GenerationOptions.Default.WithDefaultsOf(theme) with { MaxLength = MaxLength };
-
-        return (theme, options);
+        // and then the ceiling, which the theme does not know about. ForOrThrow checks the floors
+        // again under that ceiling, so a limit that starves the theme is refused here, not drawn.
+        return SlugGenerator.ForOrThrow(theme, style => style with { MaxLength = MaxLength });
     }
 }
