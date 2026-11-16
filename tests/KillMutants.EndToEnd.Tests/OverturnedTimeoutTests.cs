@@ -77,19 +77,21 @@ public class OverturnedTimeoutTests
             w => w.Text.Contains("timed out while the workers", StringComparison.Ordinal));
     }
 
+    // Two workers: a timeout reached with nothing beside it is believed without a re-run (#83), so
+    // the load the injected timeout stands for has to be there for a re-run to correct it.
     private static Task<MutationTestReport> Run(string root, ITestRunner runner) =>
         new MutationTestSession(
                 runner,
                 "Release",
                 timeoutPolicy: null,
-                workerCount: 1,
+                workerCount: 2,
                 measureCoverage: true,
                 exclude: null,
                 catalog: MutatorCatalog.Of([MutatorName.Create("Comparison")]),
                 verifyKills: 0)
             .RunAsync(root, TestContext.Current.CancellationToken);
 
-    /// <summary>Reports one spurious timeout, then behaves.</summary>
+    /// <summary>Reports one spurious timeout, once another mutant has started beside it, then behaves.</summary>
     /// <remarks>
     /// Placed on a mutant run rather than on the baseline or the coverage pass, both of which must
     /// stay honest or the run aborts before reaching the part under test. <c>StopOnFirstFailure</c>
@@ -97,6 +99,9 @@ public class OverturnedTimeoutTests
     /// </remarks>
     private sealed class TimesOutOnceRunner(ITestRunner inner) : ITestRunner
     {
+        private readonly TaskCompletionSource _neighbourStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _mutantRuns;
+
         public bool Injected { get; private set; }
 
         public Task<IReadOnlyList<TestName>> DiscoverAsync(
@@ -106,11 +111,22 @@ public class OverturnedTimeoutTests
         public async Task<TestRunOutcome> RunAsync(
             TestRunRequest request, CancellationToken cancellationToken = default)
         {
-            if (!Injected && request.StopOnFirstFailure)
+            if (request.StopOnFirstFailure)
             {
-                Injected = true;
+                int run = Interlocked.Increment(ref _mutantRuns);
 
-                return TestRunOutcome.FromTimeout(request.Timeout);
+                if (run == 2)
+                {
+                    _neighbourStarted.TrySetResult();
+                }
+
+                if (run == 1)
+                {
+                    await _neighbourStarted.Task.WaitAsync(TimeSpan.FromMinutes(2), cancellationToken);
+                    Injected = true;
+
+                    return TestRunOutcome.FromTimeout(request.Timeout);
+                }
             }
 
             return await inner.RunAsync(request, cancellationToken);

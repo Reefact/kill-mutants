@@ -260,7 +260,7 @@ internal sealed class ConsoleProgressReporter : IProgress<MutationTestProgress>,
             {
                 Completed = 0,
                 Total = 0,
-                Subject = NamesAnItem(value.Phase) && value.Total != 1 ? null : value.Subject,
+                Subject = Estimate(value) ?? (NamesAnItem(value.Phase) && value.Total != 1 ? null : value.Subject),
             }));
         }
         else if (value.IsCounted && _time.GetElapsedTime(_lastWritten) >= Interval)
@@ -290,7 +290,16 @@ internal sealed class ConsoleProgressReporter : IProgress<MutationTestProgress>,
 
         fields.Add(new(Duration.Format(Whole(elapsed)), DropFourth));
 
-        if (value.IsCounted && value.Completed > 0 && value.Completed < value.Total)
+        if (value.Phase == MutationTestPhase.ConfirmingTimeouts && value.Mutant?.Budget is { } each && value.Completed < value.Total)
+        {
+            // From the budgets still to come rather than from the re-runs so far: a genuine endless
+            // loop runs to the end of its budget, so that is what the phase usually costs, and it is
+            // known before the first re-run ends (#83). An estimate, not a bound: each test project
+            // of a target is given its own budget, and emitting the mutant is not counted (review
+            // of #130).
+            fields.Add(new("~" + Duration.Format(Whole(each * (value.Total - value.Completed))) + " left", DropThird));
+        }
+        else if (value.IsCounted && value.Completed > 0 && value.Completed < value.Total)
         {
             TimeSpan left = Whole(elapsed * ((double)(value.Total - value.Completed) / value.Completed));
 
@@ -474,6 +483,28 @@ internal sealed class ConsoleProgressReporter : IProgress<MutationTestProgress>,
     private static TimeSpan Whole(TimeSpan value) => TimeSpan.FromSeconds(Math.Floor(value.TotalSeconds));
 
     private static string Seconds(TimeSpan value) => Duration.Format(Whole(value) > TimeSpan.Zero ? Whole(value) : TimeSpan.FromSeconds(1));
+
+    /// <summary>
+    /// How long the confirmation of timeouts will take if every mutant times out again, said when
+    /// it starts, or null for any other phase.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The phase comes after every other verdict is in, re-runs each timeout alone for up to its
+    /// whole budget, and reports nothing between two re-runs. #83 followed one that took 33 minutes
+    /// for 21 mutants, which a log that only says "Confirming timeouts" cannot tell from a hang.
+    /// </para>
+    /// <para>
+    /// "About", not "at most": a target with several test projects gives each its own budget, so
+    /// one re-run can take longer than one budget, and emitting the mutant is not counted either. A
+    /// figure written as a maximum and then exceeded is the hang this line exists to rule out
+    /// (review of #130).
+    /// </para>
+    /// </remarks>
+    private static string? Estimate(MutationTestProgress progress) =>
+        progress.Phase == MutationTestPhase.ConfirmingTimeouts && progress.Total > 0 && progress.Mutant?.Budget is { } each
+            ? $"{Format(progress.Total)} re-run one at a time, budget {Seconds(each)}, about {Seconds(each * progress.Total)} if each times out again"
+            : null;
 
     /// <summary>
     /// True for a phase whose subject is the item it is on - a project, a target, a mutant - and

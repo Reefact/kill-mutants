@@ -460,13 +460,13 @@ internal sealed class MutationTestSession
                     .ConfigureAwait(false)
                 : null;
 
-            MutantResult[] results = await TestMutantsAsync(
+            (MutantResult[] results, bool[] ranAlone) = await TestMutantsAsync(
                     compilation, sandboxes, remaining, coverage, budget, run.Verdicts, cancellationToken)
                 .ConfigureAwait(false);
 
             // Only now that every worker has stopped, so a re-run competes with nothing.
             await ConfirmTimeoutsAloneAsync(
-                    compilation, sandboxes[0], remaining, results, coverage, budget, run.Verdicts,
+                    compilation, sandboxes[0], remaining, results, ranAlone, coverage, budget, run.Verdicts,
                     cancellationToken)
                 .ConfigureAwait(false);
 
@@ -594,7 +594,11 @@ internal sealed class MutationTestSession
     /// milliseconds. Results are re-ordered afterwards so the report does not depend on which worker
     /// happened to finish first.
     /// </remarks>
-    private async Task<MutantResult[]> TestMutantsAsync(
+    /// <returns>
+    /// Each mutant's result, and whether it ran alone from start to finish: no other mutant was being
+    /// tested when it started, and none started before it finished.
+    /// </returns>
+    private async Task<(MutantResult[] Results, bool[] RanAlone)> TestMutantsAsync(
         ProjectCompilation compilation,
         IReadOnlyList<TestSandbox> sandboxes,
         IReadOnlyList<Mutant> mutants,
@@ -605,7 +609,16 @@ internal sealed class MutationTestSession
     {
         var pending = new ConcurrentQueue<int>(Enumerable.Range(0, mutants.Count));
         var results = new MutantResult?[mutants.Count];
+        bool[] ranAlone = new bool[mutants.Count];
         int tested = 0;
+
+        // Who else was testing a mutant while this one ran. A timeout reached with nothing beside it
+        // is already what ConfirmTimeoutsAloneAsync would measure, and re-running it would pay the
+        // whole budget a second time to learn nothing (#83). This happens with one worker, and at the
+        // end of the pass, once the queue is empty and the other workers have finished.
+        Lock load = new();
+        int running = 0;
+        long starts = 0;
 
         async Task WorkAsync(TestSandbox sandbox)
         {
@@ -621,18 +634,36 @@ internal sealed class MutationTestSession
                 // Timed from here, once a worker has the mutant: the wait in the queue says how many
                 // mutants came first, not what this one cost (#75).
                 long judging = System.Diagnostics.Stopwatch.GetTimestamp();
+                long startedAs;
+                bool aloneAtStart;
+
+                lock (load)
+                {
+                    startedAs = ++starts;
+                    aloneAtStart = ++running == 1;
+                }
 
                 MutantResult result = await TestMutantAsync(
                         compilation, sandbox, mutants[index], coverage, budget, cancellationToken)
                     .ConfigureAwait(false);
 
+                lock (load)
+                {
+                    running--;
+
+                    // Alone at its start is not enough: a worker that dequeued just after it would
+                    // have competed with it for the rest of its run.
+                    ranAlone[index] = aloneAtStart && starts == startedAs;
+                }
+
                 result = result with { Duration = System.Diagnostics.Stopwatch.GetElapsedTime(judging) };
 
                 results[index] = result;
 
-                // A timeout is not a verdict yet: it is re-run alone, once the workers have stopped,
-                // before it is believed. Everything else is final as it lands.
-                if (result.Status != MutantStatus.Timeout)
+                // A timeout under load is not a verdict yet: it is re-run alone, once the workers
+                // have stopped, before it is believed. A timeout reached alone, and everything else,
+                // is final as it lands.
+                if (result.Status != MutantStatus.Timeout || ranAlone[index])
                 {
                     verdicts.Reach(result);
                 }
@@ -645,11 +676,12 @@ internal sealed class MutationTestSession
 
         await Task.WhenAll(sandboxes.Select(WorkAsync)).ConfigureAwait(false);
 
-        return [.. results.Select(result => result!)];
+        return ([.. results.Select(result => result!)], ranAlone);
     }
 
     /// <summary>
-    /// Re-tests every mutant that timed out, alone, and keeps whatever verdict that produces.
+    /// Re-tests every mutant that timed out under load, alone, and keeps whatever verdict that
+    /// produces.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -672,12 +704,24 @@ internal sealed class MutationTestSession
     /// more than one alone, which the default budget absorbs easily. A CPU-bound suite has no such
     /// bound, which is why this is a rule rather than a wider margin.
     /// </para>
+    /// <para>
+    /// What the phase costs cannot be brought below one budget per timeout it re-runs, and #83
+    /// measured it at 33 minutes for 21 endless loops. A genuine endless loop always runs to the end
+    /// of its budget, so the only ways to pay less are to re-run several at once, which brings back
+    /// the contention this phase exists to remove, or to give them a shorter budget, which makes a
+    /// false timeout <em>more</em> likely and errs in the direction this phase guards against. A
+    /// budget scaled by the number of mutants re-run together gains nothing either: each loop then
+    /// runs that many times longer. What is skipped is only the re-run that could tell nothing
+    /// new: a timeout reached with no other mutant running beside it is already the measurement
+    /// this phase would take (RB-013).
+    /// </para>
     /// </remarks>
     private async Task ConfirmTimeoutsAloneAsync(
         ProjectCompilation compilation,
         TestSandbox sandbox,
         IReadOnlyList<Mutant> mutants,
         MutantResult[] results,
+        bool[] ranAlone,
         CoverageMap? coverage,
         TimeSpan budget,
         VerdictLedger verdicts,
@@ -685,7 +729,7 @@ internal sealed class MutationTestSession
     {
         int[] timedOut = [.. Enumerable
             .Range(0, results.Length)
-            .Where(index => results[index].Status == MutantStatus.Timeout)];
+            .Where(index => results[index].Status == MutantStatus.Timeout && !ranAlone[index])];
 
         for (int confirmed = 0; confirmed < timedOut.Length; confirmed++)
         {

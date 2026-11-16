@@ -116,8 +116,9 @@ there is one. A partial or stopped run prints a sentence here instead, saying wh
 
 **Per mutant** — how long judging one mutant took: the median, and the slowest, named by file, line
 and family. A median because the spread is the point: a kill stops at the first failing test, a
-survivor runs every test of its selection, an uncovered mutant costs almost nothing. A confirmed
-timeout's duration is its confirmation's alone. There is no total: workers judge side by side, so
+survivor runs every test of its selection, an uncovered mutant costs almost nothing. A timeout's
+duration is that of the run it timed out alone in: its confirmation, or its first run when no other
+mutant was running beside it. There is no total: workers judge side by side, so
 the durations overlap and their sum is longer than the run. A verdict inherited from a log written
 before durations were recorded has none; the line then says how many verdicts it is over, or that
 none was recorded

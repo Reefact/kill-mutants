@@ -52,7 +52,7 @@ flowchart LR
 | Statut | Ce qui s'est passé | Issue |
 | --- | --- | --- |
 | **Tué** | au moins un test a échoué face au mutant | détecté |
-| **Délai dépassé (timeout)** | les tests ont dépassé leur budget — le mutant a rendu une boucle infinie, par exemple — et l'ont dépassé de nouveau en étant relancés seuls | détecté : les tests s'en sont aperçus, à leur manière |
+| **Délai dépassé (timeout)** | les tests ont dépassé leur budget — le mutant a rendu une boucle infinie, par exemple — sans qu'aucun autre mutant tourne à côté d'eux, d'emblée ou en étant relancés seuls | détecté : les tests s'en sont aperçus, à leur manière |
 | **A survécu** | tous les tests qui atteignent le mutant ont réussi | **non détecté** : les tests exécutent ce code sans le vérifier |
 | **Non couvert** | aucun test n'atteint la ligne mutée, donc aucun n'a été lancé | **non détecté** : la suite ne s'en serait pas aperçue non plus |
 | **Erreur de compilation** | le code muté n'a pas compilé, ce que les mutateurs s'efforcent d'éviter | intestable : la suite n'a jamais été interrogée |
@@ -118,7 +118,8 @@ flowchart LR
    tuer.
 6. **Tester les mutants.** Chaque mutant est émis, injecté dans la copie privée de la sortie des
    tests de son worker, et les tests qui l'atteignent sont lancés dans un processus neuf. Un délai dépassé n'est
-   cru qu'une fois que le mutant a dépassé le délai une seconde fois, seul. Enfin, si on le demande,
+   cru qu'une fois que le mutant a dépassé le délai seul : une seconde fois, seul, quand d'autres
+   mutants tournaient à côté de lui la première fois. Enfin, si on le demande,
    un échantillon des mutants tués est testé de nouveau, seul, et tout verdict qui ne se répète pas
    est signalé.
 7. **Rapporter.** Les constats, les comptes, la répartition par famille et le score vont sur la

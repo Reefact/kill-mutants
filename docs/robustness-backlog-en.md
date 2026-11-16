@@ -444,11 +444,26 @@ point nothing else of ours is running, so a mutant that still exceeds its budget
 merits. The cost is one extra run per timeout, and timeouts are rare — on a suite where they are not,
 they are already the mutants dominating the run.
 
+**What that cost comes to, and why it is not cut further.** #83 measured it on `just-dummies`: 21
+endless loops among 5,645 mutants, confirmed one after the other in 33 minutes, 43% of the run. A
+genuine endless loop always runs to the end of its budget, so the phase costs one budget per
+timeout it re-runs, and none of the ways to pay less keeps the guarantee. Re-running several at
+once brings back the contention the phase exists to remove. A shorter budget makes a false timeout
+*more* likely, the direction this entry guards against. A budget scaled by the number re-run
+together gains nothing, since each loop then runs that much longer. Two things were done instead.
+A timeout reached with no other mutant running beside it — every one with a single worker, and the
+last ones of a pass once the other workers have finished — is already the measurement the
+confirmation would take, and is believed without a second run. And the phase says when it starts
+about how long it will take if each mutant times out again, so a long end of run is not mistaken
+for a hang. An estimate, not a maximum: a target with several test projects gives each its own
+budget.
+
 **Our tests.** `TimeoutConfirmationTests.A_timeout_that_does_not_reproduce_alone_is_not_believed`,
-which injects a timeout into the first mutant exactly as contention would and requires the run to
-reach that mutant's real verdict anyway; and
+which injects a timeout into the first mutant exactly as contention would, while another worker is
+testing a mutant beside it, and requires the run to reach that mutant's real verdict anyway;
 `A_timeout_that_does_reproduce_is_still_recorded`, so the confirmation cannot quietly turn a genuine
-endless loop into a survivor.
+endless loop into a survivor; and `A_timeout_reached_alone_is_not_run_again`, so a single worker
+pays one budget per endless loop rather than two.
 
 ---
 

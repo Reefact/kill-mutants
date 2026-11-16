@@ -26,6 +26,16 @@ release rather than shipping undocumented.
 
 ### Changed
 
+- A timeout reached with no other mutant running beside it is believed without being run again:
+  it is already what the confirmation alone would measure, and the re-run paid the whole budget a
+  second time to learn nothing. Every timeout of a run with one worker is in that case, and so are
+  the last ones of a pass, once the other workers have finished. A timeout reached under load is
+  still confirmed alone. The confirmation phase now says when it starts how long it will take if
+  each mutant times out again, `Confirming timeouts — 21 re-run one at a time, budget 1m31s, about
+  31m51s if each times out again`, and the live line estimates the time left from the budgets still
+  to come rather than from the re-runs so far: a run on `just-dummies` spent 33
+  minutes there, which a bare "Confirming timeouts" could not tell from a hang. Why the phase is not
+  made shorter than one budget per re-run is written under RB-013. See #83.
 - `none` given to `--mutators`, `--with` or `--without` on the command line empties the families
   given before it, as `--ignore-calls none` already did: `--without Linq --without none` left
   `Linq` out, because `none` was added to the list as nothing rather than clearing it. A family
