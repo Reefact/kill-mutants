@@ -32,7 +32,7 @@
          xunit.v3.mtp-v2 is the Microsoft Testing Platform 2 flavour. -->
     <PackageVersion Include="xunit.v3.mtp-v2" Version="4.0.3" />
     <!-- Coverage for the SonarQube Cloud analysis; see tests/TestCoverage.props. -->
-    <PackageVersion Include="coverlet.MTP" Version="10.1.0" />
+    <PackageVersion Include="coverlet.MTP" Version="10.1.1" />
     <!-- Property-based tests: generators and shrinking, called from an ordinary [Fact], so nothing
          ties it to the xUnit version above. No dependencies of its own. Each run draws a fresh
          seed on purpose, so every CI run tries cases no earlier one did; that does not make the
